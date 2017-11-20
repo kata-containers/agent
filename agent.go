@@ -7,13 +7,14 @@
 package main
 
 import (
-	"fmt"
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
+	"github.com/sirupsen/logrus"
 	grpc "google.golang.org/grpc"
 )
 
@@ -47,6 +48,28 @@ type pod struct {
 	podLock      sync.RWMutex
 	wg           sync.WaitGroup
 	grpcListener net.Listener
+}
+
+var agentLog = logrus.WithFields(logrus.Fields{
+	"name": agentName,
+	"pid":  os.Getpid(),
+})
+
+// Version is the agent version. This variable is populated at build time.
+var Version = "unknown"
+
+func (p *pod) initLogger() error {
+	agentLog.Logger.Formatter = &logrus.TextFormatter{TimestampFormat: time.RFC3339Nano}
+
+	config := newConfig(defaultLogLevel)
+	if err := config.getConfig(kernelCmdlineFile); err != nil {
+		agentLog.WithError(err).Warn("Failed to get config from kernel cmdline")
+	}
+	config.applyConfig()
+
+	agentLog.WithField("version", Version).Info()
+
+	return nil
 }
 
 func (p *pod) initChannel() error {
@@ -93,7 +116,7 @@ func main() {
 
 	defer func() {
 		if err != nil {
-			fmt.Printf("%v\n", err)
+			agentLog.Error(err)
 			os.Exit(exitFailure)
 		}
 
@@ -104,6 +127,10 @@ func main() {
 	p := &pod{
 		containers: make(map[string]*container),
 		running:    false,
+	}
+
+	if err = p.initLogger(); err != nil {
+		return
 	}
 
 	// Check for vsock vs serial. This will fill the pod structure with

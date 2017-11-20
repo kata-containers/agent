@@ -148,7 +148,7 @@ func findVirtualSerialPath(serialName string) (string, error) {
 		content, err := ioutil.ReadFile(path)
 		if err != nil {
 			if os.IsNotExist(err) {
-				fmt.Printf("Skip parsing of non-existent file %s\n", path)
+				agentLog.WithField("file", path).Debug("Skip parsing of non-existent file")
 				continue
 			}
 			return "", err
