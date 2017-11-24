@@ -90,5 +90,44 @@ func vsockDialer(addr string, timeout time.Duration) (net.Conn, error) {
 		return nil, invalidVsockMsgErr
 	}
 
-	return vsock.Dial(uint32(cid), uint32(port))
+	t := time.NewTimer(timeout)
+	cancel := make(chan bool)
+	ch := make(chan net.Conn)
+	go func() {
+		for {
+			select {
+			case <-cancel:
+				// canceled or channel closed
+				return
+			default:
+			}
+
+			conn, err := vsock.Dial(uint32(cid), uint32(port))
+			if err == nil {
+				// Send conn back iff timer is not fired
+				// Otherwise there might be no one left reading it
+				if t.Stop() {
+					ch <- conn
+				} else {
+					conn.Close()
+				}
+				return
+			}
+		}
+	}()
+
+	var conn net.Conn
+	var ok bool
+	timeoutErrMsg := fmt.Errorf("timed out connecting to vsock %d:%d", cid, port)
+	select {
+	case <-t.C:
+		cancel <- true
+		return nil, timeoutErrMsg
+	case conn, ok = <-ch:
+		if !ok {
+			return nil, timeoutErrMsg
+		}
+	}
+
+	return conn, nil
 }
