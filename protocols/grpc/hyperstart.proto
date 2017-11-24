@@ -15,7 +15,9 @@ import "google/protobuf/empty.proto";
 service HyperstartService {
 	// execution
 	rpc CreateContainer(CreateContainerRequest) returns (google.protobuf.Empty);
-	rpc StartContainer(StartContainerRequest) returns (google.protobuf.Empty);
+	rpc StartContainer(ContainerRequest) returns (google.protobuf.Empty);
+	rpc StopContainer(ContainerRequest) returns (google.protobuf.Empty);
+	rpc RemoveContainer(RemoveContainerRequest) returns (google.protobuf.Empty);
 	rpc ExecProcess(ExecProcessRequest) returns (google.protobuf.Empty);
 	rpc SignalProcess(SignalProcessRequest) returns (google.protobuf.Empty);
 	rpc WaitProcess(WaitProcessRequest) returns (WaitProcessResponse); // wait & reap like waitpid(2)
@@ -42,8 +44,15 @@ message CreateContainerRequest {
 	Spec OCI = 4;
 }
 
-message StartContainerRequest {
+message ContainerRequest {
 	string container_id = 1;
+}
+
+message RemoveContainerRequest {
+	string container_id = 1;
+	// Timeout in seconds to wait for the container to stop before forcibly
+	// terminating it. Default: 0 (forcibly terminate the container immediately)
+	int64 timeout = 2;
 }
 
 message ExecProcessRequest {
