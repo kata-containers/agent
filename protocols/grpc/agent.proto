@@ -11,11 +11,20 @@ package grpc;
 import "oci.proto";
 import "google/protobuf/empty.proto";
 
+
 // unstable
 service AgentService {
 	// execution
 	rpc CreateContainer(CreateContainerRequest) returns (google.protobuf.Empty);
 	rpc StartContainer(StartContainerRequest) returns (NewProcessResponse);
+
+	// RemoveContainer will tear down an existing container by forcibly terminating
+	// all processes running inside that container and releasing all internal
+	// resources associated with it.
+	// RemoveContainer will wait for all processes termination before returning.
+	// If any process can not be killed or if it can not be killed after
+	// the RemoveContainerRequest timeout, RemoveContainer will return an error.
+	rpc RemoveContainer(RemoveContainerRequest) returns (google.protobuf.Empty);
 	rpc ExecProcess(ExecProcessRequest) returns (NewProcessResponse);
 	rpc SignalProcess(SignalProcessRequest) returns (google.protobuf.Empty);
 	rpc WaitProcess(WaitProcessRequest) returns (WaitProcessResponse); // wait & reap like waitpid(2)
@@ -49,6 +58,17 @@ message CreateContainerRequest {
 
 message StartContainerRequest {
 	string container_id = 1;
+}
+
+message RemoveContainerRequest {
+	string container_id = 1;
+
+	// RemoveContainer will return an error if
+	// it could not kill some container processes
+	// after timeout seconds.
+	// Setting timeout to 0 means RemoveContainer will
+	// wait for ever.
+	uint32 timeout = 2;
 }
 
 // NewProcessResponse contains a Linux PID for a process
