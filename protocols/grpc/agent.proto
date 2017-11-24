@@ -27,11 +27,16 @@ service AgentService {
 	rpc CloseStdin(CloseStdinRequest) returns (google.protobuf.Empty);
 	rpc TtyWinResize(TtyWinResizeRequest) returns (google.protobuf.Empty);
 
+	// networking
+	rpc AddInterface(AddInterfaceRequest) returns (google.protobuf.Empty);
+	rpc RemoveInterface(RemoveInterfaceRequest) returns (google.protobuf.Empty);
+	rpc UpdateInterface(UpdateInterfaceRequest) returns (google.protobuf.Empty);
+	rpc AddRoute(RouteRequest) returns (google.protobuf.Empty);
+	rpc RemoveRoute(RouteRequest) returns (google.protobuf.Empty);
+
 	// misc (TODO: some rpcs can be replaced by hyperstart-exec)
 	rpc CreateSandbox(CreateSandboxRequest) returns (google.protobuf.Empty);
 	rpc DestroySandbox(DestroySandboxRequest) returns (google.protobuf.Empty);
-	rpc UpdateInterface(UpdateInterfaceRequest) returns (google.protobuf.Empty);
-	rpc AddRoute(AddRouteRequest) returns (google.protobuf.Empty);
 	rpc OnlineCPUMem(OnlineCPUMemRequest) returns (google.protobuf.Empty);
 }
 
@@ -120,21 +125,53 @@ message CreateSandboxRequest {
 message DestroySandboxRequest {
 }
 
-message IpAddress {
-	string address = 1;
-	string mask = 2;
+enum IPFamily {
+	v4 = 0;
+	v6 = 1;
+}
+
+message IPAddress {
+	IPFamily family = 1;
+	string address = 2;
+	string mask = 3;
+}
+
+message Interface {
+	string device = 1;
+	string name = 2;
+	repeated IPAddress ipAddresses = 3;
+	uint64 mtu = 4;
+	string hwAddr = 5;
+}
+
+message Route {
+	string dest = 1;
+	string gateway = 2;
+	string device = 3;
+}
+
+enum UpdateType {
+	AddIP = 0;
+	RemoveIP = 1;
+	Name = 2;
+	MTU = 3;
+}
+
+message AddInterfaceRequest {
+	Interface interface = 1;
+}
+
+message RemoveInterfaceRequest {
+	string name = 1;
 }
 
 message UpdateInterfaceRequest {
-	uint64 type	=1;
-	string device = 2;
-	string newName = 3;
-	repeated IpAddress ipAddresses = 4;
-	uint64 mtu = 5;
+	UpdateType type = 1;
+	Interface interface = 2;
 }
 
-message AddRouteRequest {
-	repeated Route routes = 1;
+message RouteRequest {
+	Route route = 1;
 }
 
 message OnlineCPUMemRequest {
@@ -152,10 +189,4 @@ message StringUser {
 	string uid = 1;
 	string gid = 2;
 	repeated string additionalGids = 3;
-}
-
-message Route {
-	string dest = 1;
-	string gateway = 2;
-	string device = 3;
 }
