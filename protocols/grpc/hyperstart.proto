@@ -10,6 +10,7 @@ package grpc;
 
 import "oci.proto";
 import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
 
 // unstable
 service HyperstartService {
@@ -18,7 +19,6 @@ service HyperstartService {
 	rpc StartContainer(StartContainerRequest) returns (google.protobuf.Empty);
 	rpc ExecProcess(ExecProcessRequest) returns (google.protobuf.Empty);
 	rpc SignalProcess(SignalProcessRequest) returns (google.protobuf.Empty);
-	rpc WaitProcess(WaitProcessRequest) returns (WaitProcessResponse); // wait & reap like waitpid(2)
 
 	// stdio
 	rpc WriteStdin(WriteStreamRequest) returns (WriteStreamResponse);
@@ -33,6 +33,9 @@ service HyperstartService {
 	rpc UpdateInterface(UpdateInterfaceRequest) returns (google.protobuf.Empty);
 	rpc AddRoute(AddRouteRequest) returns (google.protobuf.Empty);
 	rpc OnlineCPUMem(OnlineCPUMemRequest) returns (google.protobuf.Empty);
+
+	// events
+	rpc GetEvents(EventsRequest) returns (stream Event);
 }
 
 message CreateContainerRequest {
@@ -146,4 +149,27 @@ message Route {
 	string dest = 1;
 	string gateway = 2;
 	string device = 3;
+}
+
+message EventsRequest {
+	string container_id = 1;
+	string process_id = 2;
+	google.protobuf.Timestamp timestamp = 3;
+}
+
+message ContainerTermination {
+	string container_id = 1;
+	int32 exit_code = 2;
+}
+
+message ProcessTermination {
+	string process_id = 1;
+	int32 exit_code = 2;
+}
+
+message Event {
+	oneof event {
+		ContainerTermination container_termination = 1;
+		ProcessTermination process_termination = 2;
+	}
 }
