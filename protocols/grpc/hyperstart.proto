@@ -38,7 +38,7 @@ service HyperstartService {
 message CreateContainerRequest {
 	string container_id = 1;
 	StringUser string_user = 2;
-	repeated Storage storages =3;
+	repeated Storage storages = 3;
 	Spec OCI = 4;
 }
 
@@ -48,8 +48,9 @@ message StartContainerRequest {
 
 message ExecProcessRequest {
 	string container_id = 1;
-	StringUser string_user =2;
-	Process process = 3;
+	string process_id = 2;
+	StringUser string_user = 3;
+	Process process = 4;
 }
 
 message SignalProcessRequest {
