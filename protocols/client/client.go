@@ -7,10 +7,11 @@
 package client
 
 import (
+	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/mdlayher/vsock"
@@ -20,8 +21,8 @@ import (
 )
 
 const (
-	UNIX_SOCKET_PREFIX  = "unix://"
-	VSOCK_SOCKET_PREFIX = "vsock://"
+	unixSocketScheme  = "unix"
+	vsockSocketScheme = "vsock"
 )
 
 type AgentClient struct {
@@ -36,8 +37,12 @@ type dialer func(string, time.Duration) (net.Conn, error)
 //   - vsock://<cid>:<port>
 //   - <unix socket path>
 func NewAgentClient(sock string) (*AgentClient, error) {
+	addr, err := parse(sock)
+	if err != nil {
+		return nil, err
+	}
 	dialOpts := []grpc.DialOption{grpc.WithInsecure(), grpc.WithTimeout(5 * time.Second)}
-	dialOpts = append(dialOpts, grpc.WithDialer(agentDialer(sock)))
+	dialOpts = append(dialOpts, grpc.WithDialer(agentDialer(addr)))
 	conn, err := grpc.Dial(sock, dialOpts...)
 	if err != nil {
 		return nil, err
@@ -53,39 +58,71 @@ func (c *AgentClient) Close() error {
 	return c.conn.Close()
 }
 
-func agentDialer(addr string) dialer {
-	switch {
-	case strings.HasPrefix(addr, VSOCK_SOCKET_PREFIX):
+func parse(sock string) (*url.URL, error) {
+	addr, err := url.Parse(sock)
+	if err != nil {
+		return nil, err
+	}
+
+	// validate more
+	switch addr.Scheme {
+	case vsockSocketScheme:
+		if addr.Hostname() == "" || addr.Port() == "" || addr.Path != "" {
+			return nil, errors.New("Invalid vsock scheme")
+		}
+	case unixSocketScheme:
+		fallthrough
+	case "":
+		if (addr.Host == "" && addr.Path == "") || addr.Port() != "" {
+			return nil, errors.New("Invalid unix socket scheme")
+		}
+	default:
+		return nil, errors.New("Invalid socket scheme")
+	}
+
+	return addr, nil
+}
+
+func agentDialer(addr *url.URL) dialer {
+	switch addr.Scheme {
+	case vsockSocketScheme:
 		return vsockDialer
-	case strings.HasPrefix(addr, UNIX_SOCKET_PREFIX):
+	case unixSocketScheme:
 		fallthrough
 	default:
 		return unixDialer
 	}
 }
 
-func unixDialer(addr string, timeout time.Duration) (net.Conn, error) {
-	if strings.HasPrefix(addr, UNIX_SOCKET_PREFIX) {
-		addr = addr[len(UNIX_SOCKET_PREFIX):]
+func unixDialer(sock string, timeout time.Duration) (net.Conn, error) {
+	addr, err := parse(sock)
+	if err != nil {
+		return nil, err
 	}
-	return net.DialTimeout("unix", addr, timeout)
+
+	if addr.Scheme != unixSocketScheme || addr.Scheme != "" {
+		return nil, errors.New("Invalid URL scheme")
+	}
+
+	return net.DialTimeout("unix", addr.Host+addr.Path, timeout)
 }
 
-func vsockDialer(addr string, timeout time.Duration) (net.Conn, error) {
-	if strings.HasPrefix(addr, VSOCK_SOCKET_PREFIX) {
-		addr = addr[len(VSOCK_SOCKET_PREFIX):]
+func vsockDialer(sock string, timeout time.Duration) (net.Conn, error) {
+	addr, err := parse(sock)
+	if err != nil {
+		return nil, err
 	}
 
-	invalidVsockMsgErr := fmt.Errorf("invalid vsock destination: %s", VSOCK_SOCKET_PREFIX+addr)
-	seq := strings.Split(addr, ":")
-	if len(seq) != 2 {
-		return nil, invalidVsockMsgErr
+	if addr.Scheme != vsockSocketScheme {
+		return nil, errors.New("Invalid URL scheme")
 	}
-	cid, err := strconv.ParseUint(seq[0], 10, 32)
+
+	invalidVsockMsgErr := fmt.Errorf("invalid vsock destination: %s", sock)
+	cid, err := strconv.ParseUint(addr.Hostname(), 10, 32)
 	if err != nil {
 		return nil, invalidVsockMsgErr
 	}
-	port, err := strconv.ParseUint(seq[1], 10, 32)
+	port, err := strconv.ParseUint(addr.Port(), 10, 32)
 	if err != nil {
 		return nil, invalidVsockMsgErr
 	}
