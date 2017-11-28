@@ -16,6 +16,7 @@ service AgentService {
 	// execution
 	rpc CreateContainer(CreateContainerRequest) returns (google.protobuf.Empty);
 	rpc StartContainer(StartContainerRequest) returns (NewProcessResponse);
+	rpc SignalContainer(SignalContainerRequest) returns (google.protobuf.Empty);
 	rpc ExecProcess(ExecProcessRequest) returns (NewProcessResponse);
 	rpc SignalProcess(SignalProcessRequest) returns (google.protobuf.Empty);
 	rpc WaitProcess(WaitProcessRequest) returns (WaitProcessResponse); // wait & reap like waitpid(2)
@@ -44,6 +45,14 @@ message CreateContainerRequest {
 
 message StartContainerRequest {
 	string container_id = 1;
+}
+
+message SignalContainerRequest {
+	string container_id = 1;
+	uint32 signal = 2;
+	// When all is set to true, the signal will be
+	// sent to all processes inside the container.
+	bool all = 3;
 }
 
 // NewProcessResponse contains a Linux PID for a process
