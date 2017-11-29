@@ -12,7 +12,7 @@ import "oci.proto";
 import "google/protobuf/empty.proto";
 
 // unstable
-service HyperstartService {
+service AgentService {
 	// execution
 	rpc CreateContainer(CreateContainerRequest) returns (google.protobuf.Empty);
 	rpc StartContainer(StartContainerRequest) returns (google.protobuf.Empty);
