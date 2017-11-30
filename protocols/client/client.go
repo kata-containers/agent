@@ -26,7 +26,7 @@ const (
 )
 
 type AgentClient struct {
-	agentgrpc.HyperstartServiceClient
+	agentgrpc.AgentServiceClient
 	conn *grpc.ClientConn
 }
 
@@ -49,8 +49,8 @@ func NewAgentClient(sock string) (*AgentClient, error) {
 	}
 
 	return &AgentClient{
-		HyperstartServiceClient: agentgrpc.NewHyperstartServiceClient(conn),
-		conn: conn,
+		AgentServiceClient: agentgrpc.NewAgentServiceClient(conn),
+		conn:               conn,
 	}, nil
 }
 

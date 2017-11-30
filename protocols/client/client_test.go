@@ -32,7 +32,8 @@ func startMockServer(t *testing.T) (*grpc.Server, chan error, error) {
 
 	stopWait := make(chan error, 1)
 	go func() {
-		stopWait <- mock.Serve(l)
+		mock.Serve(l)
+		stopWait <- nil
 	}()
 
 	return mock, stopWait, nil
