@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 
-	"github.com/kata-project/agent/protocols/mockserver"
+	"github.com/kata-containers/agent/protocols/mockserver"
 )
 
 const mockSockAddr = "/tmp/agentserver.sock"

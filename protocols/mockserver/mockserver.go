@@ -14,7 +14,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	pb "github.com/kata-project/agent/protocols/grpc"
+	pb "github.com/kata-containers/agent/protocols/grpc"
 )
 
 const podStartingPid = 100
