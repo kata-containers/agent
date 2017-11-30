@@ -7,7 +7,6 @@
 package client
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -23,6 +22,7 @@ import (
 const (
 	unixSocketScheme  = "unix"
 	vsockSocketScheme = "vsock"
+	dialTimeout       = 5 * time.Second
 )
 
 type AgentClient struct {
@@ -41,7 +41,7 @@ func NewAgentClient(sock string) (*AgentClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	dialOpts := []grpc.DialOption{grpc.WithInsecure(), grpc.WithTimeout(5 * time.Second)}
+	dialOpts := []grpc.DialOption{grpc.WithInsecure(), grpc.WithTimeout(dialTimeout)}
 	dialOpts = append(dialOpts, grpc.WithDialer(agentDialer(addr)))
 	conn, err := grpc.Dial(sock, dialOpts...)
 	if err != nil {
@@ -68,16 +68,16 @@ func parse(sock string) (*url.URL, error) {
 	switch addr.Scheme {
 	case vsockSocketScheme:
 		if addr.Hostname() == "" || addr.Port() == "" || addr.Path != "" {
-			return nil, errors.New("Invalid vsock scheme")
+			return nil, fmt.Errorf("Invalid vsock scheme: %s", sock)
 		}
 	case unixSocketScheme:
 		fallthrough
 	case "":
 		if (addr.Host == "" && addr.Path == "") || addr.Port() != "" {
-			return nil, errors.New("Invalid unix socket scheme")
+			return nil, fmt.Errorf("Invalid unix scheme: %s", sock)
 		}
 	default:
-		return nil, errors.New("Invalid socket scheme")
+		return nil, fmt.Errorf("Invalid scheme: %s", sock)
 	}
 
 	return addr, nil
@@ -101,7 +101,7 @@ func unixDialer(sock string, timeout time.Duration) (net.Conn, error) {
 	}
 
 	if addr.Scheme != unixSocketScheme || addr.Scheme != "" {
-		return nil, errors.New("Invalid URL scheme")
+		return nil, fmt.Errorf("Invalid URL scheme: %s", addr.Scheme)
 	}
 
 	return net.DialTimeout("unix", addr.Host+addr.Path, timeout)
@@ -114,7 +114,7 @@ func vsockDialer(sock string, timeout time.Duration) (net.Conn, error) {
 	}
 
 	if addr.Scheme != vsockSocketScheme {
-		return nil, errors.New("Invalid URL scheme")
+		return nil, fmt.Errorf("Invalid URL scheme: %s", addr.Scheme)
 	}
 
 	invalidVsockMsgErr := fmt.Errorf("invalid vsock destination: %s", sock)
