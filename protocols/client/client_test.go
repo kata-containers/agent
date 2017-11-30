@@ -11,6 +11,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 
 	"github.com/kata-project/agent/protocols/mockserver"
@@ -24,9 +25,7 @@ func startMockServer(t *testing.T) (*grpc.Server, chan error, error) {
 	os.Remove(mockSockAddr)
 
 	l, err := net.Listen("unix", mockSockAddr)
-	if err != nil {
-		t.Fatalf("Listen on %s failed: %s", mockSockAddr, err)
-	}
+	assert.NoErrorf(t, err, "Listen on %s failed: %s", mockSockAddr, err)
 
 	mock := mockserver.NewMockServer()
 
@@ -41,16 +40,14 @@ func startMockServer(t *testing.T) (*grpc.Server, chan error, error) {
 
 func TestNewAgentClient(t *testing.T) {
 	mock, waitCh, err := startMockServer(t)
-	if err != nil {
-		t.Fatalf("failed to start mock server: %s", err)
-	}
+	assert.NoErrorf(t, err, "failed to start mock server: %s", err)
 
 	cliFunc := func(sock string, success bool) {
 		cli, err := NewAgentClient(sock)
-		if success && err != nil {
-			t.Fatalf("Failed to create new agent client: %s", err)
-		} else if !success && err == nil {
-			t.Fatalf("Unexpected success with sock address: %s", sock)
+		if success {
+			assert.NoErrorf(t, err, "Failed to create new agent client: %s", err)
+		} else if !success {
+			assert.Errorf(t, err, "Unexpected success with sock address: %s", sock)
 		}
 		if err == nil {
 			cli.Close()
@@ -63,8 +60,5 @@ func TestNewAgentClient(t *testing.T) {
 
 	// wait mock server to stop
 	mock.Stop()
-	err = <-waitCh
-	if err != nil {
-		t.Fatalf("mock server failed: %s", err)
-	}
+	<-waitCh
 }
