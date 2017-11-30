@@ -16,7 +16,7 @@ import (
 	"github.com/mdlayher/vsock"
 	"google.golang.org/grpc"
 
-	agentgrpc "github.com/kata-project/agent/protocols/grpc"
+	agentgrpc "github.com/kata-containers/agent/protocols/grpc"
 )
 
 const (
