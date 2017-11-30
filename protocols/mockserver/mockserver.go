@@ -8,6 +8,7 @@ package mockserver
 
 import (
 	"errors"
+	"fmt"
 
 	google_protobuf "github.com/golang/protobuf/ptypes/empty"
 	"golang.org/x/net/context"
@@ -50,16 +51,69 @@ func validateOCISpec(spec *pb.Spec) error {
 	return nil
 }
 
-func (m *mockServer) CreateContainer(ctx context.Context, req *pb.CreateContainerRequest) (*google_protobuf.Empty, error) {
+func (m *mockServer) checkExist(containerId, processId string, createContainer, checkProcess, createProcess bool) error {
 	if m.pod == nil {
-		return nil, errors.New("pod not created")
+		return errors.New("pod not created")
 	}
-	if req.ContainerId == "" {
-		return nil, errors.New("container ID must be set")
+	if containerId == "" {
+		return errors.New("container ID must be set")
 	}
-	if m.pod.containers[req.ContainerId] != nil {
-		return nil, errors.New("container ID already taken")
+	if checkProcess && processId == "" {
+		return errors.New("process ID must be set")
 	}
+
+	// Check container existence
+	if createContainer {
+		if m.pod.containers[containerId] != nil {
+			return fmt.Errorf("container ID %s already taken", containerId)
+		}
+		return nil
+	} else if m.pod.containers[containerId] == nil {
+		return fmt.Errorf("container %s does not exist", containerId)
+	}
+
+	// Check process existence
+	if processId != "" {
+		c := m.pod.containers[containerId]
+		if createProcess && c.proc[processId] != nil {
+			return fmt.Errorf("process ID %s already taken", processId)
+		}
+		if !createProcess && c.proc[processId] == nil {
+			return fmt.Errorf("process %s does not exist", processId)
+		}
+	}
+
+	return nil
+}
+
+func (m *mockServer) processExist(containerId, processId string) error {
+	return m.checkExist(containerId, processId, false, true, false)
+}
+
+func (m *mockServer) processNonExist(containerId, processId string) error {
+	return m.checkExist(containerId, processId, false, true, true)
+}
+
+func (m *mockServer) containerExist(containerId string) error {
+	return m.checkExist(containerId, "", false, false, false)
+}
+
+func (m *mockServer) containerNonExist(containerId string) error {
+	return m.checkExist(containerId, "", true, false, false)
+}
+
+func (m *mockServer) podExist() error {
+	if m.pod == nil {
+		return errors.New("pod not created")
+	}
+	return nil
+}
+
+func (m *mockServer) CreateContainer(ctx context.Context, req *pb.CreateContainerRequest) (*google_protobuf.Empty, error) {
+	if err := m.containerNonExist(req.ContainerId); err != nil {
+		return nil, err
+	}
+
 	if err := validateOCISpec(req.OCI); err != nil {
 		return nil, err
 	}
@@ -80,33 +134,19 @@ func (m *mockServer) CreateContainer(ctx context.Context, req *pb.CreateContaine
 }
 
 func (m *mockServer) StartContainer(ctx context.Context, req *pb.StartContainerRequest) (*google_protobuf.Empty, error) {
-	if m.pod == nil {
-		return nil, errors.New("pod not created")
-	}
-	if req.ContainerId == "" {
-		return nil, errors.New("container ID must be set")
-	}
-	if m.pod.containers[req.ContainerId] == nil {
-		return nil, errors.New("container does not exist")
+	if err := m.containerNonExist(req.ContainerId); err != nil {
+		return nil, err
 	}
 
 	return &google_protobuf.Empty{}, nil
 }
 
 func (m *mockServer) ExecProcess(ctx context.Context, req *pb.ExecProcessRequest) (*google_protobuf.Empty, error) {
-	if m.pod == nil {
-		return nil, errors.New("pod not created")
+	if err := m.processNonExist(req.ContainerId, req.ProcessId); err != nil {
+		return nil, err
 	}
-	if req.ContainerId == "" {
-		return nil, errors.New("container ID must be set")
-	}
+
 	c := m.pod.containers[req.ContainerId]
-	if c == nil {
-		return nil, errors.New("container does not exist")
-	}
-	if c.proc[req.ProcessId] != nil {
-		return nil, errors.New("process name taken")
-	}
 	c.proc[req.ProcessId] = &process{
 		id:   req.ProcessId,
 		proc: req.Process,
@@ -115,119 +155,62 @@ func (m *mockServer) ExecProcess(ctx context.Context, req *pb.ExecProcessRequest
 }
 
 func (m *mockServer) SignalProcess(ctx context.Context, req *pb.SignalProcessRequest) (*google_protobuf.Empty, error) {
-	if m.pod == nil {
-		return nil, errors.New("pod not created")
-	}
-	if req.ContainerId == "" {
-		return nil, errors.New("container ID must be set")
-	}
-	c := m.pod.containers[req.ContainerId]
-	if c == nil {
-		return nil, errors.New("container does not exist")
-	}
-	if c.proc[req.ProcessId] == nil {
-		return nil, errors.New("process does not exist")
+	if err := m.processExist(req.ContainerId, req.ProcessId); err != nil {
+		return nil, err
 	}
 
 	return &google_protobuf.Empty{}, nil
 }
 
 func (m *mockServer) WaitProcess(ctx context.Context, req *pb.WaitProcessRequest) (*pb.WaitProcessResponse, error) {
-	if m.pod == nil {
-		return nil, errors.New("pod not created")
-	}
-	if req.ContainerId == "" {
-		return nil, errors.New("container ID must be set")
-	}
-
-	c := m.pod.containers[req.ContainerId]
-	if c == nil {
-		return nil, errors.New("container does not exist")
-	}
-	if c.proc[req.ProcessId] == nil {
-		return nil, errors.New("process does not exist")
+	if err := m.processExist(req.ContainerId, req.ProcessId); err != nil {
+		return nil, err
 	}
 
 	// remove process once it is waited
+	c := m.pod.containers[req.ContainerId]
 	c.proc[req.ProcessId] = nil
 
 	return &pb.WaitProcessResponse{Status: 0}, nil
 }
 
 func (m *mockServer) WriteStdin(ctx context.Context, req *pb.WriteStreamRequest) (*pb.WriteStreamResponse, error) {
-	if m.pod == nil {
-		return nil, errors.New("pod not created")
-	}
-	if req.ContainerId == "" {
-		return nil, errors.New("container ID must be set")
-	}
-
-	c := m.pod.containers[req.ContainerId]
-	if c == nil {
-		return nil, errors.New("container does not exist")
-	}
-	if c.proc[req.ProcessId] == nil {
-		return nil, errors.New("process does not exist")
+	if err := m.processExist(req.ContainerId, req.ProcessId); err != nil {
+		return nil, err
 	}
 
 	return &pb.WriteStreamResponse{Len: uint32(len(req.Data))}, nil
 }
 
 func (m *mockServer) ReadStdout(ctx context.Context, req *pb.ReadStreamRequest) (*pb.ReadStreamResponse, error) {
-	if m.pod == nil {
-		return nil, errors.New("pod not created")
-	}
-	if req.ContainerId == "" {
-		return nil, errors.New("container ID must be set")
-	}
-
-	c := m.pod.containers[req.ContainerId]
-	if c == nil {
-		return nil, errors.New("container does not exist")
-	}
-	if c.proc[req.ProcessId] == nil {
-		return nil, errors.New("process does not exist")
+	if err := m.processExist(req.ContainerId, req.ProcessId); err != nil {
+		return nil, err
 	}
 
 	return &pb.ReadStreamResponse{}, nil
 }
 
 func (m *mockServer) ReadStderr(ctx context.Context, req *pb.ReadStreamRequest) (*pb.ReadStreamResponse, error) {
-	if m.pod == nil {
-		return nil, errors.New("pod not created")
-	}
-	if req.ContainerId == "" {
-		return nil, errors.New("container ID must be set")
-	}
-
-	c := m.pod.containers[req.ContainerId]
-	if c == nil {
-		return nil, errors.New("container does not exist")
-	}
-	if c.proc[req.ProcessId] == nil {
-		return nil, errors.New("process does not exist")
+	if err := m.processExist(req.ContainerId, req.ProcessId); err != nil {
+		return nil, err
 	}
 
 	return &pb.ReadStreamResponse{}, nil
 }
 
 func (m *mockServer) CloseStdin(ctx context.Context, req *pb.CloseStdinRequest) (*google_protobuf.Empty, error) {
-	if m.pod == nil {
-		return nil, errors.New("pod not created")
+	if err := m.processExist(req.ContainerId, req.ProcessId); err != nil {
+		return nil, err
 	}
-	if req.ContainerId == "" {
-		return nil, errors.New("container ID must be set")
-	}
+
 	return &google_protobuf.Empty{}, nil
 }
 
 func (m *mockServer) TtyWinResize(ctx context.Context, req *pb.TtyWinResizeRequest) (*google_protobuf.Empty, error) {
-	if m.pod == nil {
-		return nil, errors.New("pod not created")
+	if err := m.processExist(req.ContainerId, req.ProcessId); err != nil {
+		return nil, err
 	}
-	if req.ContainerId == "" {
-		return nil, errors.New("container ID must be set")
-	}
+
 	return &google_protobuf.Empty{}, nil
 }
 
@@ -242,27 +225,34 @@ func (m *mockServer) CreateSandbox(ctx context.Context, req *pb.CreateSandboxReq
 }
 
 func (m *mockServer) DestroySandbox(ctx context.Context, req *pb.DestroySandboxRequest) (*google_protobuf.Empty, error) {
+	if err := m.podExist(); err != nil {
+		return nil, err
+	}
+
 	m.pod = nil
 	return &google_protobuf.Empty{}, nil
 }
 
 func (m *mockServer) UpdateInterface(ctx context.Context, req *pb.UpdateInterfaceRequest) (*google_protobuf.Empty, error) {
-	if m.pod == nil {
-		return nil, errors.New("pod not created")
+	if err := m.podExist(); err != nil {
+		return nil, err
 	}
+
 	return &google_protobuf.Empty{}, nil
 }
 
 func (m *mockServer) AddRoute(ctx context.Context, req *pb.AddRouteRequest) (*google_protobuf.Empty, error) {
-	if m.pod == nil {
-		return nil, errors.New("pod not created")
+	if err := m.podExist(); err != nil {
+		return nil, err
 	}
+
 	return &google_protobuf.Empty{}, nil
 }
 
 func (m *mockServer) OnlineCPUMem(ctx context.Context, req *pb.OnlineCPUMemRequest) (*google_protobuf.Empty, error) {
-	if m.pod == nil {
-		return nil, errors.New("pod not created")
+	if err := m.podExist(); err != nil {
+		return nil, err
 	}
+
 	return &google_protobuf.Empty{}, nil
 }
