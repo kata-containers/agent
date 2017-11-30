@@ -25,6 +25,7 @@ const (
 	dialTimeout       = 5 * time.Second
 )
 
+// AgentClient is an agent gRPC client connection wrapper for agentgrpc.AgentServiceClient
 type AgentClient struct {
 	agentgrpc.AgentServiceClient
 	conn *grpc.ClientConn
@@ -32,6 +33,8 @@ type AgentClient struct {
 
 type dialer func(string, time.Duration) (net.Conn, error)
 
+// NewAgentClient creates a new agent gRPC client and handles both unix and vsock addresses.
+//
 // Supported sock address formats are:
 //   - unix://<unix socket path>
 //   - vsock://<cid>:<port>
@@ -54,6 +57,7 @@ func NewAgentClient(sock string) (*AgentClient, error) {
 	}, nil
 }
 
+// Close an existing connection to the agent gRPC server.
 func (c *AgentClient) Close() error {
 	return c.conn.Close()
 }
