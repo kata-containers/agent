@@ -17,7 +17,7 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-// Network fully describes a pod network with its interfaces, routes and dns
+// Network fully describes a sandbox network with its interfaces, routes and dns
 // related information.
 type network struct {
 	ifacesLock sync.Mutex
@@ -102,9 +102,9 @@ func updateLink(netHandle *netlink.Handle, link netlink.Link, iface *pb.Interfac
 	}
 }
 
-func (p *pod) addInterface(netHandle *netlink.Handle, iface *pb.Interface) (err error) {
-	p.network.ifacesLock.Lock()
-	defer p.network.ifacesLock.Unlock()
+func (s *sandbox) addInterface(netHandle *netlink.Handle, iface *pb.Interface) (err error) {
+	s.network.ifacesLock.Lock()
+	defer s.network.ifacesLock.Unlock()
 
 	if netHandle == nil {
 		netHandle, err = netlink.NewHandle()
@@ -142,15 +142,15 @@ func (p *pod) addInterface(netHandle *netlink.Handle, iface *pb.Interface) (err 
 		return err
 	}
 
-	// Update pod interface list.
-	p.network.ifaces = append(p.network.ifaces, iface)
+	// Update sandbox interface list.
+	s.network.ifaces = append(s.network.ifaces, iface)
 
 	return nil
 }
 
-func (p *pod) removeInterface(netHandle *netlink.Handle, ifaceName string) (err error) {
-	p.network.ifacesLock.Lock()
-	defer p.network.ifacesLock.Unlock()
+func (s *sandbox) removeInterface(netHandle *netlink.Handle, ifaceName string) (err error) {
+	s.network.ifacesLock.Lock()
+	defer s.network.ifacesLock.Unlock()
 
 	if netHandle == nil {
 		netHandle, err = netlink.NewHandle()
@@ -176,10 +176,10 @@ func (p *pod) removeInterface(netHandle *netlink.Handle, ifaceName string) (err 
 		return err
 	}
 
-	// Update pod interface list.
-	for idx, iface := range p.network.ifaces {
+	// Update sandbox interface list.
+	for idx, iface := range s.network.ifaces {
 		if iface.Name == ifaceName {
-			p.network.ifaces = append(p.network.ifaces[:idx], p.network.ifaces[idx+1:]...)
+			s.network.ifaces = append(s.network.ifaces[:idx], s.network.ifaces[idx+1:]...)
 			break
 		}
 	}
@@ -187,9 +187,9 @@ func (p *pod) removeInterface(netHandle *netlink.Handle, ifaceName string) (err 
 	return nil
 }
 
-func (p *pod) updateInterface(netHandle *netlink.Handle, iface *pb.Interface, actionType pb.UpdateType) (err error) {
-	p.network.ifacesLock.Lock()
-	defer p.network.ifacesLock.Unlock()
+func (s *sandbox) updateInterface(netHandle *netlink.Handle, iface *pb.Interface, actionType pb.UpdateType) (err error) {
+	s.network.ifacesLock.Lock()
+	defer s.network.ifacesLock.Unlock()
 
 	if netHandle == nil {
 		netHandle, err = netlink.NewHandle()
@@ -251,17 +251,17 @@ func (p *pod) updateInterface(netHandle *netlink.Handle, iface *pb.Interface, ac
 // Routes //
 ////////////
 
-func (p *pod) addRoute(netHandle *netlink.Handle, route *pb.Route) error {
-	return p.updateRoute(netHandle, route, true)
+func (s *sandbox) addRoute(netHandle *netlink.Handle, route *pb.Route) error {
+	return s.updateRoute(netHandle, route, true)
 }
 
-func (p *pod) removeRoute(netHandle *netlink.Handle, route *pb.Route) error {
-	return p.updateRoute(netHandle, route, false)
+func (s *sandbox) removeRoute(netHandle *netlink.Handle, route *pb.Route) error {
+	return s.updateRoute(netHandle, route, false)
 }
 
-func (p *pod) updateRoute(netHandle *netlink.Handle, route *pb.Route, add bool) (err error) {
-	p.network.routesLock.Lock()
-	defer p.network.routesLock.Unlock()
+func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *pb.Route, add bool) (err error) {
+	s.network.routesLock.Lock()
+	defer s.network.routesLock.Unlock()
 
 	if netHandle == nil {
 		netHandle, err = netlink.NewHandle()
@@ -306,18 +306,18 @@ func (p *pod) updateRoute(netHandle *netlink.Handle, route *pb.Route, add bool) 
 				route.Dest, route.Gateway, route.Device, err)
 		}
 
-		// Add route to pod route list.
-		p.network.routes = append(p.network.routes, route)
+		// Add route to sandbox route list.
+		s.network.routes = append(s.network.routes, route)
 	} else {
 		if err := netHandle.RouteDel(netRoute); err != nil {
 			return fmt.Errorf("Could not remove route dest(%s)/gw(%s)/dev(%s): %v",
 				route.Dest, route.Gateway, route.Device, err)
 		}
 
-		// Remove route from pod route list.
-		for idx, podRoute := range p.network.routes {
-			if reflect.DeepEqual(podRoute, route) {
-				p.network.routes = append(p.network.routes[:idx], p.network.routes[idx+1:]...)
+		// Remove route from sandbox route list.
+		for idx, sandboxRoute := range s.network.routes {
+			if reflect.DeepEqual(sandboxRoute, route) {
+				s.network.routes = append(s.network.routes[:idx], s.network.routes[idx+1:]...)
 				break
 			}
 		}
@@ -343,28 +343,28 @@ func removeDNS(dns []string) error {
 ////////////
 
 // Remove everything related to network.
-func (p *pod) removeNetwork() error {
+func (s *sandbox) removeNetwork() error {
 	netHandle, err := netlink.NewHandle()
 	if err != nil {
 		return err
 	}
 	defer netHandle.Delete()
 
-	for _, route := range p.network.routes {
-		if err := p.removeRoute(netHandle, route); err != nil {
+	for _, route := range s.network.routes {
+		if err := s.removeRoute(netHandle, route); err != nil {
 			return fmt.Errorf("Could not remove network route %v: %v",
 				route, err)
 		}
 	}
 
-	for _, iface := range p.network.ifaces {
-		if err := p.removeInterface(netHandle, iface.Name); err != nil {
+	for _, iface := range s.network.ifaces {
+		if err := s.removeInterface(netHandle, iface.Name); err != nil {
 			return fmt.Errorf("Could not remove network interface %v: %v",
 				iface, err)
 		}
 	}
 
-	if err := removeDNS(p.network.dns); err != nil {
+	if err := removeDNS(s.network.dns); err != nil {
 		return fmt.Errorf("Could not remove network DNS: %v", err)
 	}
 

@@ -26,7 +26,7 @@ import (
 )
 
 type agentGRPC struct {
-	pod *pod
+	sandbox *sandbox
 }
 
 // PCI scanning
@@ -227,11 +227,11 @@ func buildProcess(agentProcess *pb.Process) (*process, error) {
 // a process to be run. The difference being the process does not exist yet in
 // case of ExecProcess.
 func (a *agentGRPC) runProcess(cid string, agentProcess *pb.Process) (pid int, err error) {
-	if a.pod.running == false {
-		return -1, fmt.Errorf("Pod not started")
+	if a.sandbox.running == false {
+		return -1, fmt.Errorf("Sandbox not started")
 	}
 
-	ctr, err := a.pod.getContainer(cid)
+	ctr, err := a.sandbox.getContainer(cid)
 	if err != nil {
 		return -1, err
 	}
@@ -292,11 +292,11 @@ func (a *agentGRPC) runProcess(cid string, agentProcess *pb.Process) (pid int, e
 }
 
 func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainerRequest) (*gpb.Empty, error) {
-	if a.pod.running == false {
-		return emptyResp, fmt.Errorf("Pod not started, impossible to run a new container")
+	if a.sandbox.running == false {
+		return emptyResp, fmt.Errorf("Sandbox not started, impossible to run a new container")
 	}
 
-	if _, err := a.pod.getContainer(req.ContainerId); err == nil {
+	if _, err := a.sandbox.getContainer(req.ContainerId); err == nil {
 		return emptyResp, fmt.Errorf("Container %s already exists, impossible to create", req.ContainerId)
 	}
 
@@ -348,7 +348,7 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		},
 		Devices: configs.DefaultAutoCreatedDevices,
 
-		Hostname: a.pod.id,
+		Hostname: a.sandbox.id,
 		Mounts: []*configs.Mount{
 			{
 				Source:      "proc",
@@ -395,7 +395,7 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		NoNewPrivileges: req.OCI.Process.NoNewPrivileges,
 	}
 
-	containerPath := filepath.Join("/tmp/libcontainer", a.pod.id)
+	containerPath := filepath.Join("/tmp/libcontainer", a.sandbox.id)
 	factory, err := libcontainer.New(containerPath, libcontainer.Cgroupfs)
 	if err != nil {
 		return emptyResp, err
@@ -420,7 +420,7 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		mounts:      mountList,
 	}
 
-	a.pod.setContainer(req.ContainerId, container)
+	a.sandbox.setContainer(req.ContainerId, container)
 
 	return emptyResp, nil
 }
@@ -448,11 +448,11 @@ func (a *agentGRPC) ExecProcess(ctx context.Context, req *pb.ExecProcessRequest)
 }
 
 func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequest) (*gpb.Empty, error) {
-	if a.pod.running == false {
-		return emptyResp, fmt.Errorf("Pod not started, impossible to signal the container")
+	if a.sandbox.running == false {
+		return emptyResp, fmt.Errorf("Sandbox not started, impossible to signal the container")
 	}
 
-	ctr, err := a.pod.getContainer(req.ContainerId)
+	ctr, err := a.sandbox.getContainer(req.ContainerId)
 	if err != nil {
 		return emptyResp, fmt.Errorf("Could not signal process %d: %v", req.PID, err)
 	}
@@ -465,7 +465,7 @@ func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequ
 	signal := syscall.Signal(req.Signal)
 
 	if status == libcontainer.Stopped {
-		agentLog.Info("Container %s is Stopped on pod %s, discard signal %s", req.ContainerId, a.pod.id, signal.String())
+		agentLog.Info("Container %s is Stopped on sandbox %s, discard signal %s", req.ContainerId, a.sandbox.id, signal.String())
 		return emptyResp, nil
 	}
 
@@ -488,7 +488,7 @@ func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequ
 }
 
 func (a *agentGRPC) WaitProcess(ctx context.Context, req *pb.WaitProcessRequest) (*pb.WaitProcessResponse, error) {
-	proc, ctr, err := a.pod.getRunningProcess(req.ContainerId, int(req.PID))
+	proc, ctr, err := a.sandbox.getRunningProcess(req.ContainerId, int(req.PID))
 	if err != nil {
 		return &pb.WaitProcessResponse{}, err
 	}
@@ -534,15 +534,15 @@ func (a *agentGRPC) WaitProcess(ctx context.Context, req *pb.WaitProcessRequest)
 }
 
 func (a *agentGRPC) RemoveContainer(ctx context.Context, req *pb.RemoveContainerRequest) (*gpb.Empty, error) {
-	ctr, err := a.pod.getContainer(req.ContainerId)
+	ctr, err := a.sandbox.getContainer(req.ContainerId)
 	if err != nil {
 		return emptyResp, err
 	}
 
 	timeout := int(req.Timeout)
 
-	a.pod.Lock()
-	defer a.pod.Unlock()
+	a.sandbox.Lock()
+	defer a.sandbox.Unlock()
 
 	if timeout == 0 {
 		if err := ctr.removeContainer(); err != nil {
@@ -568,13 +568,13 @@ func (a *agentGRPC) RemoveContainer(ctx context.Context, req *pb.RemoveContainer
 		}
 	}
 
-	delete(a.pod.containers, ctr.id)
+	delete(a.sandbox.containers, ctr.id)
 
 	return emptyResp, nil
 }
 
 func (a *agentGRPC) WriteStdin(ctx context.Context, req *pb.WriteStreamRequest) (*pb.WriteStreamResponse, error) {
-	proc, _, err := a.pod.getRunningProcess(req.ContainerId, int(req.PID))
+	proc, _, err := a.sandbox.getRunningProcess(req.ContainerId, int(req.PID))
 	if err != nil {
 		return &pb.WriteStreamResponse{}, err
 	}
@@ -597,7 +597,7 @@ func (a *agentGRPC) WriteStdin(ctx context.Context, req *pb.WriteStreamRequest) 
 }
 
 func (a *agentGRPC) ReadStdout(ctx context.Context, req *pb.ReadStreamRequest) (*pb.ReadStreamResponse, error) {
-	data, err := a.pod.readStdio(req.ContainerId, int(req.PID), int(req.Len), true)
+	data, err := a.sandbox.readStdio(req.ContainerId, int(req.PID), int(req.Len), true)
 	if err != nil {
 		return &pb.ReadStreamResponse{}, err
 	}
@@ -608,7 +608,7 @@ func (a *agentGRPC) ReadStdout(ctx context.Context, req *pb.ReadStreamRequest) (
 }
 
 func (a *agentGRPC) ReadStderr(ctx context.Context, req *pb.ReadStreamRequest) (*pb.ReadStreamResponse, error) {
-	data, err := a.pod.readStdio(req.ContainerId, int(req.PID), int(req.Len), false)
+	data, err := a.sandbox.readStdio(req.ContainerId, int(req.PID), int(req.Len), false)
 	if err != nil {
 		return &pb.ReadStreamResponse{}, err
 	}
@@ -619,7 +619,7 @@ func (a *agentGRPC) ReadStderr(ctx context.Context, req *pb.ReadStreamRequest) (
 }
 
 func (a *agentGRPC) CloseStdin(ctx context.Context, req *pb.CloseStdinRequest) (*gpb.Empty, error) {
-	proc, _, err := a.pod.getRunningProcess(req.ContainerId, int(req.PID))
+	proc, _, err := a.sandbox.getRunningProcess(req.ContainerId, int(req.PID))
 	if err != nil {
 		return emptyResp, err
 	}
@@ -639,7 +639,7 @@ func (a *agentGRPC) CloseStdin(ctx context.Context, req *pb.CloseStdinRequest) (
 }
 
 func (a *agentGRPC) TtyWinResize(ctx context.Context, req *pb.TtyWinResizeRequest) (*gpb.Empty, error) {
-	proc, _, err := a.pod.getRunningProcess(req.ContainerId, int(req.PID))
+	proc, _, err := a.sandbox.getRunningProcess(req.ContainerId, int(req.PID))
 	if err != nil {
 		return emptyResp, err
 	}
@@ -662,23 +662,23 @@ func (a *agentGRPC) TtyWinResize(ctx context.Context, req *pb.TtyWinResizeReques
 }
 
 func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequest) (*gpb.Empty, error) {
-	if a.pod.running == true {
-		return emptyResp, fmt.Errorf("Pod already started, impossible to start again")
+	if a.sandbox.running == true {
+		return emptyResp, fmt.Errorf("Sandbox already started, impossible to start again")
 	}
 
-	a.pod.id = req.Hostname
-	a.pod.network.dns = req.Dns
-	a.pod.running = true
-	a.pod.sharedPidNs = req.SandboxPidns
+	a.sandbox.id = req.Hostname
+	a.sandbox.network.dns = req.Dns
+	a.sandbox.running = true
+	a.sandbox.sharedPidNs = req.SandboxPidns
 
 	mountList, err := addMounts(req.Storages)
 	if err != nil {
 		return emptyResp, err
 	}
 
-	a.pod.mounts = mountList
+	a.sandbox.mounts = mountList
 
-	if err := setupDNS(a.pod.network.dns); err != nil {
+	if err := setupDNS(a.sandbox.network.dns); err != nil {
 		return emptyResp, err
 	}
 
@@ -686,35 +686,35 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 }
 
 func (a *agentGRPC) DestroySandbox(ctx context.Context, req *pb.DestroySandboxRequest) (*gpb.Empty, error) {
-	if a.pod.running == false {
-		agentLog.WithField("pod", a.pod.id).Info("Pod not started, this is a no-op")
+	if a.sandbox.running == false {
+		agentLog.WithField("sandbox", a.sandbox.id).Info("Sandbox not started, this is a no-op")
 		return emptyResp, nil
 	}
 
-	a.pod.Lock()
-	for key, c := range a.pod.containers {
+	a.sandbox.Lock()
+	for key, c := range a.sandbox.containers {
 		if err := c.removeContainer(); err != nil {
 			return emptyResp, err
 		}
 
-		delete(a.pod.containers, key)
+		delete(a.sandbox.containers, key)
 	}
-	a.pod.Unlock()
+	a.sandbox.Unlock()
 
-	if err := a.pod.removeNetwork(); err != nil {
+	if err := a.sandbox.removeNetwork(); err != nil {
 		return emptyResp, err
 	}
 
-	if err := removeMounts(a.pod.mounts); err != nil {
+	if err := removeMounts(a.sandbox.mounts); err != nil {
 		return emptyResp, err
 	}
 
-	a.pod.id = ""
-	a.pod.containers = make(map[string]*container)
-	a.pod.running = false
-	a.pod.network = network{}
-	a.pod.mounts = []string{}
-	a.pod.sharedPidNs = false
+	a.sandbox.id = ""
+	a.sandbox.containers = make(map[string]*container)
+	a.sandbox.running = false
+	a.sandbox.network = network{}
+	a.sandbox.mounts = []string{}
+	a.sandbox.sharedPidNs = false
 
 	// Synchronize the caches on the system. This is needed to ensure
 	// there is no pending transactions left before the VM is shut down.
@@ -724,7 +724,7 @@ func (a *agentGRPC) DestroySandbox(ctx context.Context, req *pb.DestroySandboxRe
 }
 
 func (a *agentGRPC) AddInterface(ctx context.Context, req *pb.AddInterfaceRequest) (*gpb.Empty, error) {
-	if err := a.pod.addInterface(nil, req.Interface); err != nil {
+	if err := a.sandbox.addInterface(nil, req.Interface); err != nil {
 		return emptyResp, err
 	}
 
@@ -732,7 +732,7 @@ func (a *agentGRPC) AddInterface(ctx context.Context, req *pb.AddInterfaceReques
 }
 
 func (a *agentGRPC) RemoveInterface(ctx context.Context, req *pb.RemoveInterfaceRequest) (*gpb.Empty, error) {
-	if err := a.pod.removeInterface(nil, req.Name); err != nil {
+	if err := a.sandbox.removeInterface(nil, req.Name); err != nil {
 		return emptyResp, err
 	}
 
@@ -740,7 +740,7 @@ func (a *agentGRPC) RemoveInterface(ctx context.Context, req *pb.RemoveInterface
 }
 
 func (a *agentGRPC) UpdateInterface(ctx context.Context, req *pb.UpdateInterfaceRequest) (*gpb.Empty, error) {
-	if err := a.pod.updateInterface(nil, req.Interface, req.Type); err != nil {
+	if err := a.sandbox.updateInterface(nil, req.Interface, req.Type); err != nil {
 		return emptyResp, err
 	}
 
@@ -748,7 +748,7 @@ func (a *agentGRPC) UpdateInterface(ctx context.Context, req *pb.UpdateInterface
 }
 
 func (a *agentGRPC) AddRoute(ctx context.Context, req *pb.RouteRequest) (*gpb.Empty, error) {
-	if err := a.pod.addRoute(nil, req.Route); err != nil {
+	if err := a.sandbox.addRoute(nil, req.Route); err != nil {
 		return emptyResp, err
 	}
 
@@ -756,7 +756,7 @@ func (a *agentGRPC) AddRoute(ctx context.Context, req *pb.RouteRequest) (*gpb.Em
 }
 
 func (a *agentGRPC) RemoveRoute(ctx context.Context, req *pb.RouteRequest) (*gpb.Empty, error) {
-	if err := a.pod.removeRoute(nil, req.Route); err != nil {
+	if err := a.sandbox.removeRoute(nil, req.Route); err != nil {
 		return emptyResp, err
 	}
 

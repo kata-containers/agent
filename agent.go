@@ -42,7 +42,7 @@ type container struct {
 	mounts      []string
 }
 
-type pod struct {
+type sandbox struct {
 	sync.RWMutex
 
 	id           string
@@ -146,11 +146,11 @@ func (c *container) getProcess(pid int) (*process, error) {
 	return proc, nil
 }
 
-func (p *pod) getContainer(id string) (*container, error) {
-	p.RLock()
-	defer p.RUnlock()
+func (s *sandbox) getContainer(id string) (*container, error) {
+	s.RLock()
+	defer s.RUnlock()
 
-	ctr, exist := p.containers[id]
+	ctr, exist := s.containers[id]
 	if !exist {
 		return nil, fmt.Errorf("Container %s not found", id)
 	}
@@ -158,24 +158,24 @@ func (p *pod) getContainer(id string) (*container, error) {
 	return ctr, nil
 }
 
-func (p *pod) setContainer(id string, ctr *container) {
-	p.Lock()
-	p.containers[id] = ctr
-	p.Unlock()
+func (s *sandbox) setContainer(id string, ctr *container) {
+	s.Lock()
+	s.containers[id] = ctr
+	s.Unlock()
 }
 
-func (p *pod) deleteContainer(id string) {
-	p.Lock()
-	delete(p.containers, id)
-	p.Unlock()
+func (s *sandbox) deleteContainer(id string) {
+	s.Lock()
+	delete(s.containers, id)
+	s.Unlock()
 }
 
-func (p *pod) getRunningProcess(cid string, pid int) (*process, *container, error) {
-	if p.running == false {
-		return nil, nil, fmt.Errorf("Pod not started")
+func (s *sandbox) getRunningProcess(cid string, pid int) (*process, *container, error) {
+	if s.running == false {
+		return nil, nil, fmt.Errorf("Sandbox not started")
 	}
 
-	ctr, err := p.getContainer(cid)
+	ctr, err := s.getContainer(cid)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -197,8 +197,8 @@ func (p *pod) getRunningProcess(cid string, pid int) (*process, *container, erro
 	return proc, ctr, nil
 }
 
-func (p *pod) readStdio(cid string, pid int, length int, stdout bool) ([]byte, error) {
-	proc, _, err := p.getRunningProcess(cid, pid)
+func (s *sandbox) readStdio(cid string, pid int, length int, stdout bool) ([]byte, error) {
+	proc, _, err := s.getRunningProcess(cid, pid)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +223,7 @@ func (p *pod) readStdio(cid string, pid int, length int, stdout bool) ([]byte, e
 	return buf, nil
 }
 
-func (p *pod) initLogger() error {
+func (s *sandbox) initLogger() error {
 	agentLog.Logger.Formatter = &logrus.TextFormatter{TimestampFormat: time.RFC3339Nano}
 
 	config := newConfig(defaultLogLevel)
@@ -237,35 +237,35 @@ func (p *pod) initLogger() error {
 	return nil
 }
 
-func (p *pod) initChannel() error {
+func (s *sandbox) initChannel() error {
 	c, err := newChannel()
 	if err != nil {
 		return err
 	}
 
-	p.channel = c
+	s.channel = c
 
-	return p.channel.setup()
+	return s.channel.setup()
 }
 
-func (p *pod) startGRPC() error {
-	l, err := p.channel.listen()
+func (s *sandbox) startGRPC() error {
+	l, err := s.channel.listen()
 	if err != nil {
 		return err
 	}
 
-	p.grpcListener = l
+	s.grpcListener = l
 
 	grpcImpl := &agentGRPC{
-		pod: p,
+		sandbox: s,
 	}
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterAgentServiceServer(grpcServer, grpcImpl)
 
-	p.wg.Add(1)
+	s.wg.Add(1)
 	go func() {
-		defer p.wg.Done()
+		defer s.wg.Done()
 
 		grpcServer.Serve(l)
 	}()
@@ -273,12 +273,12 @@ func (p *pod) startGRPC() error {
 	return nil
 }
 
-func (p *pod) teardown() error {
-	if err := p.grpcListener.Close(); err != nil {
+func (s *sandbox) teardown() error {
+	if err := s.grpcListener.Close(); err != nil {
 		return err
 	}
 
-	return p.channel.teardown()
+	return s.channel.teardown()
 }
 
 func init() {
@@ -305,31 +305,31 @@ func main() {
 		os.Exit(exitSuccess)
 	}()
 
-	// Initialize unique pod structure.
-	p := &pod{
+	// Initialize unique sandbox structure.
+	s := &sandbox{
 		containers: make(map[string]*container),
 		running:    false,
 	}
 
-	if err = p.initLogger(); err != nil {
+	if err = s.initLogger(); err != nil {
 		return
 	}
 
-	// Check for vsock vs serial. This will fill the pod structure with
+	// Check for vsock vs serial. This will fill the sandbox structure with
 	// information about the channel.
-	if err = p.initChannel(); err != nil {
+	if err = s.initChannel(); err != nil {
 		return
 	}
 
 	// Start gRPC server.
-	if err = p.startGRPC(); err != nil {
+	if err = s.startGRPC(); err != nil {
 		return
 	}
 
-	p.wg.Wait()
+	s.wg.Wait()
 
 	// Tear down properly.
-	if err = p.teardown(); err != nil {
+	if err = s.teardown(); err != nil {
 		return
 	}
 }
