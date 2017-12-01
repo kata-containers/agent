@@ -200,9 +200,10 @@ message OnlineCPUMemRequest {
 message Storage {
 	string driver = 1;           // empty in most cases. it will support "drbd", "bcache" ...
 	string source = 2;           // "/dev/sdb", "/dev/disk/by-scsi/xxxx", "none",...
-	string fstype = 3;           // "xfs", "ext4" etc. for block dev, or "9p" for shared fs, or  "tmpfs" for shared /dev/shm for all containers ...
-	repeated string options = 4; // options for the storage device, might required by some special devices.
-	string mount_point = 5;      // mount_point is only visible by VM, not by containers. This mount point can be used on oci.Mount.Source as "/Stroage/mount/point/{rootfs|_data}".
+	string mount_point = 3;      // mount_point is only visible by VM, not by containers. This mount point can be used on oci.Mount.Source as "/Stroage/mount/point/{rootfs|_data}".
+	string fstype = 4;           // "xfs", "ext4" etc. for block dev, or "9p" for shared fs, or  "tmpfs" for shared /dev/shm for all containers ...
+	repeated string flags = 5;   // list of flags that will be interpreted by the agent into integer flags, resulting into a mask.
+	repeated string options = 6; // options for the storage device, might be required by some special devices.
 }
 
 message StringUser {
