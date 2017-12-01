@@ -171,10 +171,11 @@ message Route {
 }
 
 enum UpdateType {
-	AddIP = 0;
-	RemoveIP = 1;
-	Name = 2;
-	MTU = 3;
+	None = 0;
+	AddIP = 1;
+	RemoveIP = 2;
+	Name = 4;
+	MTU = 8;
 }
 
 message AddInterfaceRequest {
