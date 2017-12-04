@@ -136,7 +136,7 @@ func (m *mockServer) CreateContainer(ctx context.Context, req *pb.CreateContaine
 }
 
 func (m *mockServer) StartContainer(ctx context.Context, req *pb.StartContainerRequest) (*pb.NewProcessResponse, error) {
-	if err := m.containerNonExist(req.ContainerId); err != nil {
+	if err := m.containerExist(req.ContainerId); err != nil {
 		return nil, err
 	}
 
