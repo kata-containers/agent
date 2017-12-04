@@ -336,6 +336,11 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 			},
 			{
 				Type: configs.NEWPID,
+				// In case the path is empty because we
+				// don't expect the containers to share
+				// the same PID namespace, a new PID ns
+				// is going to be created.
+				Path: a.sandbox.sharedPidNs.path,
 			},
 		}),
 		Cgroups: &configs.Cgroup{
@@ -673,7 +678,12 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 	a.sandbox.id = req.Hostname
 	a.sandbox.network.dns = req.Dns
 	a.sandbox.running = true
-	a.sandbox.sharedPidNs = req.SandboxPidns
+
+	if req.SandboxPidns {
+		if err := a.sandbox.setupSharedPidNs(); err != nil {
+			return emptyResp, err
+		}
+	}
 
 	mountList, err := addMounts(req.Storages)
 	if err != nil {
@@ -713,12 +723,15 @@ func (a *agentGRPC) DestroySandbox(ctx context.Context, req *pb.DestroySandboxRe
 		return emptyResp, err
 	}
 
+	if err := a.sandbox.teardownSharedPidNs(); err != nil {
+		return emptyResp, err
+	}
+
 	a.sandbox.id = ""
 	a.sandbox.containers = make(map[string]*container)
 	a.sandbox.running = false
 	a.sandbox.network = network{}
 	a.sandbox.mounts = []string{}
-	a.sandbox.sharedPidNs = false
 
 	// Synchronize the caches on the system. This is needed to ensure
 	// there is no pending transactions left before the VM is shut down.
