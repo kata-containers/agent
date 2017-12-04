@@ -23,6 +23,14 @@ const (
 	vSockPort    = 1024
 )
 
+// Signals
+const (
+	// If a process terminates because of signal "n"
+	// The exit code is "128 + signal_number"
+	// http://tldp.org/LDP/abs/html/exitcodes.html
+	exitSignalOffset = 128
+)
+
 // Global
 const (
 	agentName       = "kata-agent"

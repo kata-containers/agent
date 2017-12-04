@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/signal"
 	"runtime"
 	"sync"
 	"syscall"
@@ -21,6 +22,7 @@ import (
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
 )
 
@@ -57,6 +59,7 @@ type sandbox struct {
 	grpcListener net.Listener
 	sharedPidNs  namespace
 	mounts       []string
+	subreaper    *reaper
 }
 
 type namespace struct {
@@ -247,7 +250,7 @@ func (s *sandbox) setupSharedPidNs() error {
 		Cloneflags: syscall.CLONE_NEWPID,
 	}
 
-	if err := cmd.Start(); err != nil {
+	if err := s.subreaper.start(cmd); err != nil {
 		return err
 	}
 
@@ -272,12 +275,42 @@ func (s *sandbox) teardownSharedPidNs() error {
 		return err
 	}
 
-	if _, err := s.sharedPidNs.init.Wait(); err != nil {
+	// Using helper function wait() to deal with the subreaper.
+	osProcess := (*reaperOSProcess)(s.sharedPidNs.init)
+	if _, err := s.subreaper.wait(osProcess.Pid, osProcess); err != nil {
 		return err
 	}
 
 	// Empty the sandbox structure.
 	s.sharedPidNs = namespace{}
+
+	return nil
+}
+
+// This loop is meant to be run inside a separate Go routine.
+func (s *sandbox) reaperLoop(sigCh chan os.Signal) {
+	for sig := range sigCh {
+		switch sig {
+		case unix.SIGCHLD:
+			if err := s.subreaper.reap(); err != nil {
+				agentLog.Error(err)
+				return
+			}
+		default:
+			agentLog.Infof("Unexpected signal %s, nothing to do...", sig.String())
+		}
+	}
+}
+
+func (s *sandbox) setSubreaper() error {
+	if err := unix.Prctl(unix.PR_SET_CHILD_SUBREAPER, uintptr(1), 0, 0, 0); err != nil {
+		return err
+	}
+
+	sigCh := make(chan os.Signal, 512)
+	signal.Notify(sigCh, unix.SIGCHLD)
+
+	go s.reaperLoop(sigCh)
 
 	return nil
 }
@@ -380,9 +413,17 @@ func main() {
 	s := &sandbox{
 		containers: make(map[string]*container),
 		running:    false,
+		subreaper: &reaper{
+			exitCodeChans: make(map[int]chan int),
+		},
 	}
 
 	if err = s.initLogger(); err != nil {
+		return
+	}
+
+	// Set agent as subreaper.
+	if err = s.setSubreaper(); err != nil {
 		return
 	}
 
