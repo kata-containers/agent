@@ -44,7 +44,7 @@ func NewAgentClient(sock string) (*AgentClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	dialOpts := []grpc.DialOption{grpc.WithInsecure(), grpc.WithTimeout(dialTimeout)}
+	dialOpts := []grpc.DialOption{grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(dialTimeout)}
 	dialOpts = append(dialOpts, grpc.WithDialer(agentDialer(addr)))
 	conn, err := grpc.Dial(sock, dialOpts...)
 	if err != nil {
@@ -104,7 +104,7 @@ func unixDialer(sock string, timeout time.Duration) (net.Conn, error) {
 		return nil, err
 	}
 
-	if addr.Scheme != unixSocketScheme || addr.Scheme != "" {
+	if addr.Scheme != unixSocketScheme && addr.Scheme != "" {
 		return nil, fmt.Errorf("Invalid URL scheme: %s", addr.Scheme)
 	}
 
