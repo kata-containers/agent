@@ -287,7 +287,7 @@ func init() {
 		runtime.LockOSThread()
 		factory, _ := libcontainer.New("")
 		if err := factory.StartInitialization(); err != nil {
-			agentLog.Errorf("init went wrong: %v", err)
+			agentLog.WithError(err).Error("init failed")
 		}
 		panic("--this line should have never been executed, congratulations--")
 	}
