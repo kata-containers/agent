@@ -88,18 +88,38 @@ func updateInterfaceMTU(netHandle *netlink.Handle, link netlink.Link, mtu int) e
 }
 
 func updateLink(netHandle *netlink.Handle, link netlink.Link, iface *pb.Interface, actionType pb.UpdateType) error {
-	switch actionType {
-	case pb.UpdateType_AddIP:
+	knownActionType := false
+
+	// Add IPs
+	if (actionType & pb.UpdateType_AddIP) == pb.UpdateType_AddIP {
+		knownActionType = true
 		return updateInterfaceAddrs(netHandle, link, iface.IpAddresses, true)
-	case pb.UpdateType_RemoveIP:
+	}
+
+	// Remove IPs
+	if (actionType & pb.UpdateType_RemoveIP) == pb.UpdateType_RemoveIP {
+		knownActionType = true
 		return updateInterfaceAddrs(netHandle, link, iface.IpAddresses, false)
-	case pb.UpdateType_Name:
+	}
+
+	// Update Name
+	if (actionType & pb.UpdateType_Name) == pb.UpdateType_Name {
+		knownActionType = true
 		return updateInterfaceName(netHandle, link, iface.Name)
-	case pb.UpdateType_MTU:
+	}
+
+	// Update MTU
+	if (actionType & pb.UpdateType_MTU) == pb.UpdateType_MTU {
+		knownActionType = true
 		return updateInterfaceMTU(netHandle, link, int(iface.Mtu))
-	default:
+	}
+
+	// Error
+	if !knownActionType {
 		return fmt.Errorf("Unknown UpdateType %v", actionType)
 	}
+
+	return nil
 }
 
 func (s *sandbox) addInterface(netHandle *netlink.Handle, iface *pb.Interface) (err error) {
