@@ -22,8 +22,15 @@ endif
 VERSION_FILE := ./VERSION
 VERSION := $(shell grep -v ^\# $(VERSION_FILE))
 COMMIT_NO := $(shell git rev-parse HEAD 2> /dev/null || true)
+COMMIT_NO_SHORT := $(shell git rev-parse --short HEAD 2> /dev/null || true)
 COMMIT := $(if $(shell git status --porcelain --untracked-files=no),${COMMIT_NO}-dirty,${COMMIT_NO})
 VERSION_COMMIT := $(if $(COMMIT),$(VERSION)-$(COMMIT),$(VERSION))
+
+# args for building agent image
+BUILDARGS := $(if $(http_proxy), --build-arg http_proxy=$(http_proxy))
+BUILDARGS += $(if $(https_proxy), --build-arg https_proxy=$(https_proxy))
+AGENT_IMAGE := kata-containers/agent
+AGENT_TAG := $(if $(COMMIT_NO_SHORT),dev-$(COMMIT_NO_SHORT),dev)
 
 $(TARGET): $(GENERATED_FILES) $(SOURCES) $(VERSION_FILE)
 	go build -o $@ -ldflags "-X main.version=$(VERSION_COMMIT)"
@@ -34,6 +41,13 @@ ifeq ($(INIT),no)
 	@echo "Installing systemd unit files..."
 	$(foreach f,$(UNIT_FILES),$(call INSTALL_FILE,$f,$(UNIT_DIR)))
 endif
+
+build-image:
+	# build an docker image for development
+	docker build ${BUILDARGS} -t ${AGENT_IMAGE}:${AGENT_TAG} .
+
+proto: build-image
+	docker run -ti -v ${PWD}:/go/src/github.com/kata-containers/agent ${AGENT_IMAGE}:${AGENT_TAG} ./hack/update-generated-agent-proto.sh
 
 .PHONY: clean test go-test
 clean:
