@@ -7,6 +7,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -295,6 +296,16 @@ func init() {
 
 func main() {
 	var err error
+	var showVersion bool
+
+	flag.BoolVar(&showVersion, "version", false, "display program version and exit")
+
+	flag.Parse()
+
+	if showVersion {
+		fmt.Printf("%v version %v\n", agentName, version)
+		os.Exit(0)
+	}
 
 	defer func() {
 		if err != nil {

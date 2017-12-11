@@ -1,3 +1,8 @@
+# Copyright (c) 2017 Intel Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
 TARGET = kata-agent
 SOURCES := $(shell find . 2>&1 | grep -E '.*\.go$$')
 
