@@ -35,9 +35,14 @@ ifeq ($(INIT),no)
 	$(foreach f,$(UNIT_FILES),$(call INSTALL_FILE,$f,$(UNIT_DIR)))
 endif
 
-.PHONY: clean
+.PHONY: clean test go-test
 clean:
 	rm -f $(TARGET) $(GENERATED_FILES)
+
+test: go-test
+
+go-test:
+	bash hack/go-test.sh
 
 define INSTALL_FILE
 	install -D -m 644 $1 $(DESTDIR)$2/$1 || exit 1;
