@@ -29,8 +29,8 @@ VERSION_COMMIT := $(if $(COMMIT),$(VERSION)-$(COMMIT),$(VERSION))
 # args for building agent image
 BUILDARGS := $(if $(http_proxy), --build-arg http_proxy=$(http_proxy))
 BUILDARGS += $(if $(https_proxy), --build-arg https_proxy=$(https_proxy))
-AGENT_IMAGE := kata-containers/agent
-AGENT_TAG := $(if $(COMMIT_NO_SHORT),dev-$(COMMIT_NO_SHORT),dev)
+AGENT_IMAGE := katacontainers/agent-dev
+AGENT_TAG := $(if $(COMMIT_NO_SHORT),$(COMMIT_NO_SHORT),dev)
 
 $(TARGET): $(GENERATED_FILES) $(SOURCES) $(VERSION_FILE)
 	go build -o $@ -ldflags "-X main.version=$(VERSION_COMMIT)"
