@@ -46,14 +46,15 @@ service AgentService {
 	// misc (TODO: some rpcs can be replaced by hyperstart-exec)
 	rpc CreateSandbox(CreateSandboxRequest) returns (google.protobuf.Empty);
 	rpc DestroySandbox(DestroySandboxRequest) returns (google.protobuf.Empty);
+	rpc AddStorage(AddStorageRequest) returns (google.protobuf.Empty);
+	rpc RemoveStorage(RemoveStorageRequest) returns (google.protobuf.Empty);
 	rpc OnlineCPUMem(OnlineCPUMemRequest) returns (google.protobuf.Empty);
 }
 
 message CreateContainerRequest {
 	string container_id = 1;
 	StringUser string_user = 2;
-	repeated Storage storages = 3;
-	Spec OCI = 4;
+	Spec OCI = 3;
 }
 
 message StartContainerRequest {
@@ -138,8 +139,7 @@ message TtyWinResizeRequest {
 message CreateSandboxRequest {
 	string hostname = 1;
 	repeated string dns = 2;
-	repeated Storage storages = 3;
-	bool sandbox_pidns = 4;
+	bool sandbox_pidns = 3;
 }
 
 message DestroySandboxRequest {
@@ -199,11 +199,22 @@ message OnlineCPUMemRequest {
 }
 
 message Storage {
-	string driver = 1;           // empty in most cases. it will support "drbd", "bcache" ...
-	string source = 2;           // "/dev/sdb", "/dev/disk/by-scsi/xxxx", "none",...
-	string fstype = 3;           // "xfs", "ext4" etc. for block dev, or "9p" for shared fs, or  "tmpfs" for shared /dev/shm for all containers ...
-	repeated string options = 4; // options for the storage device, might required by some special devices.
-	string mount_point = 5;      // mount_point is only visible by VM, not by containers. This mount point can be used on oci.Mount.Source as "/Stroage/mount/point/{rootfs|_data}".
+	string storage_id = 1;
+	string controller = 2;       // empty in most cases. it will support "drbd", "bcache" ...
+	map<string, string> controller_options = 3;
+	string source = 4;           // "/dev/sdb", "/dev/disk/by-scsi/xxxx", "none",...
+	string fstype = 5;           // "xfs", "ext4" etc. for block dev, or "9p" for shared fs, or  "tmpfs" for shared /dev/shm for all containers ...
+	repeated string options = 6; // options for the storage device, might required by some special devices.
+	string mount_point = 7;      // mount_point is only visible by VM, not by containers. This mount point can be used on oci.Mount.Source as "/Stroage/mount/point/{rootfs|_data}".
+}
+
+message AddStorageRequest {
+	repeated Storage storages = 1;
+}
+
+message RemoveStorageRequest {
+	// array of storage_id
+	repeated string storages = 1;
 }
 
 message StringUser {
