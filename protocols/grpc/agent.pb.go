@@ -36,8 +36,9 @@ It has these top-level messages:
 	OnlineCPUMemRequest
 	Storage
 	StringUser
-	HealthCheckRequest
+	CheckRequest
 	HealthCheckResponse
+	VersionCheckResponse
 	Spec
 	Process
 	Box

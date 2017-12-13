@@ -8,7 +8,7 @@ syntax = "proto3";
 
 package grpc;
 
-message HealthCheckRequest {
+message CheckRequest {
 	string service = 1;
 }
 
@@ -21,6 +21,12 @@ message HealthCheckResponse {
 	ServingStatus status = 1;
 }
 
+message VersionCheckResponse {
+	string grpc_version = 1;
+	string agent_version = 2;
+}
+
 service Health {
-	rpc Check(HealthCheckRequest) returns (HealthCheckResponse);
+	rpc Check(CheckRequest) returns (HealthCheckResponse);
+	rpc Version(CheckRequest) returns (VersionCheckResponse);
 }

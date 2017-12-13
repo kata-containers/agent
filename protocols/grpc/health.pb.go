@@ -41,16 +41,16 @@ func (HealthCheckResponse_ServingStatus) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptorHealth, []int{1, 0}
 }
 
-type HealthCheckRequest struct {
+type CheckRequest struct {
 	Service string `protobuf:"bytes,1,opt,name=service,proto3" json:"service,omitempty"`
 }
 
-func (m *HealthCheckRequest) Reset()                    { *m = HealthCheckRequest{} }
-func (m *HealthCheckRequest) String() string            { return proto.CompactTextString(m) }
-func (*HealthCheckRequest) ProtoMessage()               {}
-func (*HealthCheckRequest) Descriptor() ([]byte, []int) { return fileDescriptorHealth, []int{0} }
+func (m *CheckRequest) Reset()                    { *m = CheckRequest{} }
+func (m *CheckRequest) String() string            { return proto.CompactTextString(m) }
+func (*CheckRequest) ProtoMessage()               {}
+func (*CheckRequest) Descriptor() ([]byte, []int) { return fileDescriptorHealth, []int{0} }
 
-func (m *HealthCheckRequest) GetService() string {
+func (m *CheckRequest) GetService() string {
 	if m != nil {
 		return m.Service
 	}
@@ -73,9 +73,34 @@ func (m *HealthCheckResponse) GetStatus() HealthCheckResponse_ServingStatus {
 	return HealthCheckResponse_UNKNOWN
 }
 
+type VersionCheckResponse struct {
+	GrpcVersion  string `protobuf:"bytes,1,opt,name=grpc_version,json=grpcVersion,proto3" json:"grpc_version,omitempty"`
+	AgentVersion string `protobuf:"bytes,2,opt,name=agent_version,json=agentVersion,proto3" json:"agent_version,omitempty"`
+}
+
+func (m *VersionCheckResponse) Reset()                    { *m = VersionCheckResponse{} }
+func (m *VersionCheckResponse) String() string            { return proto.CompactTextString(m) }
+func (*VersionCheckResponse) ProtoMessage()               {}
+func (*VersionCheckResponse) Descriptor() ([]byte, []int) { return fileDescriptorHealth, []int{2} }
+
+func (m *VersionCheckResponse) GetGrpcVersion() string {
+	if m != nil {
+		return m.GrpcVersion
+	}
+	return ""
+}
+
+func (m *VersionCheckResponse) GetAgentVersion() string {
+	if m != nil {
+		return m.AgentVersion
+	}
+	return ""
+}
+
 func init() {
-	proto.RegisterType((*HealthCheckRequest)(nil), "grpc.HealthCheckRequest")
+	proto.RegisterType((*CheckRequest)(nil), "grpc.CheckRequest")
 	proto.RegisterType((*HealthCheckResponse)(nil), "grpc.HealthCheckResponse")
+	proto.RegisterType((*VersionCheckResponse)(nil), "grpc.VersionCheckResponse")
 	proto.RegisterEnum("grpc.HealthCheckResponse_ServingStatus", HealthCheckResponse_ServingStatus_name, HealthCheckResponse_ServingStatus_value)
 }
 
@@ -90,7 +115,8 @@ const _ = grpc1.SupportPackageIsVersion4
 // Client API for Health service
 
 type HealthClient interface {
-	Check(ctx context.Context, in *HealthCheckRequest, opts ...grpc1.CallOption) (*HealthCheckResponse, error)
+	Check(ctx context.Context, in *CheckRequest, opts ...grpc1.CallOption) (*HealthCheckResponse, error)
+	Version(ctx context.Context, in *CheckRequest, opts ...grpc1.CallOption) (*VersionCheckResponse, error)
 }
 
 type healthClient struct {
@@ -101,9 +127,18 @@ func NewHealthClient(cc *grpc1.ClientConn) HealthClient {
 	return &healthClient{cc}
 }
 
-func (c *healthClient) Check(ctx context.Context, in *HealthCheckRequest, opts ...grpc1.CallOption) (*HealthCheckResponse, error) {
+func (c *healthClient) Check(ctx context.Context, in *CheckRequest, opts ...grpc1.CallOption) (*HealthCheckResponse, error) {
 	out := new(HealthCheckResponse)
 	err := grpc1.Invoke(ctx, "/grpc.Health/Check", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *healthClient) Version(ctx context.Context, in *CheckRequest, opts ...grpc1.CallOption) (*VersionCheckResponse, error) {
+	out := new(VersionCheckResponse)
+	err := grpc1.Invoke(ctx, "/grpc.Health/Version", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +148,8 @@ func (c *healthClient) Check(ctx context.Context, in *HealthCheckRequest, opts .
 // Server API for Health service
 
 type HealthServer interface {
-	Check(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error)
+	Check(context.Context, *CheckRequest) (*HealthCheckResponse, error)
+	Version(context.Context, *CheckRequest) (*VersionCheckResponse, error)
 }
 
 func RegisterHealthServer(s *grpc1.Server, srv HealthServer) {
@@ -121,7 +157,7 @@ func RegisterHealthServer(s *grpc1.Server, srv HealthServer) {
 }
 
 func _Health_Check_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc1.UnaryServerInterceptor) (interface{}, error) {
-	in := new(HealthCheckRequest)
+	in := new(CheckRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -133,7 +169,25 @@ func _Health_Check_Handler(srv interface{}, ctx context.Context, dec func(interf
 		FullMethod: "/grpc.Health/Check",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HealthServer).Check(ctx, req.(*HealthCheckRequest))
+		return srv.(HealthServer).Check(ctx, req.(*CheckRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Health_Version_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc1.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CheckRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HealthServer).Version(ctx, in)
+	}
+	info := &grpc1.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/grpc.Health/Version",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HealthServer).Version(ctx, req.(*CheckRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -146,6 +200,10 @@ var _Health_serviceDesc = grpc1.ServiceDesc{
 			MethodName: "Check",
 			Handler:    _Health_Check_Handler,
 		},
+		{
+			MethodName: "Version",
+			Handler:    _Health_Version_Handler,
+		},
 	},
 	Streams:  []grpc1.StreamDesc{},
 	Metadata: "health.proto",
@@ -154,18 +212,22 @@ var _Health_serviceDesc = grpc1.ServiceDesc{
 func init() { proto.RegisterFile("health.proto", fileDescriptorHealth) }
 
 var fileDescriptorHealth = []byte{
-	// 199 bytes of a gzipped FileDescriptorProto
+	// 261 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0xc9, 0x48, 0x4d, 0xcc,
 	0x29, 0xc9, 0xd0, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0x49, 0x2f, 0x2a, 0x48, 0x56, 0xd2,
-	0xe3, 0x12, 0xf2, 0x00, 0x8b, 0x3a, 0x67, 0xa4, 0x26, 0x67, 0x07, 0xa5, 0x16, 0x96, 0xa6, 0x16,
-	0x97, 0x08, 0x49, 0x70, 0xb1, 0x17, 0xa7, 0x16, 0x95, 0x65, 0x26, 0xa7, 0x4a, 0x30, 0x2a, 0x30,
-	0x6a, 0x70, 0x06, 0xc1, 0xb8, 0x4a, 0x93, 0x18, 0xb9, 0x84, 0x51, 0x34, 0x14, 0x17, 0xe4, 0xe7,
-	0x15, 0xa7, 0x0a, 0xd9, 0x73, 0xb1, 0x15, 0x97, 0x24, 0x96, 0x94, 0x16, 0x83, 0x35, 0xf0, 0x19,
-	0xa9, 0xeb, 0x81, 0x8c, 0xd7, 0xc3, 0xa2, 0x54, 0x2f, 0x18, 0x64, 0x54, 0x5e, 0x7a, 0x30, 0x58,
-	0x79, 0x10, 0x54, 0x9b, 0x92, 0x15, 0x17, 0x2f, 0x8a, 0x84, 0x10, 0x37, 0x17, 0x7b, 0xa8, 0x9f,
-	0xb7, 0x9f, 0x7f, 0xb8, 0x9f, 0x00, 0x03, 0x88, 0x13, 0xec, 0x1a, 0x14, 0xe6, 0xe9, 0xe7, 0x2e,
-	0xc0, 0x28, 0xc4, 0xcf, 0xc5, 0xed, 0xe7, 0x1f, 0x12, 0x0f, 0x13, 0x60, 0x32, 0x72, 0xe3, 0x62,
-	0x83, 0x58, 0x24, 0x64, 0xc3, 0xc5, 0x0a, 0xb6, 0x4c, 0x48, 0x02, 0x8b, 0xfd, 0x60, 0xbf, 0x49,
-	0x49, 0xe2, 0x74, 0x59, 0x12, 0x1b, 0x38, 0x64, 0x8c, 0x01, 0x01, 0x00, 0x00, 0xff, 0xff, 0x77,
-	0x76, 0x56, 0xe8, 0x29, 0x01, 0x00, 0x00,
+	0xe0, 0xe2, 0x71, 0xce, 0x48, 0x4d, 0xce, 0x0e, 0x4a, 0x2d, 0x2c, 0x4d, 0x2d, 0x2e, 0x11, 0x92,
+	0xe0, 0x62, 0x2f, 0x4e, 0x2d, 0x2a, 0xcb, 0x4c, 0x4e, 0x95, 0x60, 0x54, 0x60, 0xd4, 0xe0, 0x0c,
+	0x82, 0x71, 0x95, 0x26, 0x31, 0x72, 0x09, 0x7b, 0x80, 0x0d, 0x80, 0x6a, 0x28, 0x2e, 0xc8, 0xcf,
+	0x2b, 0x4e, 0x15, 0xb2, 0xe7, 0x62, 0x2b, 0x2e, 0x49, 0x2c, 0x29, 0x2d, 0x06, 0x6b, 0xe0, 0x33,
+	0x52, 0xd7, 0x03, 0x19, 0xac, 0x87, 0x45, 0xa9, 0x5e, 0x30, 0xc8, 0xa8, 0xbc, 0xf4, 0x60, 0xb0,
+	0xf2, 0x20, 0xa8, 0x36, 0x25, 0x2b, 0x2e, 0x5e, 0x14, 0x09, 0x21, 0x6e, 0x2e, 0xf6, 0x50, 0x3f,
+	0x6f, 0x3f, 0xff, 0x70, 0x3f, 0x01, 0x06, 0x10, 0x27, 0xd8, 0x35, 0x28, 0xcc, 0xd3, 0xcf, 0x5d,
+	0x80, 0x51, 0x88, 0x9f, 0x8b, 0xdb, 0xcf, 0x3f, 0x24, 0x1e, 0x26, 0xc0, 0xa4, 0x14, 0xc7, 0x25,
+	0x12, 0x96, 0x5a, 0x54, 0x9c, 0x99, 0x9f, 0x87, 0xea, 0x28, 0x45, 0x2e, 0x1e, 0x90, 0x2b, 0xe2,
+	0xcb, 0x20, 0x92, 0x50, 0xbf, 0x70, 0x83, 0xc4, 0xa0, 0xea, 0x85, 0x94, 0xb9, 0x78, 0x13, 0xd3,
+	0x53, 0xf3, 0x4a, 0xe0, 0x6a, 0x98, 0xc0, 0x6a, 0x78, 0xc0, 0x82, 0x50, 0x45, 0x46, 0xd5, 0x5c,
+	0x6c, 0x10, 0x8f, 0x08, 0x99, 0x71, 0xb1, 0x82, 0xad, 0x10, 0x12, 0x82, 0xf8, 0x0f, 0x39, 0xd4,
+	0xa4, 0x24, 0x71, 0xfa, 0x59, 0xc8, 0x92, 0x8b, 0x1d, 0x66, 0x23, 0x36, 0x9d, 0x52, 0x10, 0x31,
+	0x6c, 0x9e, 0x48, 0x62, 0x03, 0x47, 0x94, 0x31, 0x20, 0x00, 0x00, 0xff, 0xff, 0x12, 0xcd, 0xb7,
+	0x8b, 0xb8, 0x01, 0x00, 0x00,
 }
