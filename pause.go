@@ -17,21 +17,10 @@ package main
 
 #define PAUSE_BIN "pause-bin"
 
-static void sigdown(int signo) {
-	psignal(signo, "shutting down, got signal");
-	exit(0);
-}
-
 void __attribute__((constructor)) sandbox_pause(int argc, const char **argv) {
 	if (argc != 2 || strcmp(argv[1], PAUSE_BIN)) {
 		return;
 	}
-
-	if (signal(SIGINT, sigdown) == SIG_ERR)
-		exit(1);
-
-	if (signal(SIGTERM, sigdown) == SIG_ERR)
-		exit(2);
 
 	for (;;) pause();
 
