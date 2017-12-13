@@ -11,8 +11,10 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"runtime"
 	"sync"
+	"syscall"
 	"time"
 
 	pb "github.com/kata-containers/agent/protocols/grpc"
@@ -53,8 +55,13 @@ type sandbox struct {
 	network      network
 	wg           sync.WaitGroup
 	grpcListener net.Listener
-	sharedPidNs  bool
+	sharedPidNs  namespace
 	mounts       []string
+}
+
+type namespace struct {
+	path string
+	init *os.Process
 }
 
 var agentLog = logrus.WithFields(logrus.Fields{
@@ -222,6 +229,57 @@ func (s *sandbox) readStdio(cid string, pid int, length int, stdout bool) ([]byt
 	}
 
 	return buf, nil
+}
+
+// setupSharedPidNs will reexec this binary in order to execute the C routine
+// defined into pause.go file. The pauseBinArg is very important since that is
+// the flag allowing the C function to determine it should run the "pause".
+// This pause binary will ensure that we always have the init process of the
+// new PID namespace running into the namespace, preventing the namespace to
+// be destroyed if other processes are terminated.
+func (s *sandbox) setupSharedPidNs() error {
+	cmd := &exec.Cmd{
+		Path: selfBinPath,
+		Args: []string{os.Args[0], pauseBinArg},
+	}
+
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags: syscall.CLONE_NEWPID,
+	}
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	// Save info about this namespace inside sandbox structure.
+	s.sharedPidNs = namespace{
+		path: fmt.Sprintf("/proc/%d/ns/pid", cmd.Process.Pid),
+		init: cmd.Process,
+	}
+
+	return nil
+}
+
+func (s *sandbox) teardownSharedPidNs() error {
+	if s.sharedPidNs.path == "" {
+		// Nothing needs to be done because we are not in a case
+		// where a PID namespace is shared across containers.
+		return nil
+	}
+
+	// Terminates the "init" process of the PID namespace.
+	if err := s.sharedPidNs.init.Kill(); err != nil {
+		return err
+	}
+
+	if _, err := s.sharedPidNs.init.Wait(); err != nil {
+		return err
+	}
+
+	// Empty the sandbox structure.
+	s.sharedPidNs = namespace{}
+
+	return nil
 }
 
 func (s *sandbox) initLogger() error {
