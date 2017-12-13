@@ -224,6 +224,10 @@ func buildProcess(agentProcess *pb.Process) (*process, error) {
 	return proc, nil
 }
 
+func (a *agentGRPC) Check(ctx context.Context, req *pb.HealthCheckRequest) (*pb.HealthCheckResponse, error) {
+	return &pb.HealthCheckResponse{Status: pb.HealthCheckResponse_SERVING}, nil
+}
+
 // Shared function between StartContainer and ExecProcess, because those expect
 // a process to be run. The difference being the process does not exist yet in
 // case of ExecProcess.
