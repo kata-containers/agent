@@ -48,6 +48,7 @@ func NewMockServer() *grpc.Server {
 	mock := &mockServer{}
 	serv := grpc.NewServer()
 	pb.RegisterAgentServiceServer(serv, mock)
+	pb.RegisterHealthServer(serv, mock)
 
 	return serv
 }
@@ -114,6 +115,10 @@ func (m *mockServer) podExist() error {
 		return status.Error(codes.NotFound, "pod not created")
 	}
 	return nil
+}
+
+func (m *mockServer) Check(ctx context.Context, req *pb.HealthCheckRequest) (*pb.HealthCheckResponse, error) {
+	return &pb.HealthCheckResponse{Status: pb.HealthCheckResponse_SERVING}, nil
 }
 
 func (m *mockServer) CreateContainer(ctx context.Context, req *pb.CreateContainerRequest) (*google_protobuf2.Empty, error) {

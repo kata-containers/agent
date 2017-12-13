@@ -7,14 +7,17 @@
 package client
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	context "golang.org/x/net/context"
 	"google.golang.org/grpc"
 
+	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/kata-containers/agent/protocols/mockserver"
 )
 
@@ -45,6 +48,18 @@ func startMockServer(t *testing.T) (*grpc.Server, chan error, error) {
 	return mock, stopWait, nil
 }
 
+func checkHealth(cli *AgentClient) error {
+	resp, err := cli.Check(context.Background(), &pb.HealthCheckRequest{})
+	if err != nil {
+		return err
+	}
+	if resp.Status != pb.HealthCheckResponse_SERVING {
+		return fmt.Errorf("unexpected health status: %s", resp.Status)
+	}
+
+	return nil
+}
+
 func TestNewAgentClient(t *testing.T) {
 	mock, waitCh, err := startMockServer(t)
 	assert.Nil(t, err, "failed to start mock server: %s", err)
@@ -57,6 +72,8 @@ func TestNewAgentClient(t *testing.T) {
 			assert.NotNil(t, err, "Unexpected success with sock address: %s", sock)
 		}
 		if err == nil {
+			err = checkHealth(cli)
+			assert.Nil(t, err, "failed checking grpc server status: %s", err)
 			cli.Close()
 		} else if expect != "" {
 			assert.True(t, strings.Contains(err.Error(), expect), "expect err message: %s\tgot: %s", expect, err)
