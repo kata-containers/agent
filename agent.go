@@ -317,6 +317,7 @@ func (s *sandbox) startGRPC() error {
 
 	grpcImpl := &agentGRPC{
 		sandbox: s,
+		version: version,
 	}
 
 	grpcServer := grpc.NewServer()
