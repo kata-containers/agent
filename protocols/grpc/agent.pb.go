@@ -6,6 +6,7 @@ Package grpc is a generated protocol buffer package.
 
 It is generated from these files:
 	agent.proto
+	health.proto
 	oci.proto
 
 It has these top-level messages:
@@ -35,6 +36,9 @@ It has these top-level messages:
 	OnlineCPUMemRequest
 	Storage
 	StringUser
+	CheckRequest
+	HealthCheckResponse
+	VersionCheckResponse
 	Spec
 	Process
 	Box

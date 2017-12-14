@@ -18,7 +18,11 @@ import (
 	pb "github.com/kata-containers/agent/protocols/grpc"
 )
 
-const podStartingPid = 100
+const (
+	MockServerVersion = "mock.0.1"
+
+	podStartingPid = 100
+)
 
 // If an rpc changes any pod/container/process, take a write lock.
 var mockLock sync.RWMutex
@@ -48,6 +52,7 @@ func NewMockServer() *grpc.Server {
 	mock := &mockServer{}
 	serv := grpc.NewServer()
 	pb.RegisterAgentServiceServer(serv, mock)
+	pb.RegisterHealthServer(serv, mock)
 
 	return serv
 }
@@ -114,6 +119,17 @@ func (m *mockServer) podExist() error {
 		return status.Error(codes.NotFound, "pod not created")
 	}
 	return nil
+}
+
+func (m *mockServer) Check(ctx context.Context, req *pb.CheckRequest) (*pb.HealthCheckResponse, error) {
+	return &pb.HealthCheckResponse{Status: pb.HealthCheckResponse_SERVING}, nil
+}
+
+func (m *mockServer) Version(ctx context.Context, req *pb.CheckRequest) (*pb.VersionCheckResponse, error) {
+	return &pb.VersionCheckResponse{
+		GrpcVersion:  pb.APIVersion,
+		AgentVersion: MockServerVersion,
+	}, nil
 }
 
 func (m *mockServer) CreateContainer(ctx context.Context, req *pb.CreateContainerRequest) (*google_protobuf2.Empty, error) {

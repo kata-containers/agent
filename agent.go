@@ -317,10 +317,12 @@ func (s *sandbox) startGRPC() error {
 
 	grpcImpl := &agentGRPC{
 		sandbox: s,
+		version: version,
 	}
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterAgentServiceServer(grpcServer, grpcImpl)
+	pb.RegisterHealthServer(grpcServer, grpcImpl)
 
 	s.wg.Add(1)
 	go func() {

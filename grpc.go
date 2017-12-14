@@ -28,6 +28,7 @@ import (
 
 type agentGRPC struct {
 	sandbox *sandbox
+	version string
 }
 
 // PCI scanning
@@ -222,6 +223,18 @@ func buildProcess(agentProcess *pb.Process) (*process, error) {
 	proc.stderr = rStderr
 
 	return proc, nil
+}
+
+func (a *agentGRPC) Check(ctx context.Context, req *pb.CheckRequest) (*pb.HealthCheckResponse, error) {
+	return &pb.HealthCheckResponse{Status: pb.HealthCheckResponse_SERVING}, nil
+}
+
+func (a *agentGRPC) Version(ctx context.Context, req *pb.CheckRequest) (*pb.VersionCheckResponse, error) {
+	return &pb.VersionCheckResponse{
+		GrpcVersion: pb.APIVersion,
+		AgentVersion: a.version,
+	}, nil
+
 }
 
 // Shared function between StartContainer and ExecProcess, because those expect
