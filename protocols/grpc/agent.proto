@@ -37,9 +37,13 @@ service AgentService {
 	rpc TtyWinResize(TtyWinResizeRequest) returns (google.protobuf.Empty);
 
 	// networking
+	// Add interface, the interface should be removed when failed.
 	rpc AddInterface(AddInterfaceRequest) returns (google.protobuf.Empty);
 	rpc RemoveInterface(RemoveInterfaceRequest) returns (google.protobuf.Empty);
-	rpc UpdateInterface(UpdateInterfaceRequest) returns (google.protobuf.Empty);
+	// Update the interface, the agent should try to roll back the operation
+	// when failed. Return the final effective interface config regardless
+	// failed or not.
+	rpc UpdateInterface(UpdateInterfaceRequest) returns (Interface);
 	rpc AddRoute(RouteRequest) returns (google.protobuf.Empty);
 	rpc RemoveRoute(RouteRequest) returns (google.protobuf.Empty);
 
@@ -170,24 +174,17 @@ message Route {
 	string device = 3;
 }
 
-enum UpdateType {
-	None = 0;
-	AddIP = 1;
-	RemoveIP = 2;
-	Name = 4;
-	MTU = 8;
-}
-
 message AddInterfaceRequest {
-	Interface interface = 1;
+	string interface_id = 1;
+	Interface interface = 2;
 }
 
 message RemoveInterfaceRequest {
-	string name = 1;
+	string interface_id = 1;
 }
 
 message UpdateInterfaceRequest {
-	UpdateType type = 1;
+	string interface_id = 1;
 	Interface interface = 2;
 }
 
