@@ -22,7 +22,7 @@ func TestForkPauseBin(t *testing.T) {
 		return
 	}
 	cmd := &exec.Cmd{
-		Path: agentName,
+		Path: selfBinPath,
 		Args: []string{os.Args[0], pauseBinArg},
 	}
 
