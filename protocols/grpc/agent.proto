@@ -46,14 +46,14 @@ service AgentService {
 	// misc (TODO: some rpcs can be replaced by hyperstart-exec)
 	rpc CreateSandbox(CreateSandboxRequest) returns (google.protobuf.Empty);
 	rpc DestroySandbox(DestroySandboxRequest) returns (google.protobuf.Empty);
-	rpc OnlineCPUMem(OnlineCPUMemRequest) returns (google.protobuf.Empty);
+	rpc AddDevices(AddDevicesRequest) returns (google.protobuf.Empty);
+	rpc RemoveDevices(RemoveDevicesRequest) returns (google.protobuf.Empty);
 }
 
 message CreateContainerRequest {
 	string container_id = 1;
 	StringUser string_user = 2;
-	repeated Storage storages = 3;
-	Spec OCI = 4;
+	Spec OCI = 3;
 }
 
 message StartContainerRequest {
@@ -138,8 +138,7 @@ message TtyWinResizeRequest {
 message CreateSandboxRequest {
 	string hostname = 1;
 	repeated string dns = 2;
-	repeated Storage storages = 3;
-	bool sandbox_pidns = 4;
+	bool sandbox_pidns = 3;
 }
 
 message DestroySandboxRequest {
@@ -195,15 +194,40 @@ message RouteRequest {
 	Route route = 1;
 }
 
-message OnlineCPUMemRequest {
+message Device {
+	string device_id = 1;
+	string driver = 2;
+	map<string, string> driver_options = 3;
+	// device could be "/dev/sdb", "/dev/disk/by-scsi/xxxx", "none", "share_tag" ...
+	string device = 4;
+
+	// When the device is used for storage and requested to be mounted by agent, the fstype and mount_point should be set.
+	// This is usefull for the cases that libcontainer can't handle:
+	// 1) special drivers are involved
+	// 2) libcontainer can't recognize the device
+	// 3) multiple containers need to share the device which multiple-mount is not workable such as a shared tmpfs.
+	// 4) the source for the OCI container's mount is not the root directory of the device, such as
+	//    /mount/point/of/block-device/rootfs (docker image on block)
+	//    /mount/point/of/block-device/_data (docker volume on block)
+	// 5) other cases ...
+	// But in the case that libcontainer can handle, it is recommended to set the config in OCI Container Spec.
+
+	// "xfs", "ext4" etc. for block dev, or "9p" for shared fs, or  "tmpfs" for shared /dev/shm for all containers ...
+	string fstype = 5;
+	// options for the storage device.
+	repeated string mount_options = 6;
+	// mount_point is only visible by VM, not by containers.
+	// This mount point can be used on oci.Spec.Mount.Source such as "/Stroage/mount/point/{rootfs|_data}" (chosen by runtime).
+	string mount_point = 7;
 }
 
-message Storage {
-	string driver = 1;           // empty in most cases. it will support "drbd", "bcache" ...
-	string source = 2;           // "/dev/sdb", "/dev/disk/by-scsi/xxxx", "none",...
-	string fstype = 3;           // "xfs", "ext4" etc. for block dev, or "9p" for shared fs, or  "tmpfs" for shared /dev/shm for all containers ...
-	repeated string options = 4; // options for the storage device, might required by some special devices.
-	string mount_point = 5;      // mount_point is only visible by VM, not by containers. This mount point can be used on oci.Mount.Source as "/Stroage/mount/point/{rootfs|_data}".
+message AddDevicesRequest {
+	repeated Device devices = 1;
+}
+
+message RemoveDevicesRequest {
+	// array of device_id
+	repeated string devices = 1;
 }
 
 message StringUser {
