@@ -76,7 +76,7 @@ package grpc
 import proto "github.com/gogo/protobuf/proto"
 import fmt "fmt"
 import math "math"
-import google_protobuf2 "github.com/golang/protobuf/ptypes/empty"
+import google_protobuf2 "github.com/gogo/protobuf/types"
 
 import context "golang.org/x/net/context"
 import grpc1 "google.golang.org/grpc"
