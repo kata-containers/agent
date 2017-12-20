@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 protoc -I=$GOPATH/src -I=$GOPATH/src/github.com/gogo/protobuf/protobuf \
-	--proto_path=protocols/grpc --gogo_out=\
+	--proto_path=protocols/grpc --gogofast_out=\
 Mgoogle/protobuf/any.proto=github.com/gogo/protobuf/types,\
 Mgoogle/protobuf/duration.proto=github.com/gogo/protobuf/types,\
 Mgoogle/protobuf/struct.proto=github.com/gogo/protobuf/types,\
