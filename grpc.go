@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	gpb "github.com/golang/protobuf/ptypes/empty"
+	gpb "github.com/gogo/protobuf/types"
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
