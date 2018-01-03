@@ -95,11 +95,11 @@ func (p *process) closePostStartFDs() {
 	}
 
 	if p.process.ConsoleSocket != nil {
-		p.process.Stderr.(*os.File).Close()
+		p.process.ConsoleSocket.Close()
 	}
 
 	if p.consoleSock != nil {
-		p.process.Stderr.(*os.File).Close()
+		p.consoleSock.Close()
 	}
 }
 
