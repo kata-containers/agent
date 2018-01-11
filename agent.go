@@ -124,9 +124,9 @@ func (p *process) closePostExitFDs() {
 	}
 }
 
-func (c *container) setProcess(execID string, process *process) {
+func (c *container) setProcess(process *process) {
 	c.Lock()
-	c.processes[execID] = process
+	c.processes[process.id] = process
 	c.Unlock()
 }
 
@@ -183,7 +183,7 @@ func (s *sandbox) deleteContainer(id string) {
 	s.Unlock()
 }
 
-func (s *sandbox) getRunningProcess(cid, execID string) (*process, *container, error) {
+func (s *sandbox) getProcess(cid, execID string) (*process, *container, error) {
 	if s.running == false {
 		return nil, nil, fmt.Errorf("Sandbox not started")
 	}
@@ -198,8 +198,8 @@ func (s *sandbox) getRunningProcess(cid, execID string) (*process, *container, e
 		return nil, nil, err
 	}
 
-	if status != libcontainer.Running {
-		return nil, nil, fmt.Errorf("Container %s %s, should be %s", cid, status.String(), libcontainer.Running.String())
+	if status == libcontainer.Stopped {
+		return nil, nil, fmt.Errorf("Container %s is stopped", cid)
 	}
 
 	proc, err := ctr.getProcess(execID)
@@ -211,7 +211,7 @@ func (s *sandbox) getRunningProcess(cid, execID string) (*process, *container, e
 }
 
 func (s *sandbox) readStdio(cid, execID string, length int, stdout bool) ([]byte, error) {
-	proc, _, err := s.getRunningProcess(cid, execID)
+	proc, _, err := s.getProcess(cid, execID)
 	if err != nil {
 		return nil, err
 	}

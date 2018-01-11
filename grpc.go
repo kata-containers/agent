@@ -275,42 +275,22 @@ func (a *agentGRPC) Version(ctx context.Context, req *pb.CheckRequest) (*pb.Vers
 
 }
 
-// Shared function between StartContainer and ExecProcess, because those expect
-// a process to be run. The difference being the process does not exist yet in
-// case of ExecProcess.
-func (a *agentGRPC) runProcess(cid, execID string, agentProcess *pb.Process) (err error) {
+func (a *agentGRPC) getContainer(cid string) (*container, error) {
 	if a.sandbox.running == false {
-		return fmt.Errorf("Sandbox not started")
+		return nil, fmt.Errorf("Sandbox not started")
 	}
 
 	ctr, err := a.sandbox.getContainer(cid)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	status, err := ctr.container.Status()
-	if err != nil {
-		return err
-	}
+	return ctr, nil
+}
 
-	var proc *process
-	if agentProcess != nil && execID != "" {
-		if status != libcontainer.Running {
-			return fmt.Errorf("Container %s status %s, should be %s", cid, status.String(), libcontainer.Running.String())
-		}
-
-		proc, err = buildProcess(agentProcess, execID)
-		if err != nil {
-			return err
-		}
-	} else {
-		if status != libcontainer.Created {
-			return fmt.Errorf("Container %s status %s, should be %s", cid, status.String(), libcontainer.Created.String())
-		}
-
-		proc = ctr.initProcess
-	}
-
+// Shared function between StartContainer and ExecProcess, because those expect
+// a process to be run.
+func (a *agentGRPC) execProcess(ctr *container, proc *process) (err error) {
 	// This lock is very important to avoid any race with reaper.reap().
 	// Indeed, if we don't lock this here, we could potentially get the
 	// SIGCHLD signal before the channel has been created, meaning we will
@@ -320,7 +300,12 @@ func (a *agentGRPC) runProcess(cid, execID string, agentProcess *pb.Process) (er
 	a.sandbox.subreaper.RLock()
 	defer a.sandbox.subreaper.RUnlock()
 
-	if err := ctr.container.Run(&(proc.process)); err != nil {
+	if proc == nil {
+		err = ctr.container.Exec()
+	} else {
+		err = ctr.container.Run(&(proc.process))
+	}
+	if err != nil {
 		return fmt.Errorf("Could not run process: %v", err)
 	}
 	defer proc.closePostStartFDs()
@@ -351,9 +336,6 @@ func (a *agentGRPC) runProcess(cid, execID string, agentProcess *pb.Process) (er
 
 		proc.termMaster = termMaster
 	}
-
-	// Save process info.
-	ctr.setProcess(execID, proc)
 
 	return nil
 }
@@ -482,13 +464,34 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		mounts:      mountList,
 	}
 
+	err = container.container.Start(&builtProcess.process)
+	if err != nil {
+		return emptyResp, err
+	}
+
 	a.sandbox.setContainer(req.ContainerId, container)
+
+	container.setProcess(builtProcess)
 
 	return emptyResp, nil
 }
 
 func (a *agentGRPC) StartContainer(ctx context.Context, req *pb.StartContainerRequest) (*gpb.Empty, error) {
-	if err := a.runProcess(req.ContainerId, "", nil); err != nil {
+	ctr, err := a.getContainer(req.ContainerId)
+	if err != nil {
+		return emptyResp, err
+	}
+
+	status, err := ctr.container.Status()
+	if err != nil {
+		return nil, err
+	}
+
+	if status != libcontainer.Created {
+		return nil, fmt.Errorf("Container %s status %s, should be %s", req.ContainerId, status, libcontainer.Created)
+	}
+
+	if err := a.execProcess(ctr, nil); err != nil {
 		return emptyResp, err
 	}
 
@@ -496,9 +499,30 @@ func (a *agentGRPC) StartContainer(ctx context.Context, req *pb.StartContainerRe
 }
 
 func (a *agentGRPC) ExecProcess(ctx context.Context, req *pb.ExecProcessRequest) (*gpb.Empty, error) {
-	if err := a.runProcess(req.ContainerId, req.ExecId, req.Process); err != nil {
+	ctr, err := a.getContainer(req.ContainerId)
+	if err != nil {
 		return emptyResp, err
 	}
+
+	status, err := ctr.container.Status()
+	if err != nil {
+		return nil, err
+	}
+
+	if status == libcontainer.Stopped {
+		return nil, fmt.Errorf("Cannot exec in stopped container %s", req.ContainerId)
+	}
+
+	proc, err := buildProcess(req.Process, req.ExecId)
+	if err != nil {
+		return emptyResp, err
+	}
+
+	if err := a.execProcess(ctr, proc); err != nil {
+		return emptyResp, err
+	}
+
+	ctr.setProcess(proc)
 
 	return emptyResp, nil
 }
@@ -551,7 +575,7 @@ func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequ
 }
 
 func (a *agentGRPC) WaitProcess(ctx context.Context, req *pb.WaitProcessRequest) (*pb.WaitProcessResponse, error) {
-	proc, ctr, err := a.sandbox.getRunningProcess(req.ContainerId, req.ExecId)
+	proc, ctr, err := a.sandbox.getProcess(req.ContainerId, req.ExecId)
 	if err != nil {
 		return &pb.WaitProcessResponse{}, err
 	}
@@ -614,7 +638,7 @@ func (a *agentGRPC) RemoveContainer(ctx context.Context, req *pb.RemoveContainer
 }
 
 func (a *agentGRPC) WriteStdin(ctx context.Context, req *pb.WriteStreamRequest) (*pb.WriteStreamResponse, error) {
-	proc, _, err := a.sandbox.getRunningProcess(req.ContainerId, req.ExecId)
+	proc, _, err := a.sandbox.getProcess(req.ContainerId, req.ExecId)
 	if err != nil {
 		return &pb.WriteStreamResponse{}, err
 	}
@@ -659,7 +683,7 @@ func (a *agentGRPC) ReadStderr(ctx context.Context, req *pb.ReadStreamRequest) (
 }
 
 func (a *agentGRPC) CloseStdin(ctx context.Context, req *pb.CloseStdinRequest) (*gpb.Empty, error) {
-	proc, _, err := a.sandbox.getRunningProcess(req.ContainerId, req.ExecId)
+	proc, _, err := a.sandbox.getProcess(req.ContainerId, req.ExecId)
 	if err != nil {
 		return emptyResp, err
 	}
@@ -679,7 +703,7 @@ func (a *agentGRPC) CloseStdin(ctx context.Context, req *pb.CloseStdinRequest) (
 }
 
 func (a *agentGRPC) TtyWinResize(ctx context.Context, req *pb.TtyWinResizeRequest) (*gpb.Empty, error) {
-	proc, _, err := a.sandbox.getRunningProcess(req.ContainerId, req.ExecId)
+	proc, _, err := a.sandbox.getProcess(req.ContainerId, req.ExecId)
 	if err != nil {
 		return emptyResp, err
 	}
