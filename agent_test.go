@@ -102,7 +102,7 @@ func TestSetProcess(t *testing.T) {
 		id: testExecID,
 	}
 
-	c.setProcess(testExecID, p)
+	c.setProcess(p)
 
 	proc, exist := c.processes[testExecID]
 	assert.True(t, exist, "Process entry should exist")
