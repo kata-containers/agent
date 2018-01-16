@@ -64,7 +64,9 @@ func mount(source, destination, fsType string, flags int, options string) error 
 	var absSource string
 
 	if fsType != type9pFs {
-		absSource, err := filepath.EvalSymlinks(source)
+		var err error
+
+		absSource, err = filepath.EvalSymlinks(source)
 		if err != nil {
 			return fmt.Errorf("Could not resolve symlink for source %v", source)
 		}
