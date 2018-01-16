@@ -550,6 +550,7 @@ func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequ
 			"sandbox":     a.sandbox.id,
 			"signal":      signal.String(),
 		}).Info("discarding signal as container stopped")
+		return emptyResp, nil
 	}
 
 	// If the exec ID provided is empty, let's apply the signal to all
