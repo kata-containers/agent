@@ -201,6 +201,7 @@ func (a *agentGRPC) execProcess(ctr *container, proc *process) (err error) {
 	defer a.sandbox.subreaper.RUnlock()
 
 	if proc == nil {
+		proc = ctr.initProcess
 		err = ctr.container.Exec()
 	} else {
 		err = ctr.container.Run(&(proc.process))
