@@ -99,6 +99,7 @@
     "libcontainer/intelrdt",
     "libcontainer/keys",
     "libcontainer/mount",
+    "libcontainer/nsenter",
     "libcontainer/seccomp",
     "libcontainer/specconv",
     "libcontainer/stacktrace",
@@ -254,6 +255,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "c256d8a4f49dca7b592e1f6101059e9563cc6173cde2c9b622c31e71f14564b1"
+  inputs-digest = "c38d31b9fcac7acea4857468060fdf0ea2d68c14a70f59d24752bba917f271d8"
   solver-name = "gps-cdcl"
   solver-version = 1
