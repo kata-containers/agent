@@ -364,8 +364,13 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		mounts:      mountList,
 	}
 
-	err = container.container.Start(&builtProcess.process)
-	if err != nil {
+	// This lock has to be taken to make sure we let the libcontainer
+	// spawning process being reaped internally by libcontainer. This
+	// prevents our subreaper from doing it.
+	a.sandbox.subreaper.RLock()
+	defer a.sandbox.subreaper.RUnlock()
+
+	if err := container.container.Start(&builtProcess.process); err != nil {
 		return emptyResp, err
 	}
 
