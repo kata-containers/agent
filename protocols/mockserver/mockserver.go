@@ -19,6 +19,7 @@ import (
 )
 
 const (
+	// MockServerVersion specifies the version of the fake server
 	MockServerVersion = "mock.0.1"
 
 	podStartingPid = 100
@@ -47,6 +48,7 @@ type mockServer struct {
 	pod *pod
 }
 
+// NewMockServer creates a new gRPC server
 func NewMockServer() *grpc.Server {
 	mock := &mockServer{}
 	serv := grpc.NewServer()
@@ -63,48 +65,48 @@ func validateOCISpec(spec *pb.Spec) error {
 	return nil
 }
 
-func (m *mockServer) checkExist(containerId, execId string, createContainer, checkProcess bool) error {
+func (m *mockServer) checkExist(containerID, execID string, createContainer, checkProcess bool) error {
 	if m.pod == nil {
 		return status.Error(codes.NotFound, "pod not created")
 	}
-	if containerId == "" {
+	if containerID == "" {
 		return status.Error(codes.InvalidArgument, "container ID must be set")
 	}
-	if checkProcess && execId == "0" {
+	if checkProcess && execID == "0" {
 		return status.Error(codes.InvalidArgument, "process ID must be set")
 	}
 
 	// Check container existence
 	if createContainer {
-		if m.pod.containers[containerId] != nil {
-			return status.Errorf(codes.AlreadyExists, "container ID %s already taken", containerId)
+		if m.pod.containers[containerID] != nil {
+			return status.Errorf(codes.AlreadyExists, "container ID %s already taken", containerID)
 		}
 		return nil
-	} else if m.pod.containers[containerId] == nil {
-		return status.Errorf(codes.NotFound, "container %s does not exist", containerId)
+	} else if m.pod.containers[containerID] == nil {
+		return status.Errorf(codes.NotFound, "container %s does not exist", containerID)
 	}
 
 	// Check process existence
 	if checkProcess {
-		c := m.pod.containers[containerId]
-		if c.proc[execId] == nil {
-			return status.Errorf(codes.NotFound, "process %s does not exist", execId)
+		c := m.pod.containers[containerID]
+		if c.proc[execID] == nil {
+			return status.Errorf(codes.NotFound, "process %s does not exist", execID)
 		}
 	}
 
 	return nil
 }
 
-func (m *mockServer) processExist(containerId string, execId string) error {
-	return m.checkExist(containerId, execId, false, true)
+func (m *mockServer) processExist(containerID string, execID string) error {
+	return m.checkExist(containerID, execID, false, true)
 }
 
-func (m *mockServer) containerExist(containerId string) error {
-	return m.checkExist(containerId, "0", false, false)
+func (m *mockServer) containerExist(containerID string) error {
+	return m.checkExist(containerID, "0", false, false)
 }
 
-func (m *mockServer) containerNonExist(containerId string) error {
-	return m.checkExist(containerId, "0", true, false)
+func (m *mockServer) containerNonExist(containerID string) error {
+	return m.checkExist(containerID, "0", true, false)
 }
 
 func (m *mockServer) podExist() error {

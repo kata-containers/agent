@@ -63,6 +63,11 @@ test: go-test
 go-test:
 	bash hack/go-test.sh
 
+check: check-go-static
+
+check-go-static:
+	bash .ci/static-checks.sh
+
 define INSTALL_FILE
 	install -D -m 644 $1 $(DESTDIR)$2/$1 || exit 1;
 endef
