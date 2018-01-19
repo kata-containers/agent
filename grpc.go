@@ -189,7 +189,7 @@ func (a *agentGRPC) getContainer(cid string) (*container, error) {
 }
 
 // Shared function between CreateContainer and ExecProcess, because those expect
-// a process to be run, and the console to be properly setup.
+// a process to be run.
 func (a *agentGRPC) execProcess(ctr *container, proc *process, createContainer bool) (err error) {
 	if ctr == nil {
 		return fmt.Errorf("Container cannot be nil")
@@ -216,7 +216,6 @@ func (a *agentGRPC) execProcess(ctr *container, proc *process, createContainer b
 	if err != nil {
 		return fmt.Errorf("Could not run process: %v", err)
 	}
-	defer proc.closePostStartFDs()
 
 	// Get process PID
 	pid, err := proc.process.Pid()
@@ -230,6 +229,22 @@ func (a *agentGRPC) execProcess(ctr *container, proc *process, createContainer b
 	// This channel is buffered so that reaper.reap() will not
 	// block until WaitProcess listen onto this channel.
 	a.sandbox.subreaper.setExitCodeCh(pid, proc.exitCodeCh)
+
+	return nil
+}
+
+// Shared function between CreateContainer and ExecProcess, because those expect
+// the console to be properly setup after the process has been started.
+func (a *agentGRPC) postExecProcess(ctr *container, proc *process) error {
+	if ctr == nil {
+		return fmt.Errorf("Container cannot be nil")
+	}
+
+	if proc == nil {
+		return fmt.Errorf("Process cannot be nil")
+	}
+
+	defer proc.closePostStartFDs()
 
 	// Setup terminal if enabled.
 	if proc.consoleSock != nil {
@@ -380,7 +395,7 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		return emptyResp, err
 	}
 
-	return emptyResp, nil
+	return emptyResp, a.postExecProcess(container, container.initProcess)
 }
 
 func (a *agentGRPC) StartContainer(ctx context.Context, req *pb.StartContainerRequest) (*gpb.Empty, error) {
@@ -429,7 +444,7 @@ func (a *agentGRPC) ExecProcess(ctx context.Context, req *pb.ExecProcessRequest)
 		return emptyResp, err
 	}
 
-	return emptyResp, nil
+	return emptyResp, a.postExecProcess(ctr, proc)
 }
 
 func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequest) (*gpb.Empty, error) {
