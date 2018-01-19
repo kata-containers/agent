@@ -51,107 +51,7 @@ type onlineResource struct {
 	regexpPattern   string
 }
 
-var defaultCapsList = []string{
-	"CAP_CHOWN",
-	"CAP_DAC_OVERRIDE",
-	"CAP_FOWNER",
-	"CAP_FSETID",
-	"CAP_KILL",
-	"CAP_SETGID",
-	"CAP_SETUID",
-	"CAP_SETPCAP",
-	"CAP_NET_BIND_SERVICE",
-	"CAP_NET_RAW",
-	"CAP_SYS_CHROOT",
-	"CAP_MKNOD",
-	"CAP_AUDIT_WRITE",
-	"CAP_SETFCAP",
-}
-
-var fullCapsList = []string{
-	"CAP_AUDIT_CONTROL",
-	"CAP_AUDIT_READ",
-	"CAP_AUDIT_WRITE",
-	"CAP_BLOCK_SUSPEND",
-	"CAP_CHOWN",
-	"CAP_DAC_OVERRIDE",
-	"CAP_DAC_READ_SEARCH",
-	"CAP_FOWNER",
-	"CAP_FSETID",
-	"CAP_IPC_LOCK",
-	"CAP_IPC_OWNER",
-	"CAP_KILL",
-	"CAP_LEASE",
-	"CAP_LINUX_IMMUTABLE",
-	"CAP_MAC_ADMIN",
-	"CAP_MAC_OVERRIDE",
-	"CAP_MKNOD",
-	"CAP_NET_ADMIN",
-	"CAP_NET_BIND_SERVICE",
-	"CAP_NET_BROADCAST",
-	"CAP_NET_RAW",
-	"CAP_SETGID",
-	"CAP_SETFCAP",
-	"CAP_SETPCAP",
-	"CAP_SETUID",
-	"CAP_SYS_ADMIN",
-	"CAP_SYS_BOOT",
-	"CAP_SYS_CHROOT",
-	"CAP_SYS_MODULE",
-	"CAP_SYS_NICE",
-	"CAP_SYS_PACCT",
-	"CAP_SYS_PTRACE",
-	"CAP_SYS_RAWIO",
-	"CAP_SYS_RESOURCE",
-	"CAP_SYS_TIME",
-	"CAP_SYS_TTY_CONFIG",
-	"CAP_SYSLOG",
-	"CAP_WAKE_ALARM",
-}
-
 var defaultMountFlags = unix.MS_NOEXEC | unix.MS_NOSUID | unix.MS_NODEV
-
-var defaultMounts = []*configs.Mount{
-	{
-		Source:      "proc",
-		Destination: "/proc",
-		Device:      "proc",
-		Flags:       defaultMountFlags,
-	},
-	{
-		Source:      "tmpfs",
-		Destination: "/dev",
-		Device:      "tmpfs",
-		Flags:       syscall.MS_NOSUID | syscall.MS_STRICTATIME,
-		Data:        "mode=755",
-	},
-	{
-		Source:      "devpts",
-		Destination: "/dev/pts",
-		Device:      "devpts",
-		Flags:       syscall.MS_NOSUID | syscall.MS_NOEXEC,
-		Data:        "newinstance,ptmxmode=0666,mode=0620,gid=5",
-	},
-	{
-		Device:      "tmpfs",
-		Source:      "shm",
-		Destination: "/dev/shm",
-		Data:        "mode=1777,size=65536k",
-		Flags:       defaultMountFlags,
-	},
-	{
-		Source:      "mqueue",
-		Destination: "/dev/mqueue",
-		Device:      "mqueue",
-		Flags:       defaultMountFlags,
-	},
-	{
-		Source:      "sysfs",
-		Destination: "/sys",
-		Device:      "sysfs",
-		Flags:       defaultMountFlags,
-	},
-}
 
 var emptyResp = &gpb.Empty{}
 
@@ -288,9 +188,17 @@ func (a *agentGRPC) getContainer(cid string) (*container, error) {
 	return ctr, nil
 }
 
-// Shared function between StartContainer and ExecProcess, because those expect
+// Shared function between CreateContainer and ExecProcess, because those expect
 // a process to be run.
-func (a *agentGRPC) execProcess(ctr *container, proc *process) (err error) {
+func (a *agentGRPC) execProcess(ctr *container, proc *process, createContainer bool) (err error) {
+	if ctr == nil {
+		return fmt.Errorf("Container cannot be nil")
+	}
+
+	if proc == nil {
+		return fmt.Errorf("Process cannot be nil")
+	}
+
 	// This lock is very important to avoid any race with reaper.reap().
 	// Indeed, if we don't lock this here, we could potentially get the
 	// SIGCHLD signal before the channel has been created, meaning we will
@@ -300,15 +208,14 @@ func (a *agentGRPC) execProcess(ctr *container, proc *process) (err error) {
 	a.sandbox.subreaper.RLock()
 	defer a.sandbox.subreaper.RUnlock()
 
-	if proc == nil {
-		err = ctr.container.Exec()
+	if createContainer {
+		err = ctr.container.Start(&proc.process)
 	} else {
 		err = ctr.container.Run(&(proc.process))
 	}
 	if err != nil {
 		return fmt.Errorf("Could not run process: %v", err)
 	}
-	defer proc.closePostStartFDs()
 
 	// Get process PID
 	pid, err := proc.process.Pid()
@@ -323,6 +230,22 @@ func (a *agentGRPC) execProcess(ctr *container, proc *process) (err error) {
 	// block until WaitProcess listen onto this channel.
 	a.sandbox.subreaper.setExitCodeCh(pid, proc.exitCodeCh)
 
+	return nil
+}
+
+// Shared function between CreateContainer and ExecProcess, because those expect
+// the console to be properly setup after the process has been started.
+func (a *agentGRPC) postExecProcess(ctr *container, proc *process) error {
+	if ctr == nil {
+		return fmt.Errorf("Container cannot be nil")
+	}
+
+	if proc == nil {
+		return fmt.Errorf("Process cannot be nil")
+	}
+
+	defer proc.closePostStartFDs()
+
 	// Setup terminal if enabled.
 	if proc.consoleSock != nil {
 		termMaster, err := utils.RecvFd(proc.consoleSock)
@@ -336,6 +259,8 @@ func (a *agentGRPC) execProcess(ctr *container, proc *process) (err error) {
 
 		proc.termMaster = termMaster
 	}
+
+	ctr.setProcess(proc)
 
 	return nil
 }
@@ -464,16 +389,13 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		mounts:      mountList,
 	}
 
-	err = container.container.Start(&builtProcess.process)
-	if err != nil {
+	a.sandbox.setContainer(req.ContainerId, container)
+
+	if err := a.execProcess(container, container.initProcess, true); err != nil {
 		return emptyResp, err
 	}
 
-	a.sandbox.setContainer(req.ContainerId, container)
-
-	container.setProcess(builtProcess)
-
-	return emptyResp, nil
+	return emptyResp, a.postExecProcess(container, container.initProcess)
 }
 
 func (a *agentGRPC) StartContainer(ctx context.Context, req *pb.StartContainerRequest) (*gpb.Empty, error) {
@@ -488,10 +410,10 @@ func (a *agentGRPC) StartContainer(ctx context.Context, req *pb.StartContainerRe
 	}
 
 	if status != libcontainer.Created {
-		return nil, fmt.Errorf("Container %s status %s, should be %s", req.ContainerId, status, libcontainer.Created)
+		return nil, fmt.Errorf("Container %s status %s, should be %s", req.ContainerId, status.String(), libcontainer.Created.String())
 	}
 
-	if err := a.execProcess(ctr, nil); err != nil {
+	if err := ctr.container.Exec(); err != nil {
 		return emptyResp, err
 	}
 
@@ -518,13 +440,11 @@ func (a *agentGRPC) ExecProcess(ctx context.Context, req *pb.ExecProcessRequest)
 		return emptyResp, err
 	}
 
-	if err := a.execProcess(ctr, proc); err != nil {
+	if err := a.execProcess(ctr, proc, false); err != nil {
 		return emptyResp, err
 	}
 
-	ctr.setProcess(proc)
-
-	return emptyResp, nil
+	return emptyResp, a.postExecProcess(ctr, proc)
 }
 
 func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequest) (*gpb.Empty, error) {
