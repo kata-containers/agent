@@ -82,10 +82,10 @@ func TestOCItoGRPC(t *testing.T) {
 	assert := assert.New(t)
 	var ociSpec specs.Spec
 
-	configJsonBytes, err := ioutil.ReadFile(ociConfigFile)
+	configJSONBytes, err := ioutil.ReadFile(ociConfigFile)
 	assert.NoError(err, "Could not open OCI config file")
 
-	err = json.Unmarshal(configJsonBytes, &ociSpec)
+	err = json.Unmarshal(configJSONBytes, &ociSpec)
 	assert.NoError(err, "Could not unmarshall OCI config file")
 
 	spec, err := OCItoGRPC(&ociSpec)
@@ -98,10 +98,10 @@ func TestGRPCtoOCI(t *testing.T) {
 
 	var ociSpec specs.Spec
 
-	configJsonBytes, err := ioutil.ReadFile(ociConfigFile)
+	configJSONBytes, err := ioutil.ReadFile(ociConfigFile)
 	assert.NoError(err, "Could not open OCI config file")
 
-	err = json.Unmarshal(configJsonBytes, &ociSpec)
+	err = json.Unmarshal(configJSONBytes, &ociSpec)
 	assert.NoError(err, "Could not unmarshall OCI config file")
 
 	grpcSpec, err := OCItoGRPC(&ociSpec)
@@ -117,10 +117,10 @@ func TestProcessOCItoGRPC(t *testing.T) {
 	assert := assert.New(t)
 	var ociSpec specs.Spec
 
-	configJsonBytes, err := ioutil.ReadFile(ociConfigFile)
+	configJSONBytes, err := ioutil.ReadFile(ociConfigFile)
 	assert.NoError(err, "Could not open OCI config file")
 
-	err = json.Unmarshal(configJsonBytes, &ociSpec)
+	err = json.Unmarshal(configJSONBytes, &ociSpec)
 	assert.NoError(err, "Could not unmarshall OCI config file")
 
 	process, err := ProcessOCItoGRPC(ociSpec.Process)
@@ -133,10 +133,10 @@ func TestProcessGRPCtoOCI(t *testing.T) {
 
 	var ociSpec specs.Spec
 
-	configJsonBytes, err := ioutil.ReadFile(ociConfigFile)
+	configJSONBytes, err := ioutil.ReadFile(ociConfigFile)
 	assert.NoError(err, "Could not open OCI config file")
 
-	err = json.Unmarshal(configJsonBytes, &ociSpec)
+	err = json.Unmarshal(configJSONBytes, &ociSpec)
 	assert.NoError(err, "Could not unmarshall OCI config file")
 
 	grpcProcess, err := ProcessOCItoGRPC(ociSpec.Process)

@@ -28,7 +28,7 @@
 
 [[constraint]]
   name = "github.com/stretchr/testify"
-  revision = "69483b4bd14f5845b5a1e55bca19e954e827f1d0"
+  revision = "87b1dfb5b2fa649f52695dd9eae19abe404a4308"
 
 [[constraint]]
   name = "github.com/vishvananda/netlink"

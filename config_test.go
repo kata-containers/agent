@@ -17,6 +17,8 @@ import (
 )
 
 func TestNewConfig(t *testing.T) {
+	assert := assert.New(t)
+
 	testLogLevel := logrus.DebugLevel
 
 	expectedConfig := agentConfig{
@@ -25,37 +27,45 @@ func TestNewConfig(t *testing.T) {
 
 	config := newConfig(testLogLevel)
 
-	assert.True(t, reflect.DeepEqual(config, expectedConfig),
+	assert.True(reflect.DeepEqual(config, expectedConfig),
 		"Config structures should be identical: got %+v, expecting %+v",
 		config, expectedConfig)
 }
 
 func TestParseCmdlineOptionEmptyOption(t *testing.T) {
+	assert := assert.New(t)
+
 	a := &agentConfig{}
 
 	err := a.parseCmdlineOption("")
-	assert.Nil(t, err, "%v", err)
+	assert.NoError(err, "%v", err)
 }
 
 func TestParseCmdlineOptionWrongOptionValue(t *testing.T) {
+	assert := assert.New(t)
+
 	a := &agentConfig{}
 
 	wrongOption := logLevelFlag + "=debgu"
 
 	err := a.parseCmdlineOption(wrongOption)
-	assert.Error(t, err, "Parsing should fail because wrong option %q", wrongOption)
+	assert.Errorf(err, "Parsing should fail because wrong option %q", wrongOption)
 }
 
 func TestParseCmdlineOptionWrongOptionParam(t *testing.T) {
+	assert := assert.New(t)
+
 	a := &agentConfig{}
 
 	wrongOption := "agent.lgo=debug"
 
 	err := a.parseCmdlineOption(wrongOption)
-	assert.Error(t, err, "Parsing should fail because wrong option %q", wrongOption)
+	assert.Errorf(err, "Parsing should fail because wrong option %q", wrongOption)
 }
 
 func TestParseCmdlineOptionCorrectOptions(t *testing.T) {
+	assert := assert.New(t)
+
 	a := &agentConfig{}
 
 	logFlagList := []string{"debug", "info", "warn", "error", "fatal", "panic"}
@@ -64,11 +74,13 @@ func TestParseCmdlineOptionCorrectOptions(t *testing.T) {
 		option := logLevelFlag + "=" + logFlag
 
 		err := a.parseCmdlineOption(option)
-		assert.Nil(t, err, "%v", err)
+		assert.NoError(err, "%v", err)
 	}
 }
 
 func TestParseCmdlineOptionIncorrectOptions(t *testing.T) {
+	assert := assert.New(t)
+
 	a := &agentConfig{}
 
 	logFlagList := []string{"debg", "ifo", "wan", "eror", "ftal", "pnic"}
@@ -77,37 +89,43 @@ func TestParseCmdlineOptionIncorrectOptions(t *testing.T) {
 		option := logLevelFlag + "=" + logFlag
 
 		err := a.parseCmdlineOption(option)
-		assert.Error(t, err, "Should fail because of incorrect option %q", logFlag)
+		assert.Errorf(err, "Should fail because of incorrect option %q", logFlag)
 	}
 }
 
 func TestGetConfigEmptyFileName(t *testing.T) {
+	assert := assert.New(t)
+
 	a := &agentConfig{}
 
 	err := a.getConfig("")
-	assert.Error(t, err, "Should fail because command line path is empty")
+	assert.Error(err, "Should fail because command line path is empty")
 }
 
 func TestGetConfigFilePathNotExist(t *testing.T) {
+	assert := assert.New(t)
+
 	a := &agentConfig{}
 
 	tmpFile, err := ioutil.TempFile("", "test")
-	assert.Nil(t, err, "%v", err)
+	assert.NoError(err, "%v", err)
 
 	fileName := tmpFile.Name()
 	tmpFile.Close()
 	err = os.Remove(fileName)
-	assert.Nil(t, err, "%v", err)
+	assert.NoError(err, "%v", err)
 
 	err = a.getConfig(fileName)
-	assert.Error(t, err, "Should fail because command line path does not exist")
+	assert.Error(err, "Should fail because command line path does not exist")
 }
 
 func TestGetConfig(t *testing.T) {
+	assert := assert.New(t)
+
 	a := &agentConfig{}
 
 	tmpFile, err := ioutil.TempFile("", "test")
-	assert.Nil(t, err, "%v", err)
+	assert.NoError(err, "%v", err)
 	fileName := tmpFile.Name()
 
 	tmpFile.Write([]byte(logLevelFlag + "=info"))
@@ -116,9 +134,9 @@ func TestGetConfig(t *testing.T) {
 	defer os.Remove(fileName)
 
 	err = a.getConfig(fileName)
-	assert.Nil(t, err, "%v", err)
+	assert.NoError(err, "%v", err)
 
-	assert.True(t, a.logLevel == logrus.InfoLevel,
+	assert.True(a.logLevel == logrus.InfoLevel,
 		"Log levels should be identical: got %+v, expecting %+v",
 		a.logLevel, logrus.InfoLevel)
 }
