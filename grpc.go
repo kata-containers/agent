@@ -83,8 +83,8 @@ func onlineCPUMem() error {
 				continue
 			}
 
-			cpuOnlinePath := filepath.Join(sysfsCPUOnlinePath, file.Name(), "online")
-			ioutil.WriteFile(cpuOnlinePath, []byte("1"), 0600)
+			onlinePath := filepath.Join(resource.sysfsOnlinePath, file.Name(), "online")
+			ioutil.WriteFile(onlinePath, []byte("1"), 0600)
 		}
 	}
 
