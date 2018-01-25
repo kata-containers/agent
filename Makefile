@@ -30,10 +30,12 @@ COMMIT_NO := $(shell git rev-parse HEAD 2> /dev/null || true)
 COMMIT_NO_SHORT := $(shell git rev-parse --short HEAD 2> /dev/null || true)
 COMMIT := $(if $(shell git status --porcelain --untracked-files=no),${COMMIT_NO}-dirty,${COMMIT_NO})
 VERSION_COMMIT := $(if $(COMMIT),$(VERSION)-$(COMMIT),$(VERSION))
+ARCH := $(shell go env GOARCH)
 
 # args for building agent image
 BUILDARGS := $(if $(http_proxy), --build-arg http_proxy=$(http_proxy))
 BUILDARGS += $(if $(https_proxy), --build-arg https_proxy=$(https_proxy))
+BUILDARGS += $(if $(ARCH), --build-arg arch=$(ARCH))
 AGENT_IMAGE := katacontainers/agent-dev
 AGENT_TAG := $(if $(COMMIT_NO_SHORT),$(COMMIT_NO_SHORT),dev)
 
