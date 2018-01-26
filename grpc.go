@@ -353,6 +353,7 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		CgroupName:   req.ContainerId,
 		NoNewKeyring: true,
 		Spec:         ociSpec,
+		NoPivotRoot:  a.sandbox.noPivotRoot,
 	})
 	if err != nil {
 		return emptyResp, err
