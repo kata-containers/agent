@@ -11,6 +11,7 @@ FROM centos:7
 
 ARG http_proxy
 ARG https_proxy
+ARG arch
 
 # TODO: if you have trouble downloading git repos due to cert problem
 # try to uncomment this
@@ -22,7 +23,7 @@ RUN yum makecache && yum install -y \
 
 # install GO development environment
 ENV GO_VERSION 1.9.2
-RUN curl -fkL https://storage.googleapis.com/golang/go${GO_VERSION}.linux-amd64.tar.gz \
+RUN curl -fkL https://storage.googleapis.com/golang/go${GO_VERSION}.linux-$(arch).tar.gz \
 	| tar -zxC /usr/local/
 ENV GOPATH /go
 ENV PATH $PATH:/go/bin:/usr/local/go/bin
