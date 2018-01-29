@@ -230,11 +230,12 @@ func (s *sandbox) readStdio(cid, execID string, length int, stdout bool) ([]byte
 
 	buf := make([]byte, length)
 
-	if _, err := file.Read(buf); err != nil {
+	bytesRead, err := file.Read(buf)
+	if err != nil {
 		return nil, err
 	}
 
-	return buf, nil
+	return buf[:bytesRead], nil
 }
 
 // setupSharedPidNs will reexec this binary in order to execute the C routine
