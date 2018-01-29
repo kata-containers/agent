@@ -56,14 +56,12 @@ build-image:
 proto: build-image
 	docker run -ti -v ${PWD}:/go/src/github.com/kata-containers/agent ${AGENT_IMAGE}:${AGENT_TAG} ./hack/update-generated-agent-proto.sh
 
-.PHONY: clean test go-test
+.PHONY: clean test
 clean:
 	rm -f $(TARGET) $(GENERATED_FILES)
 
-test: go-test
-
-go-test:
-	bash hack/go-test.sh
+test:
+	bash .ci/go-test.sh
 
 check: check-go-static
 
