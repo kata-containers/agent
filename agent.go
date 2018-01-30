@@ -54,6 +54,7 @@ type sandbox struct {
 
 	id           string
 	running      bool
+	noPivotRoot  bool
 	containers   map[string]*container
 	channel      channel
 	network      network
@@ -381,6 +382,64 @@ func (s *sandbox) teardown() error {
 	return s.channel.teardown()
 }
 
+type initMount struct {
+	fstype, src, dest string
+	options           []string
+}
+
+var initRootfsMounts = []initMount{
+	{"proc", "proc", "/proc", []string{"nosuid", "nodev", "noexec"}},
+	{"sysfs", "sysfs", "/sys", []string{"nosuid", "nodev", "noexec"}},
+	{"devtmpfs", "dev", "/dev", []string{"nosuid"}},
+	{"tmpfs", "tmpfs", "/dev/shm", []string{"nosuid", "nodev"}},
+	{"devpts", "devpts", "/dev/pts", []string{"nosuid", "noexec"}},
+	// mounts for cgroup, copied from rh7
+	{"tmpfs", "tmpfs", "/sys/fs/cgroup", []string{"nosuid", "nodev", "noexec", "mode=755"}},
+	{"cgroup", "cgroup", "/sys/fs/cgroup/devices", []string{"nosuid", "nodev", "noexec", "relatime", "devices"}},
+	{"cgroup", "cgroup", "/sys/fs/cgroup/cpu,cpuacct", []string{"nosuid", "nodev", "noexec", "relatime", "cpuacct", "cpu"}},
+	{"cgroup", "cgroup", "/sys/fs/cgroup/pids", []string{"nosuid", "nodev", "noexec", "relatime", "pids"}},
+	{"cgroup", "cgroup", "/sys/fs/cgroup/net_cls,net_prio", []string{"nosuid", "nodev", "noexec", "relatime", "net_prio", "net_cls"}},
+	{"cgroup", "cgroup", "/sys/fs/cgroup/blkio", []string{"nosuid", "nodev", "noexec", "relatime", "blkio"}},
+	{"cgroup", "cgroup", "/sys/fs/cgroup/freezer", []string{"nosuid", "nodev", "noexec", "relatime", "freezer"}},
+	{"cgroup", "cgroup", "/sys/fs/cgroup/cpuset", []string{"nosuid", "nodev", "noexec", "relatime", "cpuset"}},
+	{"cgroup", "cgroup", "/sys/fs/cgroup/memory", []string{"nosuid", "nodev", "noexec", "relatime", "memory"}},
+	{"cgroup", "cgroup", "/sys/fs/cgroup/perf_event", []string{"nosuid", "nodev", "noexec", "relatime", "perf_event"}},
+	//{"cgroup", "cgroup", "/sys/fs/cgroup/hugetlb", []string{"nosuid", "nodev", "noexec", "relatime", "hugetlb"}},
+	{"bind", "/sys/fs/cgroup/cpu,cpuacct", "/sys/fs/cgroup/cpu", []string{"bind"}},
+	{"bind", "/sys/fs/cgroup/cpu,cpuacct", "/sys/fs/cgroup/cpuacct", []string{"bind"}},
+	{"bind", "/sys/fs/cgroup/net_cls,net_prio", "/sys/fs/cgroup/net_cls", []string{"bind"}},
+	{"bind", "/sys/fs/cgroup/net_cls,net_prio", "/sys/fs/cgroup/net_prio", []string{"bind"}},
+	{"tmpfs", "tmpfs", "/sys/fs/cgroup", []string{"remount", "ro", "nosuid", "nodev", "noexec", "mode=755"}},
+}
+
+// initAgentAsInit will do the initializations such as setting up the rootfs
+// when this agent has been run as the init process.
+func initAgentAsInit() error {
+	agentLog.Infof("initAgentAsInit(), agent version: %s\n", version)
+
+	for _, m := range initRootfsMounts {
+		if err := os.MkdirAll(m.dest, os.FileMode(0755)); err != nil {
+			return err
+		}
+		if flags, options, err := parseMountFlagsAndOptions(m.options); err != nil {
+			return fmt.Errorf("Could parseMountFlagsAndOptions(%v)", m.options)
+		} else if err = syscall.Mount(m.src, m.dest, m.fstype, uintptr(flags), options); err != nil {
+			return fmt.Errorf("Could not mount %v to %v: %v", m.src, m.dest, err)
+		}
+	}
+	if err := syscall.Unlink("/dev/ptmx"); err != nil {
+		return err
+	}
+	if err := syscall.Symlink("/dev/pts/ptmx", "/dev/ptmx"); err != nil {
+		return err
+	}
+	syscall.Setsid()
+	syscall.Syscall(syscall.SYS_IOCTL, os.Stdin.Fd(), syscall.TIOCSCTTY, 1)
+	os.Setenv("PATH", "/bin:/sbin/:/usr/bin/:/usr/sbin/")
+
+	return nil
+}
+
 func init() {
 	if len(os.Args) > 1 && os.Args[1] == "init" {
 		runtime.GOMAXPROCS(1)
@@ -422,6 +481,17 @@ func main() {
 		subreaper: &reaper{
 			exitCodeChans: make(map[int]chan<- int),
 		},
+	}
+
+	// Check if this agent has been run as the init process.
+	if os.Getpid() == 1 {
+		// pivot_root won't work, see
+		// Documention/filesystem/ramfs-rootfs-initramfs.txt
+		s.noPivotRoot = true
+		if err = initAgentAsInit(); err != nil {
+			agentLog.WithError(err).Error("initAgentAsInit() failed")
+			panic(fmt.Sprintf("initAgentAsInit() error: %s", err))
+		}
 	}
 
 	if err = s.initLogger(); err != nil {
