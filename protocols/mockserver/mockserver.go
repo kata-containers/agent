@@ -286,7 +286,37 @@ func (m *mockServer) DestroySandbox(ctx context.Context, req *pb.DestroySandboxR
 	return &types.Empty{}, nil
 }
 
-func (m *mockServer) AddInterface(context.Context, *pb.AddInterfaceRequest) (*types.Empty, error) {
+func (m *mockServer) AddInterface(context.Context, *pb.AddInterfaceRequest) (*pb.Interface, error) {
+	mockLock.RLock()
+	defer mockLock.RUnlock()
+	if err := m.podExist(); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+func (m *mockServer) RemoveInterface(context.Context, *pb.RemoveInterfaceRequest) (*pb.Interface, error) {
+	mockLock.RLock()
+	defer mockLock.RUnlock()
+	if err := m.podExist(); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+func (m *mockServer) UpdateInterface(ctx context.Context, req *pb.UpdateInterfaceRequest) (*pb.Interface, error) {
+	mockLock.RLock()
+	defer mockLock.RUnlock()
+	if err := m.podExist(); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+func (m *mockServer) AddRoute(ctx context.Context, req *pb.AddRouteRequest) (*types.Empty, error) {
 	mockLock.RLock()
 	defer mockLock.RUnlock()
 	if err := m.podExist(); err != nil {
@@ -296,7 +326,7 @@ func (m *mockServer) AddInterface(context.Context, *pb.AddInterfaceRequest) (*ty
 	return &types.Empty{}, nil
 }
 
-func (m *mockServer) RemoveInterface(context.Context, *pb.RemoveInterfaceRequest) (*types.Empty, error) {
+func (m *mockServer) UpdateRoute(ctx context.Context, req *pb.UpdateRouteRequest) (*types.Empty, error) {
 	mockLock.RLock()
 	defer mockLock.RUnlock()
 	if err := m.podExist(); err != nil {
@@ -306,7 +336,7 @@ func (m *mockServer) RemoveInterface(context.Context, *pb.RemoveInterfaceRequest
 	return &types.Empty{}, nil
 }
 
-func (m *mockServer) RemoveRoute(context.Context, *pb.RouteRequest) (*types.Empty, error) {
+func (m *mockServer) RemoveRoute(context.Context, *pb.RemoveRouteRequest) (*types.Empty, error) {
 	mockLock.RLock()
 	defer mockLock.RUnlock()
 	if err := m.podExist(); err != nil {
@@ -315,27 +345,6 @@ func (m *mockServer) RemoveRoute(context.Context, *pb.RouteRequest) (*types.Empt
 
 	return &types.Empty{}, nil
 }
-
-func (m *mockServer) UpdateInterface(ctx context.Context, req *pb.UpdateInterfaceRequest) (*types.Empty, error) {
-	mockLock.RLock()
-	defer mockLock.RUnlock()
-	if err := m.podExist(); err != nil {
-		return nil, err
-	}
-
-	return &types.Empty{}, nil
-}
-
-func (m *mockServer) AddRoute(ctx context.Context, req *pb.RouteRequest) (*types.Empty, error) {
-	mockLock.RLock()
-	defer mockLock.RUnlock()
-	if err := m.podExist(); err != nil {
-		return nil, err
-	}
-
-	return &types.Empty{}, nil
-}
-
 func (m *mockServer) OnlineCPUMem(ctx context.Context, req *pb.OnlineCPUMemRequest) (*types.Empty, error) {
 	mockLock.RLock()
 	defer mockLock.RUnlock()
