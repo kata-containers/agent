@@ -502,21 +502,17 @@ func (a *agentGRPC) WaitProcess(ctx context.Context, req *pb.WaitProcessRequest)
 		return &pb.WaitProcessResponse{}, err
 	}
 
-	defer func() {
-		proc.closePostExitFDs()
+	select {
+	case exitCode := <-proc.exitCodeCh:
 		ctr.deleteProcess(proc.id)
-	}()
-
-	// Using helper function wait() to deal with the subreaper.
-	libContProcess := (*reaperLibcontainerProcess)(&(proc.process))
-	exitCode, err := a.sandbox.subreaper.wait(proc.exitCodeCh, libContProcess)
-	if err != nil {
-		return &pb.WaitProcessResponse{}, err
+		proc.process.Wait()
+		proc.closePostExitFDs()
+		return &pb.WaitProcessResponse{
+			Status: int32(exitCode),
+		}, nil
+	case <-ctx.Done():
+		return &pb.WaitProcessResponse{}, ctx.Err()
 	}
-
-	return &pb.WaitProcessResponse{
-		Status: int32(exitCode),
-	}, nil
 }
 
 func (a *agentGRPC) RemoveContainer(ctx context.Context, req *pb.RemoveContainerRequest) (*gpb.Empty, error) {
