@@ -504,9 +504,17 @@ func (a *agentGRPC) WaitProcess(ctx context.Context, req *pb.WaitProcessRequest)
 
 	select {
 	case exitCode := <-proc.exitCodeCh:
-		ctr.deleteProcess(proc)
-		proc.process.Wait()
-		proc.closePostExitFDs()
+		// proc.process.Wait() & proc.closePostExitFDs()
+		// should be called only once.
+		if ctr.deleteProcess(proc) {
+			proc.process.Wait()
+			proc.closePostExitFDs()
+		}
+		// There might be multiple WaitProcess() requested before
+		// the process exits. All of them should be able to get the
+		// exitCode. So send the exitCode back to proc.exitCodeCh
+		// for them.
+		proc.exitCodeCh <- exitCode
 		return &pb.WaitProcessResponse{
 			Status: int32(exitCode),
 		}, nil
