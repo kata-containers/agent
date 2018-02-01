@@ -504,7 +504,7 @@ func (a *agentGRPC) WaitProcess(ctx context.Context, req *pb.WaitProcessRequest)
 
 	select {
 	case exitCode := <-proc.exitCodeCh:
-		ctr.deleteProcess(proc.id)
+		ctr.deleteProcess(proc)
 		proc.process.Wait()
 		proc.closePostExitFDs()
 		return &pb.WaitProcessResponse{
