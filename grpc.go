@@ -323,6 +323,26 @@ func (a *agentGRPC) updateContainerConfig(spec *specs.Spec, config *configs.Conf
 	return a.updateContainerConfigPrivileges(spec, config)
 }
 
+func addDevices(devices []*pb.Device, spec *pb.Spec) error {
+	for _, device := range devices {
+		if device == nil {
+			continue
+		}
+
+		devHandler, ok := deviceDriversHandlerList[device.Type]
+		if !ok {
+			return grpcStatus.Errorf(codes.InvalidArgument,
+				"Unknown device type %q", device.Type)
+		}
+
+		if err := devHandler(*device, spec); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainerRequest) (*gpb.Empty, error) {
 	if a.sandbox.running == false {
 		return emptyResp, grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started, impossible to run a new container")
@@ -336,6 +356,10 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 	// looking for hidden devices
 	if err := ioutil.WriteFile(pciBusRescanFile, []byte("1"), pciBusMode); err != nil {
 		agentLog.WithError(err).Warn("Could not rescan PCI bus")
+	}
+
+	if err := addDevices(req.Devices, req.OCI); err != nil {
+		return emptyResp, err
 	}
 
 	mountList, err := addMounts(req.Storages)
