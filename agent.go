@@ -483,6 +483,10 @@ func main() {
 		},
 	}
 
+	if err = s.initLogger(); err != nil {
+		return
+	}
+
 	// Check if this agent has been run as the init process.
 	if os.Getpid() == 1 {
 		// pivot_root won't work, see
@@ -492,10 +496,6 @@ func main() {
 			agentLog.WithError(err).Error("initAgentAsInit() failed")
 			panic(fmt.Sprintf("initAgentAsInit() error: %s", err))
 		}
-	}
-
-	if err = s.initLogger(); err != nil {
-		return
 	}
 
 	// Set agent as subreaper.

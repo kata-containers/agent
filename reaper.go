@@ -64,7 +64,7 @@ func (r *reaper) reap() error {
 		rus unix.Rusage
 	)
 
-	// When running new processes, libcontainer expects to wait
+	// When running new processes, agent expects to wait
 	// for the first process actually spawning the container.
 	// This lock allows any code starting a new process to take
 	// the lock prior to the start of this new process, preventing
