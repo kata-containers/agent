@@ -21,8 +21,6 @@ import (
 const (
 	// MockServerVersion specifies the version of the fake server
 	MockServerVersion = "mock.0.1"
-
-	podStartingPid = 100
 )
 
 // If an rpc changes any pod/container/process, take a write lock.

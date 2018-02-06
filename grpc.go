@@ -51,8 +51,6 @@ type onlineResource struct {
 	regexpPattern   string
 }
 
-var defaultMountFlags = unix.MS_NOEXEC | unix.MS_NOSUID | unix.MS_NODEV
-
 var emptyResp = &gpb.Empty{}
 
 func onlineCPUMem() error {
