@@ -26,8 +26,7 @@ type network struct {
 	routesLock sync.Mutex
 	routes     []*pb.Route
 
-	dnsLock sync.Mutex
-	dns     []string
+	dns []string
 }
 
 ////////////////
