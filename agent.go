@@ -415,7 +415,7 @@ var initRootfsMounts = []initMount{
 // initAgentAsInit will do the initializations such as setting up the rootfs
 // when this agent has been run as the init process.
 func initAgentAsInit() error {
-	agentLog.Infof("initAgentAsInit(), agent version: %s\n", version)
+	fmt.Printf("initAgentAsInit(), agent version: %s\n", version)
 
 	for _, m := range initRootfsMounts {
 		if err := os.MkdirAll(m.dest, os.FileMode(0755)); err != nil {
@@ -465,6 +465,13 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Check if this agent has been run as the init process.
+	if os.Getpid() == 1 {
+		if err = initAgentAsInit(); err != nil {
+			panic(fmt.Sprintf("initAgentAsInit() error: %s", err))
+		}
+	}
+
 	defer func() {
 		if err != nil {
 			agentLog.Error(err)
@@ -478,6 +485,9 @@ func main() {
 	s := &sandbox{
 		containers: make(map[string]*container),
 		running:    false,
+		// pivot_root won't work for init, see
+		// Documention/filesystem/ramfs-rootfs-initramfs.txt
+		noPivotRoot: os.Getpid() == 1,
 		subreaper: &reaper{
 			exitCodeChans: make(map[int]chan<- int),
 		},
@@ -485,17 +495,6 @@ func main() {
 
 	if err = s.initLogger(); err != nil {
 		return
-	}
-
-	// Check if this agent has been run as the init process.
-	if os.Getpid() == 1 {
-		// pivot_root won't work, see
-		// Documention/filesystem/ramfs-rootfs-initramfs.txt
-		s.noPivotRoot = true
-		if err = initAgentAsInit(); err != nil {
-			agentLog.WithError(err).Error("initAgentAsInit() failed")
-			panic(fmt.Sprintf("initAgentAsInit() error: %s", err))
-		}
 	}
 
 	// Set agent as subreaper.
