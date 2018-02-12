@@ -323,7 +323,7 @@ func (s *sandbox) setSubreaper() error {
 }
 
 func (s *sandbox) initLogger() error {
-	agentLog.Logger.Formatter = &logrus.TextFormatter{TimestampFormat: time.RFC3339Nano}
+	agentLog.Logger.Formatter = &logrus.TextFormatter{DisableColors: true, TimestampFormat: time.RFC3339Nano}
 
 	config := newConfig(defaultLogLevel)
 	if err := config.getConfig(kernelCmdlineFile); err != nil {
