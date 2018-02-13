@@ -716,44 +716,28 @@ func (a *agentGRPC) DestroySandbox(ctx context.Context, req *pb.DestroySandboxRe
 	return emptyResp, nil
 }
 
-func (a *agentGRPC) AddInterface(ctx context.Context, req *pb.AddInterfaceRequest) (*gpb.Empty, error) {
-	if err := a.sandbox.addInterface(nil, req.Interface); err != nil {
-		return emptyResp, err
-	}
+func (a *agentGRPC) AddInterface(ctx context.Context, req *pb.AddInterfaceRequest) (*pb.Interface, error) {
+	return a.sandbox.addInterface(nil, req.Interface)
+}
 
+func (a *agentGRPC) UpdateInterface(ctx context.Context, req *pb.UpdateInterfaceRequest) (*pb.Interface, error) {
+	return a.sandbox.updateInterface(nil, req.Interface)
+}
+
+func (a *agentGRPC) RemoveInterface(ctx context.Context, req *pb.RemoveInterfaceRequest) (*pb.Interface, error) {
+	return a.sandbox.removeInterface(nil, req.Interface)
+}
+
+func (a *agentGRPC) AddRoute(ctx context.Context, req *pb.AddRouteRequest) (*gpb.Empty, error) {
+	return emptyResp, a.sandbox.addRoute(nil, req.Route)
+}
+
+func (a *agentGRPC) UpdateRoute(ctx context.Context, req *pb.UpdateRouteRequest) (*gpb.Empty, error) {
 	return emptyResp, nil
 }
 
-func (a *agentGRPC) RemoveInterface(ctx context.Context, req *pb.RemoveInterfaceRequest) (*gpb.Empty, error) {
-	if err := a.sandbox.removeInterface(nil, req.Name); err != nil {
-		return emptyResp, err
-	}
-
-	return emptyResp, nil
-}
-
-func (a *agentGRPC) UpdateInterface(ctx context.Context, req *pb.UpdateInterfaceRequest) (*gpb.Empty, error) {
-	if err := a.sandbox.updateInterface(nil, req.Interface, req.Type); err != nil {
-		return emptyResp, err
-	}
-
-	return emptyResp, nil
-}
-
-func (a *agentGRPC) AddRoute(ctx context.Context, req *pb.RouteRequest) (*gpb.Empty, error) {
-	if err := a.sandbox.addRoute(nil, req.Route); err != nil {
-		return emptyResp, err
-	}
-
-	return emptyResp, nil
-}
-
-func (a *agentGRPC) RemoveRoute(ctx context.Context, req *pb.RouteRequest) (*gpb.Empty, error) {
-	if err := a.sandbox.removeRoute(nil, req.Route); err != nil {
-		return emptyResp, err
-	}
-
-	return emptyResp, nil
+func (a *agentGRPC) RemoveRoute(ctx context.Context, req *pb.RemoveRouteRequest) (*gpb.Empty, error) {
+	return emptyResp, a.sandbox.removeRoute(nil, req.Route)
 }
 
 func (a *agentGRPC) OnlineCPUMem(ctx context.Context, req *pb.OnlineCPUMemRequest) (*gpb.Empty, error) {

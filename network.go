@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2017 Intel Corporation
+// Copyright (c) 2018 Intel Corporation
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -53,73 +53,66 @@ func linkByHwAddr(netHandle *netlink.Handle, hwAddr string) (netlink.Link, error
 	return nil, fmt.Errorf("Could not find the link corresponding to HwAddr %q", hwAddr)
 }
 
-func updateInterfaceAddrs(netHandle *netlink.Handle, link netlink.Link, addrs []*pb.IPAddress, add bool) error {
-	for _, addr := range addrs {
-		netlinkAddrStr := fmt.Sprintf("%s/%s", addr.Address, addr.Mask)
+func updateLink(netHandle *netlink.Handle, link netlink.Link, iface *pb.Interface) error {
 
+	// As a first step, clear out any existing addresses associated with the link:
+	linkIPs, err := netlink.AddrList(link, netlink.FAMILY_V4)
+	if err != nil {
+		return fmt.Errorf("Could not check initial addresses for the link: %v", err)
+	}
+	for _, linkIP := range linkIPs {
+		if err := netlink.AddrDel(link, &linkIP); err != nil {
+			return fmt.Errorf("Could not delete existing addresses: %v", err)
+		}
+	}
+
+	// Set desired IP addresses:
+	for _, addr := range iface.IPAddresses {
+		netlinkAddrStr := fmt.Sprintf("%s/%s", addr.Address, addr.Mask)
 		netlinkAddr, err := netlink.ParseAddr(netlinkAddrStr)
+
 		if err != nil {
 			return fmt.Errorf("Could not parse %q: %v", netlinkAddrStr, err)
 		}
 
-		if add {
-			if err := netHandle.AddrAdd(link, netlinkAddr); err != nil {
-				return fmt.Errorf("Could not add %s to interface %v: %v",
-					netlinkAddrStr, link, err)
-			}
-		} else {
-			if err := netHandle.AddrDel(link, netlinkAddr); err != nil {
-				return fmt.Errorf("Could not remove %s from interface %v: %v",
-					netlinkAddrStr, link, err)
-			}
+		if err := netHandle.AddrAdd(link, netlinkAddr); err != nil {
+			return fmt.Errorf("Could not add %s to interface %v: %v",
+				netlinkAddrStr, link, err)
 		}
+	}
+
+	// set the interface name:
+	if err := netHandle.LinkSetName(link, iface.Name); err != nil {
+		return fmt.Errorf("Could not set name %s for interface %v: %v", iface.Name, link, err)
+	}
+
+	// set the interface MTU:
+	if err := netHandle.LinkSetMTU(link, int(iface.Mtu)); err != nil {
+		return fmt.Errorf("Could not set MTU %d for interface %v: %v", iface.Mtu, link, err)
 	}
 
 	return nil
 }
 
-func updateInterfaceName(netHandle *netlink.Handle, link netlink.Link, name string) error {
-	return netHandle.LinkSetName(link, name)
-}
-
-func updateInterfaceMTU(netHandle *netlink.Handle, link netlink.Link, mtu int) error {
-	return netHandle.LinkSetMTU(link, mtu)
-}
-
-func updateLink(netHandle *netlink.Handle, link netlink.Link, iface *pb.Interface, actionType pb.UpdateType) error {
-	switch actionType {
-	case pb.UpdateType_AddIP:
-		return updateInterfaceAddrs(netHandle, link, iface.IpAddresses, true)
-	case pb.UpdateType_RemoveIP:
-		return updateInterfaceAddrs(netHandle, link, iface.IpAddresses, false)
-	case pb.UpdateType_Name:
-		return updateInterfaceName(netHandle, link, iface.Name)
-	case pb.UpdateType_MTU:
-		return updateInterfaceMTU(netHandle, link, int(iface.Mtu))
-	default:
-		return fmt.Errorf("Unknown UpdateType %v", actionType)
-	}
-}
-
-func (s *sandbox) addInterface(netHandle *netlink.Handle, iface *pb.Interface) (err error) {
+func (s *sandbox) addInterface(netHandle *netlink.Handle, iface *pb.Interface) (resultingIfc *pb.Interface, err error) {
 	s.network.ifacesLock.Lock()
 	defer s.network.ifacesLock.Unlock()
 
 	if netHandle == nil {
 		netHandle, err = netlink.NewHandle()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		defer netHandle.Delete()
 	}
 
 	if iface == nil {
-		return fmt.Errorf("Provided interface is nil")
+		return nil, fmt.Errorf("Provided interface is nil")
 	}
 
 	hwAddr, err := net.ParseMAC(iface.HwAddr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	link := &netlink.Device{
@@ -133,73 +126,71 @@ func (s *sandbox) addInterface(netHandle *netlink.Handle, iface *pb.Interface) (
 
 	// Create the link.
 	if err := netHandle.LinkAdd(link); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Set the link up.
 	if err := netHandle.LinkSetUp(link); err != nil {
-		return err
+		return iface, err
 	}
 
 	// Update sandbox interface list.
 	s.network.ifaces = append(s.network.ifaces, iface)
 
-	return nil
+	return iface, nil
 }
-
-func (s *sandbox) removeInterface(netHandle *netlink.Handle, ifaceName string) (err error) {
+func (s *sandbox) removeInterface(netHandle *netlink.Handle, iface *pb.Interface) (resultingIfc *pb.Interface, err error) {
 	s.network.ifacesLock.Lock()
 	defer s.network.ifacesLock.Unlock()
 
 	if netHandle == nil {
 		netHandle, err = netlink.NewHandle()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		defer netHandle.Delete()
 	}
 
-	// Find the interface by name.
-	link, err := netHandle.LinkByName(ifaceName)
+	// Find the interface by hardware address.
+	link, err := linkByHwAddr(netHandle, iface.HwAddr)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("removeInterface: %v", err)
 	}
 
 	// Set the link down.
 	if err := netHandle.LinkSetDown(link); err != nil {
-		return err
+		return iface, err
 	}
 
 	// Delete the link.
 	if err := netHandle.LinkDel(link); err != nil {
-		return err
+		return iface, err
 	}
 
 	// Update sandbox interface list.
-	for idx, iface := range s.network.ifaces {
-		if iface.Name == ifaceName {
+	for idx, sIface := range s.network.ifaces {
+		if sIface.Name == iface.Name {
 			s.network.ifaces = append(s.network.ifaces[:idx], s.network.ifaces[idx+1:]...)
 			break
 		}
 	}
 
-	return nil
+	return nil, nil
 }
 
-func (s *sandbox) updateInterface(netHandle *netlink.Handle, iface *pb.Interface, actionType pb.UpdateType) (err error) {
+func (s *sandbox) updateInterface(netHandle *netlink.Handle, iface *pb.Interface) (resultingIfc *pb.Interface, err error) {
 	s.network.ifacesLock.Lock()
 	defer s.network.ifacesLock.Unlock()
-
 	if netHandle == nil {
 		netHandle, err = netlink.NewHandle()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		defer netHandle.Delete()
 	}
 
 	if iface == nil {
-		return fmt.Errorf("Provided interface is nil")
+		return nil, fmt.Errorf("Provided interface is nil")
 	}
 
 	fieldLogger := agentLog.WithFields(logrus.Fields{
@@ -214,18 +205,10 @@ func (s *sandbox) updateInterface(netHandle *netlink.Handle, iface *pb.Interface
 		// Find the interface link from its hardware address.
 		link, err = linkByHwAddr(netHandle, iface.HwAddr)
 		if err != nil {
-			return err
-		}
-	} else if iface.Device != "" {
-		fieldLogger.Info("Getting interface from name")
-
-		// Find the interface link from its name.
-		link, err = netHandle.LinkByName(iface.Device)
-		if err != nil {
-			return err
+			return nil, fmt.Errorf("updateInterface: %v", err)
 		}
 	} else {
-		return fmt.Errorf("Interface HwAddr and Name are both empty")
+		return nil, fmt.Errorf("Interface HwAddr empty")
 	}
 
 	fieldLogger.WithField("link", fmt.Sprintf("%+v", link)).Info("Link found")
@@ -235,15 +218,55 @@ func (s *sandbox) updateInterface(netHandle *netlink.Handle, iface *pb.Interface
 		// The link is up, makes sure we get it down before
 		// doing any modification.
 		if err := netHandle.LinkSetDown(link); err != nil {
-			return err
+			goto error_case
 		}
 	}
 
-	if err := updateLink(netHandle, link, iface, actionType); err != nil {
-		return err
+	err = updateLink(netHandle, link, iface)
+
+error_case:
+	// in the event that an error occurred during the interface update, make sure we return
+	// the resulting state instead of the requested state
+	if err != nil {
+		resultingIfc = getInterface(netHandle, link)
+	} else {
+		resultingIfc = iface
 	}
 
-	return netHandle.LinkSetUp(link)
+	//Put link back into up state
+	retErr := netHandle.LinkSetUp(link)
+
+	// If there was an error updating the interface, give that error precedence
+	// over a potentional LinkSetUp error.
+	if err != nil {
+		retErr = err
+	}
+
+	return resultingIfc, retErr
+}
+
+// getInterface will retrieve interface details from the provided link
+func getInterface(netHandle *netlink.Handle, link netlink.Link) *pb.Interface {
+	var ifc pb.Interface
+	linkAttrs := link.Attrs()
+	ifc.Name = linkAttrs.Name
+	ifc.Mtu = uint64(linkAttrs.MTU)
+	ifc.HwAddr = linkAttrs.HardwareAddr.String()
+
+	addrs, err := netHandle.AddrList(link, netlink.FAMILY_V4)
+	if err != nil {
+		agentLog.WithError(err).Error("getInterface() failed")
+	}
+	for _, addr := range addrs {
+		netMask, _ := addr.Mask.Size()
+		m := pb.IPAddress{
+			Address: addr.IP.String(),
+			Mask:    fmt.Sprintf("%d", netMask),
+		}
+		ifc.IPAddresses = append(ifc.IPAddresses, &m)
+	}
+
+	return &ifc
 }
 
 ////////////
@@ -286,7 +309,9 @@ func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *pb.Route, add bo
 	}
 
 	var dst *net.IPNet
-	if route.Dest != "default" {
+	if route.Dest == "default" || route.Dest == "" {
+		dst = nil
+	} else {
 		_, dst, err = net.ParseCIDR(route.Dest)
 		if err != nil {
 			return fmt.Errorf("Could not parse route destination %s: %v", route.Dest, err)
@@ -357,7 +382,7 @@ func (s *sandbox) removeNetwork() error {
 	}
 
 	for _, iface := range s.network.ifaces {
-		if err := s.removeInterface(netHandle, iface.Name); err != nil {
+		if _, err := s.removeInterface(netHandle, iface); err != nil {
 			return fmt.Errorf("Could not remove network interface %v: %v",
 				iface, err)
 		}
