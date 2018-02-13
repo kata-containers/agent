@@ -736,6 +736,10 @@ func (a *agentGRPC) UpdateRoute(ctx context.Context, req *pb.UpdateRouteRequest)
 	return emptyResp, nil
 }
 
+func (a *agentGRPC) UpdateRoutes(ctx context.Context, req *pb.UpdateRoutesRequest) (*pb.Routes, error) {
+	return a.sandbox.updateRoutes(nil, req.Routes)
+}
+
 func (a *agentGRPC) RemoveRoute(ctx context.Context, req *pb.RemoveRouteRequest) (*gpb.Empty, error) {
 	return emptyResp, a.sandbox.removeRoute(nil, req.Route)
 }

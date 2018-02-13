@@ -17,6 +17,10 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
+const (
+	emptyRouteAddr = "<nil>"
+)
+
 // Network fully describes a sandbox network with its interfaces, routes and dns
 // related information.
 type network struct {
@@ -273,6 +277,132 @@ func getInterface(netHandle *netlink.Handle, link netlink.Link) *pb.Interface {
 // Routes //
 ////////////
 
+//updateRoutes will take requestedRoutes and create netlink routes, with a goal of creating a final
+// state which matches the requested routes.  In doing this, preesxisting non-loopback routes will be
+// removed from the network.  If an error occurs, this function returns the list of routes in
+// gRPC-route format at the time of failure
+func (s *sandbox) updateRoutes(netHandle *netlink.Handle, requestedRoutes *pb.Routes) (resultingRoutes *pb.Routes, err error) {
+
+	if netHandle == nil {
+		netHandle, err = netlink.NewHandle()
+		if err != nil {
+			return nil, err
+		}
+		defer netHandle.Delete()
+	}
+
+	//If we are returning an error, return the current routes on the system
+	defer func() {
+		if err != nil {
+			resultingRoutes, _ = getCurrentRoutes(netHandle)
+		}
+	}()
+
+	//
+	// First things first, let's blow away all the existing routes.  The updateRoutes function
+	// is designed to be declarative, so we will attempt to create state matching what is
+	// requested, and in the event that we fail to do so, will return the error and final state.
+	//
+
+	initRouteList, err := netHandle.RouteList(nil, netlink.FAMILY_ALL)
+	if err != nil {
+		return nil, err
+	}
+	for _, initRoute := range initRouteList {
+		// don't delete routes associated with lo:
+		link, _ := netHandle.LinkByIndex(initRoute.LinkIndex)
+		if link.Attrs().Name == "lo" || link.Attrs().Name == "::1" {
+			continue
+		}
+
+		err = netHandle.RouteDel(&initRoute)
+		if err != nil {
+			//If there was an error deleting some of the initial routes,
+			//return the error and the current routes on the system via
+			//the defer function
+			return
+		}
+	}
+
+	//
+	// Set each of the requested routes
+	//
+	// First make sure we set the interfaces initial routes, as otherwise we
+	// won't be able to access the gateway
+	for _, reqRoute := range requestedRoutes.Routes {
+		if reqRoute.Gateway == "" {
+			err = s.updateRoute(netHandle, reqRoute, true)
+			if err != nil {
+				agentLog.WithError(err).Error("update Route failed")
+				//If there was an error setting the route, return the error
+				//and the current routes on the system via the defer func
+				return
+			}
+
+		}
+	}
+	// Take a second pass and apply the routes which include a gateway
+	for _, reqRoute := range requestedRoutes.Routes {
+		if reqRoute.Gateway != "" {
+			err = s.updateRoute(netHandle, reqRoute, true)
+			if err != nil {
+				agentLog.WithError(err).Error("update Route failed")
+				//If there was an error setting the route, return the
+				//error and the current routes on the system via defer
+				return
+			}
+		}
+	}
+
+	return requestedRoutes, err
+}
+
+//getCurrentRoutes is a helper to gather existing routes in gRPC protocol format
+func getCurrentRoutes(netHandle *netlink.Handle) (*pb.Routes, error) {
+
+	if netHandle == nil {
+		netHandle, err := netlink.NewHandle()
+		if err != nil {
+			return nil, err
+		}
+		defer netHandle.Delete()
+	}
+
+	var routes pb.Routes
+
+	finalRouteList, err := netHandle.RouteList(nil, netlink.FAMILY_ALL)
+	if err != nil {
+		return &routes, err
+	}
+
+	for _, route := range finalRouteList {
+		var r pb.Route
+		if route.Dst != nil {
+			r.Dest = route.Dst.String()
+		}
+
+		if route.Gw != nil {
+			r.Gateway = route.Gw.String()
+		}
+
+		if route.Src != nil {
+			r.Source = route.Src.String()
+		}
+
+		r.Scope = uint32(route.Scope)
+
+		link, err := netHandle.LinkByIndex(route.LinkIndex)
+		if err != nil {
+			return &routes, err
+		}
+		r.Device = link.Attrs().Name
+
+		routes.Routes = append(routes.Routes, &r)
+	}
+
+	return &routes, nil
+}
+
 func (s *sandbox) addRoute(netHandle *netlink.Handle, route *pb.Route) error {
 	return s.updateRoute(netHandle, route, true)
 }
@@ -321,7 +451,9 @@ func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *pb.Route, add bo
 	netRoute := &netlink.Route{
 		LinkIndex: linkAttrs.Index,
 		Dst:       dst,
+		Src:       net.ParseIP(route.Source),
 		Gw:        net.ParseIP(route.Gateway),
+		Scope:     netlink.Scope(route.Scope),
 	}
 
 	if add {
