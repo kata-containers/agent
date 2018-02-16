@@ -220,3 +220,29 @@ func TestDeleteContainer(t *testing.T) {
 	_, exist := s.containers[testContainerID]
 	assert.False(t, exist, "Process entry should not exist")
 }
+
+func TestGetProcessFromSandbox(t *testing.T) {
+	s := &sandbox{
+		running:    true,
+		containers: make(map[string]*container),
+	}
+
+	c := &container{
+		id:        testContainerID,
+		processes: make(map[string]*process),
+	}
+
+	p := &process{
+		id: testExecID,
+	}
+
+	c.processes[testExecID] = p
+	s.containers[testContainerID] = c
+
+	proc, _, err := s.getProcess(testContainerID, testExecID)
+	assert.Nil(t, err, "%v", err)
+
+	assert.True(t, reflect.DeepEqual(p, proc),
+		"Process structures should be identical: got %+v, expecting %+v",
+		proc, p)
+}

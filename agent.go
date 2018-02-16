@@ -195,15 +195,12 @@ func (s *sandbox) getProcess(cid, execID string) (*process, *container, error) {
 		return nil, nil, err
 	}
 
-	status, err := ctr.container.Status()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if status == libcontainer.Stopped {
-		return nil, nil, fmt.Errorf("Container %s is stopped", cid)
-	}
-
+	// A container being in stopped state is not a valid reason for not
+	// accepting a call to getProcess(). Indeed, we want to make sure a
+	// shim can connect after the process has already terminated. Some
+	// processes have a very short lifetime and the shim might end up
+	// calling into WaitProcess() after this happened. This does not mean
+	// we cannot retrieve the output and the exit code from the shim.
 	proc, err := ctr.getProcess(execID)
 	if err != nil {
 		return nil, nil, err
