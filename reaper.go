@@ -7,7 +7,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"sync"
@@ -15,6 +14,8 @@ import (
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
+	"google.golang.org/grpc/codes"
+	grpcStatus "google.golang.org/grpc/status"
 )
 
 type reaper struct {
@@ -38,7 +39,7 @@ func (r *reaper) getExitCodeCh(pid int) (chan<- int, error) {
 
 	exitCodeCh, exist := r.exitCodeChans[pid]
 	if !exist {
-		return nil, fmt.Errorf("PID %d not found", pid)
+		return nil, grpcStatus.Errorf(codes.NotFound, "PID %d not found", pid)
 	}
 
 	return exitCodeCh, nil

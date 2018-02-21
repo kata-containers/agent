@@ -25,6 +25,9 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 	"golang.org/x/sys/unix"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	grpcStatus "google.golang.org/grpc/status"
 )
 
 type agentGRPC struct {
@@ -175,7 +178,7 @@ func (a *agentGRPC) Version(ctx context.Context, req *pb.CheckRequest) (*pb.Vers
 
 func (a *agentGRPC) getContainer(cid string) (*container, error) {
 	if a.sandbox.running == false {
-		return nil, fmt.Errorf("Sandbox not started")
+		return nil, grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started")
 	}
 
 	ctr, err := a.sandbox.getContainer(cid)
@@ -190,11 +193,11 @@ func (a *agentGRPC) getContainer(cid string) (*container, error) {
 // a process to be run.
 func (a *agentGRPC) execProcess(ctr *container, proc *process, createContainer bool) (err error) {
 	if ctr == nil {
-		return fmt.Errorf("Container cannot be nil")
+		return grpcStatus.Error(codes.InvalidArgument, "Container cannot be nil")
 	}
 
 	if proc == nil {
-		return fmt.Errorf("Process cannot be nil")
+		return grpcStatus.Error(codes.InvalidArgument, "Process cannot be nil")
 	}
 
 	// This lock is very important to avoid any race with reaper.reap().
@@ -212,7 +215,7 @@ func (a *agentGRPC) execProcess(ctr *container, proc *process, createContainer b
 		err = ctr.container.Run(&(proc.process))
 	}
 	if err != nil {
-		return fmt.Errorf("Could not run process: %v", err)
+		return grpcStatus.Errorf(codes.Internal, "Could not run process: %v", err)
 	}
 
 	// Get process PID
@@ -235,11 +238,11 @@ func (a *agentGRPC) execProcess(ctr *container, proc *process, createContainer b
 // the console to be properly setup after the process has been started.
 func (a *agentGRPC) postExecProcess(ctr *container, proc *process) error {
 	if ctr == nil {
-		return fmt.Errorf("Container cannot be nil")
+		return grpcStatus.Error(codes.InvalidArgument, "Container cannot be nil")
 	}
 
 	if proc == nil {
-		return fmt.Errorf("Process cannot be nil")
+		return grpcStatus.Error(codes.InvalidArgument, "Process cannot be nil")
 	}
 
 	defer proc.closePostStartFDs()
@@ -322,11 +325,11 @@ func (a *agentGRPC) updateContainerConfig(spec *specs.Spec, config *configs.Conf
 
 func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainerRequest) (*gpb.Empty, error) {
 	if a.sandbox.running == false {
-		return emptyResp, fmt.Errorf("Sandbox not started, impossible to run a new container")
+		return emptyResp, grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started, impossible to run a new container")
 	}
 
 	if _, err := a.sandbox.getContainer(req.ContainerId); err == nil {
-		return emptyResp, fmt.Errorf("Container %s already exists, impossible to create", req.ContainerId)
+		return emptyResp, grpcStatus.Errorf(codes.AlreadyExists, "Container %s already exists, impossible to create", req.ContainerId)
 	}
 
 	// re-scan PCI bus
@@ -409,7 +412,7 @@ func (a *agentGRPC) StartContainer(ctx context.Context, req *pb.StartContainerRe
 	}
 
 	if status != libcontainer.Created {
-		return nil, fmt.Errorf("Container %s status %s, should be %s", req.ContainerId, status.String(), libcontainer.Created.String())
+		return nil, grpcStatus.Errorf(codes.FailedPrecondition, "Container %s status %s, should be %s", req.ContainerId, status.String(), libcontainer.Created.String())
 	}
 
 	if err := ctr.container.Exec(); err != nil {
@@ -431,7 +434,7 @@ func (a *agentGRPC) ExecProcess(ctx context.Context, req *pb.ExecProcessRequest)
 	}
 
 	if status == libcontainer.Stopped {
-		return nil, fmt.Errorf("Cannot exec in stopped container %s", req.ContainerId)
+		return nil, grpcStatus.Errorf(codes.FailedPrecondition, "Cannot exec in stopped container %s", req.ContainerId)
 	}
 
 	proc, err := buildProcess(req.Process, req.ExecId)
@@ -448,12 +451,12 @@ func (a *agentGRPC) ExecProcess(ctx context.Context, req *pb.ExecProcessRequest)
 
 func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequest) (*gpb.Empty, error) {
 	if a.sandbox.running == false {
-		return emptyResp, fmt.Errorf("Sandbox not started, impossible to signal the container")
+		return emptyResp, grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started, impossible to signal the container")
 	}
 
 	ctr, err := a.sandbox.getContainer(req.ContainerId)
 	if err != nil {
-		return emptyResp, fmt.Errorf("Could not signal process %s: %v", req.ExecId, err)
+		return emptyResp, grpcStatus.Errorf(codes.FailedPrecondition, "Could not signal process %s: %v", req.ExecId, err)
 	}
 
 	status, err := ctr.container.Status()
@@ -484,7 +487,7 @@ func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequ
 
 	proc, err := ctr.getProcess(req.ExecId)
 	if err != nil {
-		return emptyResp, fmt.Errorf("Could not signal process: %v", err)
+		return emptyResp, grpcStatus.Errorf(grpc.Code(err), "Could not signal process: %v", err)
 	}
 
 	if err := proc.process.Signal(signal); err != nil {
@@ -548,7 +551,7 @@ func (a *agentGRPC) RemoveContainer(ctx context.Context, req *pb.RemoveContainer
 				return emptyResp, err
 			}
 		case <-time.After(time.Duration(req.Timeout) * time.Second):
-			return emptyResp, fmt.Errorf("Timeout reached after %ds", timeout)
+			return emptyResp, grpcStatus.Errorf(codes.DeadlineExceeded, "Timeout reached after %ds", timeout)
 		}
 	}
 
@@ -629,7 +632,7 @@ func (a *agentGRPC) TtyWinResize(ctx context.Context, req *pb.TtyWinResizeReques
 	}
 
 	if proc.termMaster == nil {
-		return emptyResp, fmt.Errorf("Terminal is not set, impossible to resize it")
+		return emptyResp, grpcStatus.Error(codes.FailedPrecondition, "Terminal is not set, impossible to resize it")
 	}
 
 	winsize := &unix.Winsize{
@@ -647,7 +650,7 @@ func (a *agentGRPC) TtyWinResize(ctx context.Context, req *pb.TtyWinResizeReques
 
 func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequest) (*gpb.Empty, error) {
 	if a.sandbox.running == true {
-		return emptyResp, fmt.Errorf("Sandbox already started, impossible to start again")
+		return emptyResp, grpcStatus.Error(codes.AlreadyExists, "Sandbox already started, impossible to start again")
 	}
 
 	a.sandbox.id = req.Hostname

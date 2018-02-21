@@ -25,6 +25,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	grpcStatus "google.golang.org/grpc/status"
 )
 
 type process struct {
@@ -155,7 +157,7 @@ func (c *container) getProcess(execID string) (*process, error) {
 
 	proc, exist := c.processes[execID]
 	if !exist {
-		return nil, fmt.Errorf("Process %s not found (container %s)", execID, c.id)
+		return nil, grpcStatus.Errorf(codes.NotFound, "Process %s not found (container %s)", execID, c.id)
 	}
 
 	return proc, nil
@@ -167,7 +169,7 @@ func (s *sandbox) getContainer(id string) (*container, error) {
 
 	ctr, exist := s.containers[id]
 	if !exist {
-		return nil, fmt.Errorf("Container %s not found", id)
+		return nil, grpcStatus.Errorf(codes.NotFound, "Container %s not found", id)
 	}
 
 	return ctr, nil
@@ -187,7 +189,7 @@ func (s *sandbox) deleteContainer(id string) {
 
 func (s *sandbox) getProcess(cid, execID string) (*process, *container, error) {
 	if s.running == false {
-		return nil, nil, fmt.Errorf("Sandbox not started")
+		return nil, nil, grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started")
 	}
 
 	ctr, err := s.getContainer(cid)
@@ -419,9 +421,9 @@ func initAgentAsInit() error {
 			return err
 		}
 		if flags, options, err := parseMountFlagsAndOptions(m.options); err != nil {
-			return fmt.Errorf("Could parseMountFlagsAndOptions(%v)", m.options)
+			return grpcStatus.Errorf(codes.Internal, "Could parseMountFlagsAndOptions(%v)", m.options)
 		} else if err = syscall.Mount(m.src, m.dest, m.fstype, uintptr(flags), options); err != nil {
-			return fmt.Errorf("Could not mount %v to %v: %v", m.src, m.dest, err)
+			return grpcStatus.Errorf(codes.Internal, "Could not mount %v to %v: %v", m.src, m.dest, err)
 		}
 	}
 	if err := syscall.Unlink("/dev/ptmx"); err != nil {
