@@ -728,20 +728,8 @@ func (a *agentGRPC) RemoveInterface(ctx context.Context, req *pb.RemoveInterface
 	return a.sandbox.removeInterface(nil, req.Interface)
 }
 
-func (a *agentGRPC) AddRoute(ctx context.Context, req *pb.AddRouteRequest) (*gpb.Empty, error) {
-	return emptyResp, a.sandbox.addRoute(nil, req.Route)
-}
-
-func (a *agentGRPC) UpdateRoute(ctx context.Context, req *pb.UpdateRouteRequest) (*gpb.Empty, error) {
-	return emptyResp, nil
-}
-
 func (a *agentGRPC) UpdateRoutes(ctx context.Context, req *pb.UpdateRoutesRequest) (*pb.Routes, error) {
 	return a.sandbox.updateRoutes(nil, req.Routes)
-}
-
-func (a *agentGRPC) RemoveRoute(ctx context.Context, req *pb.RemoveRouteRequest) (*gpb.Empty, error) {
-	return emptyResp, a.sandbox.removeRoute(nil, req.Route)
 }
 
 func (a *agentGRPC) OnlineCPUMem(ctx context.Context, req *pb.OnlineCPUMemRequest) (*gpb.Empty, error) {

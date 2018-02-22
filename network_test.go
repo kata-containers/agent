@@ -77,7 +77,6 @@ func TestUpdateRemoveInterface(t *testing.T) {
 		"Interface created didn't match: got %+v, expecting %+v", resultingIfc, ifc)
 
 	// Try with garbage:
-	//
 	ifc.Mtu = 999999999999
 	resultingIfc, err = s.updateInterface(netHandle, &ifc)
 	// expecting this failed
@@ -87,26 +86,7 @@ func TestUpdateRemoveInterface(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(resultingIfc, &ifc),
 		"Resulting inteface should have been unchanged: got %+v, expecting %+v", resultingIfc, ifc)
 
-	//
-	// Test adding routes:
-	//
-	route := pb.Route{
-		Dest:    "192.168.3.0/24",
-		Gateway: "192.168.0.1",
-		Device:  "enoNumber",
-	}
-	err = s.addRoute(netHandle, &route)
-	assert.Nil(t, err, "add route failed: %v", err)
-
-	//
-	// Test remove routes:
-	//
-	err = s.removeRoute(netHandle, &route)
-	assert.Nil(t, err, "remove route failed: %v", err)
-
-	//
 	// Exercise the removeInterface code:
-	//
 	_, err = s.removeInterface(netHandle, &ifc)
 	assert.Nil(t, err, "remove interface failed: %v", err)
 

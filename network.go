@@ -403,10 +403,6 @@ func getCurrentRoutes(netHandle *netlink.Handle) (*pb.Routes, error) {
 	return &routes, nil
 }
 
-func (s *sandbox) addRoute(netHandle *netlink.Handle, route *pb.Route) error {
-	return s.updateRoute(netHandle, route, true)
-}
-
 func (s *sandbox) removeRoute(netHandle *netlink.Handle, route *pb.Route) error {
 	return s.updateRoute(netHandle, route, false)
 }
