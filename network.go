@@ -17,10 +17,6 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-const (
-	emptyRouteAddr = "<nil>"
-)
-
 // Network fully describes a sandbox network with its interfaces, routes and dns
 // related information.
 type network struct {
@@ -182,19 +178,23 @@ func (s *sandbox) removeInterface(netHandle *netlink.Handle, iface *pb.Interface
 	return nil, nil
 }
 
+// updateInterface will update an existing interface with the values provided in the pb.Interface.  It will identify the
+// existing interface via MAC address and will return the state of the interface once the function completes as well an any
+// errors observed.
 func (s *sandbox) updateInterface(netHandle *netlink.Handle, iface *pb.Interface) (resultingIfc *pb.Interface, err error) {
 	s.network.ifacesLock.Lock()
 	defer s.network.ifacesLock.Unlock()
+
+	if iface == nil {
+		return nil, fmt.Errorf("Provided interface is nil")
+	}
+
 	if netHandle == nil {
 		netHandle, err = netlink.NewHandle()
 		if err != nil {
 			return nil, err
 		}
 		defer netHandle.Delete()
-	}
-
-	if iface == nil {
-		return nil, fmt.Errorf("Provided interface is nil")
 	}
 
 	fieldLogger := agentLog.WithFields(logrus.Fields{
@@ -215,42 +215,43 @@ func (s *sandbox) updateInterface(netHandle *netlink.Handle, iface *pb.Interface
 		return nil, fmt.Errorf("Interface HwAddr empty")
 	}
 
+	// Use defer function to create and return the interface's state in
+	// gRPC agent protocol format in the event that an error is observed
+	defer func() {
+		if err != nil {
+			resultingIfc, _ = getInterface(netHandle, link)
+		} else {
+			resultingIfc = iface
+		}
+		//put the link back into the up state
+		retErr := netHandle.LinkSetUp(link)
+
+		//if we failed to setup the link but already are returning
+		//with an error, return the original error
+		if err == nil {
+			err = retErr
+		}
+	}()
+
 	fieldLogger.WithField("link", fmt.Sprintf("%+v", link)).Info("Link found")
 
 	lAttrs := link.Attrs()
 	if lAttrs != nil && (lAttrs.Flags&net.FlagUp) == net.FlagUp {
 		// The link is up, makes sure we get it down before
 		// doing any modification.
-		if err := netHandle.LinkSetDown(link); err != nil {
-			goto error_case
+		if err = netHandle.LinkSetDown(link); err != nil {
+			return
 		}
 	}
 
 	err = updateLink(netHandle, link, iface)
 
-error_case:
-	// in the event that an error occurred during the interface update, make sure we return
-	// the resulting state instead of the requested state
-	if err != nil {
-		resultingIfc = getInterface(netHandle, link)
-	} else {
-		resultingIfc = iface
-	}
+	return
 
-	//Put link back into up state
-	retErr := netHandle.LinkSetUp(link)
-
-	// If there was an error updating the interface, give that error precedence
-	// over a potentional LinkSetUp error.
-	if err != nil {
-		retErr = err
-	}
-
-	return resultingIfc, retErr
 }
 
 // getInterface will retrieve interface details from the provided link
-func getInterface(netHandle *netlink.Handle, link netlink.Link) *pb.Interface {
+func getInterface(netHandle *netlink.Handle, link netlink.Link) (*pb.Interface, error) {
 	var ifc pb.Interface
 	linkAttrs := link.Attrs()
 	ifc.Name = linkAttrs.Name
@@ -260,6 +261,7 @@ func getInterface(netHandle *netlink.Handle, link netlink.Link) *pb.Interface {
 	addrs, err := netHandle.AddrList(link, netlink.FAMILY_V4)
 	if err != nil {
 		agentLog.WithError(err).Error("getInterface() failed")
+		return nil, err
 	}
 	for _, addr := range addrs {
 		netMask, _ := addr.Mask.Size()
@@ -270,7 +272,7 @@ func getInterface(netHandle *netlink.Handle, link netlink.Link) *pb.Interface {
 		ifc.IPAddresses = append(ifc.IPAddresses, &m)
 	}
 
-	return &ifc
+	return &ifc, nil
 }
 
 ////////////
