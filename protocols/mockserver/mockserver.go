@@ -316,35 +316,16 @@ func (m *mockServer) UpdateInterface(ctx context.Context, req *pb.UpdateInterfac
 	return nil, nil
 }
 
-func (m *mockServer) AddRoute(ctx context.Context, req *pb.AddRouteRequest) (*types.Empty, error) {
+func (m *mockServer) UpdateRoutes(ctx context.Context, req *pb.UpdateRoutesRequest) (*pb.Routes, error) {
 	mockLock.RLock()
 	defer mockLock.RUnlock()
 	if err := m.podExist(); err != nil {
 		return nil, err
 	}
 
-	return &types.Empty{}, nil
+	return nil, nil
 }
 
-func (m *mockServer) UpdateRoute(ctx context.Context, req *pb.UpdateRouteRequest) (*types.Empty, error) {
-	mockLock.RLock()
-	defer mockLock.RUnlock()
-	if err := m.podExist(); err != nil {
-		return nil, err
-	}
-
-	return &types.Empty{}, nil
-}
-
-func (m *mockServer) RemoveRoute(context.Context, *pb.RemoveRouteRequest) (*types.Empty, error) {
-	mockLock.RLock()
-	defer mockLock.RUnlock()
-	if err := m.podExist(); err != nil {
-		return nil, err
-	}
-
-	return &types.Empty{}, nil
-}
 func (m *mockServer) OnlineCPUMem(ctx context.Context, req *pb.OnlineCPUMemRequest) (*types.Empty, error) {
 	mockLock.RLock()
 	defer mockLock.RUnlock()

@@ -40,9 +40,7 @@ service AgentService {
 	rpc AddInterface(AddInterfaceRequest) returns(Interface);
 	rpc UpdateInterface(UpdateInterfaceRequest) returns (Interface);
 	rpc RemoveInterface(RemoveInterfaceRequest) returns (Interface);
-	rpc AddRoute(AddRouteRequest) returns (google.protobuf.Empty);
-	rpc UpdateRoute(UpdateRouteRequest) returns (google.protobuf.Empty);
-	rpc RemoveRoute(RemoveRouteRequest) returns (google.protobuf.Empty);
+	rpc UpdateRoutes(UpdateRoutesRequest) returns (Routes);
 	// misc (TODO: some rpcs can be replaced by hyperstart-exec)
 	rpc CreateSandbox(CreateSandboxRequest) returns (google.protobuf.Empty);
 	rpc DestroySandbox(DestroySandboxRequest) returns (google.protobuf.Empty);
@@ -163,6 +161,12 @@ message Route {
 	string dest = 1;
 	string gateway = 2;
 	string device = 3;
+	string source = 4;
+	uint32 scope = 5;
+}
+
+message Routes {
+	repeated Route Routes = 1;
 }
 
 message UpdateInterfaceRequest {
@@ -177,16 +181,8 @@ message RemoveInterfaceRequest {
 	Interface interface = 1;
 }
 
-message AddRouteRequest {
-	Route route = 1;
-}
-
-message UpdateRouteRequest {
-	Route route = 1;
-}
-
-message RemoveRouteRequest {
-	Route route = 1;
+message UpdateRoutesRequest {
+	Routes routes = 1;
 }
 
 message OnlineCPUMemRequest {
