@@ -72,8 +72,9 @@ type namespace struct {
 }
 
 var agentLog = logrus.WithFields(logrus.Fields{
-	"name": agentName,
-	"pid":  os.Getpid(),
+	"name":   agentName,
+	"pid":    os.Getpid(),
+	"source": "agent",
 })
 
 // version is the agent version. This variable is populated at build time.
