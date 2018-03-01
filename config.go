@@ -7,11 +7,12 @@
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
 	"strings"
 
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc/codes"
+	grpcStatus "google.golang.org/grpc/status"
 )
 
 const (
@@ -33,7 +34,7 @@ func newConfig(level logrus.Level) agentConfig {
 //Get the agent configuration from kernel cmdline
 func (c *agentConfig) getConfig(cmdLineFile string) error {
 	if cmdLineFile == "" {
-		return fmt.Errorf("Kernel cmdline file cannot be empty")
+		return grpcStatus.Error(codes.FailedPrecondition, "Kernel cmdline file cannot be empty")
 	}
 
 	kernelCmdline, err := ioutil.ReadFile(cmdLineFile)
@@ -82,7 +83,7 @@ func (c *agentConfig) parseCmdlineOption(option string) error {
 		c.logLevel = level
 	default:
 		if strings.HasPrefix(split[optionPosition], optionPrefix) {
-			return fmt.Errorf("Unknown option %s", split[optionPosition])
+			return grpcStatus.Errorf(codes.NotFound, "Unknown option %s", split[optionPosition])
 		}
 	}
 

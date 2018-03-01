@@ -8,12 +8,13 @@ package uevent
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"os"
 	"strings"
 
 	"golang.org/x/sys/unix"
+	"google.golang.org/grpc/codes"
+	grpcStatus "google.golang.org/grpc/status"
 )
 
 const (
@@ -112,7 +113,7 @@ func (h *Handler) Read() (*Uevent, error) {
 
 		idx := strings.Index(keyValue, "=")
 		if idx < 1 {
-			return nil, fmt.Errorf("Could not decode uevent: Wrong format %q", keyValue)
+			return nil, grpcStatus.Errorf(codes.InvalidArgument, "Could not decode uevent: Wrong format %q", keyValue)
 		}
 
 		// The key is the first parameter, and the value is the rest

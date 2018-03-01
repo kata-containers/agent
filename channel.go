@@ -7,7 +7,6 @@
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
@@ -17,6 +16,8 @@ import (
 	"github.com/hashicorp/yamux"
 	"github.com/mdlayher/vsock"
 	"golang.org/x/sys/unix"
+	"google.golang.org/grpc/codes"
+	grpcStatus "google.golang.org/grpc/status"
 )
 
 type channel interface {
@@ -159,7 +160,7 @@ func findVirtualSerialPath(serialName string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("Could not find virtio port %s", serialName)
+	return "", grpcStatus.Errorf(codes.NotFound, "Could not find virtio port %s", serialName)
 }
 
 func openSerialChannel() (*os.File, error) {

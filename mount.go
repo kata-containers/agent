@@ -7,7 +7,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +17,8 @@ import (
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
+	"google.golang.org/grpc/codes"
+	grpcStatus "google.golang.org/grpc/status"
 )
 
 const (
@@ -74,11 +75,11 @@ func mount(source, destination, fsType string, flags int, options string) error 
 
 		absSource, err = filepath.EvalSymlinks(source)
 		if err != nil {
-			return fmt.Errorf("Could not resolve symlink for source %v", source)
+			return grpcStatus.Errorf(codes.Internal, "Could not resolve symlink for source %v", source)
 		}
 
 		if err := ensureDestinationExists(absSource, destination, fsType); err != nil {
-			return fmt.Errorf("Could not create destination mount point: %v: %v",
+			return grpcStatus.Errorf(codes.Internal, "Could not create destination mount point: %v: %v",
 				destination, err)
 		}
 	} else {
@@ -90,7 +91,7 @@ func mount(source, destination, fsType string, flags int, options string) error 
 
 	if err := syscall.Mount(absSource, destination,
 		fsType, uintptr(flags), options); err != nil {
-		return fmt.Errorf("Could not bind mount %v to %v: %v",
+		return grpcStatus.Errorf(codes.Internal, "Could not bind mount %v to %v: %v",
 			absSource, destination, err)
 	}
 
@@ -102,12 +103,12 @@ func mount(source, destination, fsType string, flags int, options string) error 
 func ensureDestinationExists(source, destination string, fsType string) error {
 	fileInfo, err := os.Stat(source)
 	if err != nil {
-		return fmt.Errorf("could not stat source location: %v",
+		return grpcStatus.Errorf(codes.Internal, "could not stat source location: %v",
 			source)
 	}
 
 	if err := createDestinationDir(destination); err != nil {
-		return fmt.Errorf("could not create parent directory: %v",
+		return grpcStatus.Errorf(codes.Internal, "could not create parent directory: %v",
 			destination)
 	}
 
@@ -185,7 +186,7 @@ func waitForDevice(devicePath string) error {
 	select {
 	case <-done:
 	case <-time.After(time.Duration(timeoutHotplug) * time.Second):
-		return fmt.Errorf("Timeout reached after %ds waiting for device %s",
+		return grpcStatus.Errorf(codes.DeadlineExceeded, "Timeout reached after %ds waiting for device %s",
 			timeoutHotplug, deviceName)
 	}
 
