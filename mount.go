@@ -11,11 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
-	"github.com/kata-containers/agent/pkg/uevent"
 	pb "github.com/kata-containers/agent/protocols/grpc"
-	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	grpcStatus "google.golang.org/grpc/status"
@@ -127,72 +124,6 @@ func ensureDestinationExists(source, destination string, fsType string) error {
 	return nil
 }
 
-func waitForDevice(devicePath string) error {
-	deviceName := strings.TrimPrefix(devicePath, devPrefix)
-
-	if _, err := os.Stat(devicePath); err == nil {
-		return nil
-	}
-
-	uEvHandler, err := uevent.NewHandler()
-	if err != nil {
-		return err
-	}
-	defer uEvHandler.Close()
-
-	fieldLogger := agentLog.WithField("device", deviceName)
-
-	// Check if the device already exists.
-	if _, err := os.Stat(devicePath); err == nil {
-		fieldLogger.Info("Device already hotplugged, quit listening")
-		return nil
-	}
-
-	fieldLogger.Info("Started listening for uevents for device hotplug")
-
-	// Channel to signal when desired uevent has been received.
-	done := make(chan bool)
-
-	go func() {
-		// This loop will be either ended if the hotplugged device is
-		// found by listening to the netlink socket, or it will end
-		// after the function returns and the uevent handler is closed.
-		for {
-			uEv, err := uEvHandler.Read()
-			if err != nil {
-				fieldLogger.Error(err)
-				continue
-			}
-
-			fieldLogger = fieldLogger.WithFields(logrus.Fields{
-				"uevent-action":    uEv.Action,
-				"uevent-devpath":   uEv.DevPath,
-				"uevent-subsystem": uEv.SubSystem,
-				"uevent-seqnum":    uEv.SeqNum,
-			})
-
-			fieldLogger.Info("Got uevent")
-
-			if uEv.Action == "add" &&
-				filepath.Base(uEv.DevPath) == deviceName {
-				fieldLogger.Info("Hotplug event received")
-				break
-			}
-		}
-
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(time.Duration(timeoutHotplug) * time.Second):
-		return grpcStatus.Errorf(codes.DeadlineExceeded, "Timeout reached after %ds waiting for device %s",
-			timeoutHotplug, deviceName)
-	}
-
-	return nil
-}
-
 func parseMountFlagsAndOptions(optionList []string) (int, string, error) {
 	var (
 		flags   int
@@ -218,17 +149,6 @@ func addMounts(mounts []*pb.Storage) ([]string, error) {
 	for _, mnt := range mounts {
 		if mnt == nil {
 			continue
-		}
-
-		// Consider all other fs types as being hotpluggable, meaning
-		// we should wait for them to show up before trying to mount
-		// them.
-		if mnt.Fstype != "" &&
-			mnt.Fstype != "bind" &&
-			mnt.Fstype != type9pFs {
-			if err := waitForDevice(mnt.Source); err != nil {
-				return nil, err
-			}
 		}
 
 		flags, options, err := parseMountFlagsAndOptions(mnt.Options)

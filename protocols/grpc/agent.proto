@@ -51,8 +51,9 @@ message CreateContainerRequest {
 	string container_id = 1;
 	string exec_id = 2;
 	StringUser string_user = 3;
-	repeated Storage storages = 4;
-	Spec OCI = 5;
+	repeated Device devices = 4;
+	repeated Storage storages = 5;
+	Spec OCI = 6;
 }
 
 message StartContainerRequest {
@@ -194,6 +195,40 @@ message Storage {
 	string fstype = 3;           // "xfs", "ext4" etc. for block dev, or "9p" for shared fs, or  "tmpfs" for shared /dev/shm for all containers ...
 	repeated string options = 4; // options for the storage device, might required by some special devices.
 	string mount_point = 5;      // mount_point is only visible by VM, not by containers. This mount point can be used on oci.Mount.Source as "/Stroage/mount/point/{rootfs|_data}".
+}
+
+message Device {
+	// id can be used to identify the device inside the VM. Some devices
+	// might not need it to be identified on the VM, and will rely on the
+	// provided vm_path instead.
+	string id = 1;
+	// type defines the type of device described. This can be "blk",
+	// "scsi", "vfio", ...
+	// Particularly, this should be used to trigger the use of the
+	// appropriate device handler.
+	string type = 2;
+	// vm_path can be used by the caller to provide directly the path of
+	// the device as it will appear inside the VM. For some devices, the
+	// device id or the list of options passed might not be enough to find
+	// the device. In those cases, the caller should predict and provide
+	// this vm_path.
+	string vm_path = 3;
+	// container_path defines the path where the device should be found inside
+	// the container. This path should match the path of the device from
+	// the device list listed inside the OCI spec. This is used in order
+	// to identify the right device in the spec and update it with the
+	// right options such as major/minor numbers as they appear inside
+	// the VM for instance. Note that an empty ctr_path should be used
+	// to make sure the device handler inside the agent is called, but
+	// no spec update needs to be performed. This has to happen for the
+	// case of rootfs, when a device has to be waited for after it has
+	// been hotplugged. An equivalent Storage entry should be defined if
+	// any mount needs to be performed afterwards.
+	string container_path = 4;
+	// options allows the caller to define a list of options such as block
+	// sizes, numbers of luns, ... which are very specific to every device
+	// and cannot be generalized through extra fields.
+	repeated string options = 5;
 }
 
 message StringUser {
