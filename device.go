@@ -16,6 +16,7 @@ import (
 	"github.com/kata-containers/agent/pkg/uevent"
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	grpcStatus "google.golang.org/grpc/status"
 )
@@ -53,8 +54,10 @@ func blockDeviceHandler(device pb.Device, spec *pb.Spec) error {
 		return err
 	}
 
-	major := int64(stat.Rdev / 256)
-	minor := int64(stat.Rdev % 256)
+	dev := uint64(stat.Rdev)
+
+	major := int64(unix.Major(dev))
+	minor := int64(unix.Minor(dev))
 
 	agentLog.WithFields(logrus.Fields{
 		"device-path":  device.VmPath,
