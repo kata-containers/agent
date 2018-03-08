@@ -189,31 +189,55 @@ message UpdateRoutesRequest {
 message OnlineCPUMemRequest {
 }
 
+// Storage represents both the rootfs of the container, and any volume that
+// could have been defined through the Mount list of the OCI specification.
 message Storage {
-	string driver = 1;           // empty in most cases. it will support "drbd", "bcache" ...
-	string source = 2;           // "/dev/sdb", "/dev/disk/by-scsi/xxxx", "none",...
-	string fstype = 3;           // "xfs", "ext4" etc. for block dev, or "9p" for shared fs, or  "tmpfs" for shared /dev/shm for all containers ...
-	repeated string options = 4; // options for the storage device, might required by some special devices.
-	string mount_point = 5;      // mount_point is only visible by VM, not by containers. This mount point can be used on oci.Mount.Source as "/Stroage/mount/point/{rootfs|_data}".
+	// Driver is used to define the way the storage is passed through the
+	// virtual machine. It can be "9p", "blk", or something else, but for
+	// all cases, this will define if some extra steps are required before
+	// this storage gets mounted into the container.
+	string driver = 1;
+	// DriverOptions allows the caller to define a list of options such
+	// as block sizes, numbers of luns, ... which are very specific to
+	// every device and cannot be generalized through extra fields.
+	repeated string driver_options = 2;
+	// Source can be anything representing the source of the storage. This
+	// will be handled by the proper handler based on the Driver used.
+	// For instance, it can be a very simple path if the caller knows the
+	// name of device inside the VM, or it can be some sort of identifier
+	// to let the agent find the device inside the VM.
+	string source = 3;
+	// Fstype represents the filesystem that needs to be used to mount the
+	// storage inside the VM. For instance, it could be "xfs" for block
+	// device, "9p" for shared filesystem, or "tmpfs" for shared /dev/shm.
+	string fstype = 4;
+	// Options describes the additional options that might be needed to
+	// mount properly the storage filesytem.
+	repeated string options = 5;
+	// MountPoint refers to the path where the storage should be mounted
+	// inside the VM.
+	string mount_point = 6;
 }
 
+// Device represents only the devices that could have been defined through the
+// Linux Device list of the OCI specification.
 message Device {
-	// id can be used to identify the device inside the VM. Some devices
+	// Id can be used to identify the device inside the VM. Some devices
 	// might not need it to be identified on the VM, and will rely on the
-	// provided vm_path instead.
+	// provided VmPath instead.
 	string id = 1;
-	// type defines the type of device described. This can be "blk",
+	// Type defines the type of device described. This can be "blk",
 	// "scsi", "vfio", ...
 	// Particularly, this should be used to trigger the use of the
 	// appropriate device handler.
 	string type = 2;
-	// vm_path can be used by the caller to provide directly the path of
+	// VmPath can be used by the caller to provide directly the path of
 	// the device as it will appear inside the VM. For some devices, the
 	// device id or the list of options passed might not be enough to find
 	// the device. In those cases, the caller should predict and provide
 	// this vm_path.
 	string vm_path = 3;
-	// container_path defines the path where the device should be found inside
+	// ContainerPath defines the path where the device should be found inside
 	// the container. This path should match the path of the device from
 	// the device list listed inside the OCI spec. This is used in order
 	// to identify the right device in the spec and update it with the
@@ -225,7 +249,7 @@ message Device {
 	// been hotplugged. An equivalent Storage entry should be defined if
 	// any mount needs to be performed afterwards.
 	string container_path = 4;
-	// options allows the caller to define a list of options such as block
+	// Options allows the caller to define a list of options such as block
 	// sizes, numbers of luns, ... which are very specific to every device
 	// and cannot be generalized through extra fields.
 	repeated string options = 5;

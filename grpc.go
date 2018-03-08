@@ -323,26 +323,6 @@ func (a *agentGRPC) updateContainerConfig(spec *specs.Spec, config *configs.Conf
 	return a.updateContainerConfigPrivileges(spec, config)
 }
 
-func addDevices(devices []*pb.Device, spec *pb.Spec) error {
-	for _, device := range devices {
-		if device == nil {
-			continue
-		}
-
-		devHandler, ok := deviceDriversHandlerList[device.Type]
-		if !ok {
-			return grpcStatus.Errorf(codes.InvalidArgument,
-				"Unknown device type %q", device.Type)
-		}
-
-		if err := devHandler(*device, spec); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainerRequest) (*gpb.Empty, error) {
 	if a.sandbox.running == false {
 		return emptyResp, grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started, impossible to run a new container")
@@ -358,11 +338,23 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		agentLog.WithError(err).Warn("Could not rescan PCI bus")
 	}
 
+	// Some devices need some extra processing (the ones invoked with
+	// --device for instance), and that's what this call is doing. It
+	// updates the devices listed in the OCI spec, so that they actually
+	// match real devices inside the VM. This step is necessary since we
+	// cannot predict everything from the caller.
 	if err := addDevices(req.Devices, req.OCI); err != nil {
 		return emptyResp, err
 	}
 
-	mountList, err := addMounts(req.Storages)
+	// Both rootfs and volumes (invoked with --volume for instance) will
+	// be processed the same way. The idea is to always mount any provided
+	// storage to the specified MountPoint, so that it will match what's
+	// inside oci.Mounts.
+	// After all those storages have been processed, no matter the order
+	// here, the agent will rely on libcontainer (using the oci.Mounts
+	// list) to bind mount all of them inside the container.
+	mountList, err := addStorages(req.Storages)
 	if err != nil {
 		return emptyResp, err
 	}
@@ -688,7 +680,7 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 		}
 	}
 
-	mountList, err := addMounts(req.Storages)
+	mountList, err := addStorages(req.Storages)
 	if err != nil {
 		return emptyResp, err
 	}
