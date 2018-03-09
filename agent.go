@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"syscall"
 	"time"
@@ -441,6 +442,9 @@ func initAgentAsInit() error {
 }
 
 func init() {
+	// Force full stacktrace on internal error
+	debug.SetTraceback("system")
+
 	if len(os.Args) > 1 && os.Args[1] == "init" {
 		runtime.GOMAXPROCS(1)
 		runtime.LockOSThread()
