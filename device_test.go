@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"testing"
 
 	pb "github.com/kata-containers/agent/protocols/grpc"
@@ -70,6 +71,44 @@ func TestVirtioBlkDeviceHandlerEmptyLinuxDevicesSpecFailure(t *testing.T) {
 	}
 
 	testVirtioBlkDeviceHandlerFailure(t, device, spec)
+}
+
+func TestScanSCSIBus(t *testing.T) {
+	testDir, err := ioutil.TempDir("", "kata-agent-tmp-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(testDir)
+
+	scsiHostPath = filepath.Join(testDir, "scsi_host")
+	os.RemoveAll(scsiHostPath)
+
+	defer os.RemoveAll(scsiHostPath)
+
+	scsiAddr := "1"
+
+	err = scanSCSIBus(scsiAddr)
+	assert.NotNil(t, err, "scanSCSIBus() should have failed")
+
+	if err := os.MkdirAll(scsiHostPath, mountPerm); err != nil {
+		t.Fatal(err)
+	}
+
+	scsiAddr = "1:1"
+	err = scanSCSIBus(scsiAddr)
+	assert.Nil(t, err, "scanSCSIBus() failed: %v", err)
+
+	host := filepath.Join(scsiHostPath, "host0")
+	if err := os.MkdirAll(host, mountPerm); err != nil {
+		t.Fatal(err)
+	}
+
+	err = scanSCSIBus(scsiAddr)
+	assert.Nil(t, err, "scanSCSIBus() failed: %v", err)
+
+	scanPath := filepath.Join(host, "scan")
+	_, err = os.Stat(scanPath)
+	assert.Nil(t, err, "os.Stat() %s failed: %v", scanPath, err)
 }
 
 func testAddDevicesSuccessful(t *testing.T, devices []*pb.Device, spec *pb.Spec) {

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/kata-containers/agent/pkg/uevent"
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
@@ -157,10 +158,11 @@ func removeMounts(mounts []string) error {
 // type of storage driver.
 type storageHandler func(storage pb.Storage) (string, error)
 
-// driverStorageHandlerList lists the supported drivers.
+// storageHandlerList lists the supported drivers.
 var storageHandlerList = map[string]storageHandler{
-	driver9pType:  virtio9pStorageHandler,
-	driverBlkType: virtioBlkStorageHandler,
+	driver9pType:   virtio9pStorageHandler,
+	driverBlkType:  virtioBlkStorageHandler,
+	driverSCSIType: virtioSCSIStorageHandler,
 }
 
 // virtio9pStorageHandler handles the storage for 9p driver.
@@ -171,9 +173,26 @@ func virtio9pStorageHandler(storage pb.Storage) (string, error) {
 // virtioBlkStorageHandler handles the storage for blk driver.
 func virtioBlkStorageHandler(storage pb.Storage) (string, error) {
 	// First need to make sure the expected device shows up properly.
-	if err := waitForDevice(storage.Source); err != nil {
+	devName := strings.TrimPrefix(storage.Source, devPrefix)
+	checkUevent := func(uEv *uevent.Uevent) bool {
+		return (uEv.Action == "add" &&
+			filepath.Base(uEv.DevPath) == devName)
+	}
+	if err := waitForDevice(storage.Source, devName, checkUevent); err != nil {
 		return "", err
 	}
+
+	return commonStorageHandler(storage)
+}
+
+// virtioSCSIStorageHandler handles the storage for scsi driver.
+func virtioSCSIStorageHandler(storage pb.Storage) (string, error) {
+	// Retrieve the device path from SCSI address.
+	devPath, err := getSCSIDevPath(storage.Source)
+	if err != nil {
+		return "", err
+	}
+	storage.Source = devPath
 
 	return commonStorageHandler(storage)
 }
