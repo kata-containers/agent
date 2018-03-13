@@ -54,7 +54,7 @@ func blockDeviceHandler(device pb.Device, spec *pb.Spec) error {
 		return err
 	}
 
-	dev := uint64(stat.Rdev)
+	dev := stat.Rdev
 
 	major := int64(unix.Major(dev))
 	minor := int64(unix.Minor(dev))
