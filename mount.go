@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/kata-containers/agent/pkg/uevent"
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
@@ -143,31 +144,6 @@ func parseMountFlagsAndOptions(optionList []string) (int, string, error) {
 	return flags, strings.Join(options, ","), nil
 }
 
-func addMounts(mounts []*pb.Storage) ([]string, error) {
-	var mountList []string
-
-	for _, mnt := range mounts {
-		if mnt == nil {
-			continue
-		}
-
-		flags, options, err := parseMountFlagsAndOptions(mnt.Options)
-		if err != nil {
-			return nil, err
-		}
-
-		if err := mount(mnt.Source, mnt.MountPoint, mnt.Fstype,
-			flags, options); err != nil {
-			return nil, err
-		}
-
-		// Prepend mount point to mount list.
-		mountList = append([]string{mnt.MountPoint}, mountList...)
-	}
-
-	return mountList, nil
-}
-
 func removeMounts(mounts []string) error {
 	for _, mount := range mounts {
 		if err := syscall.Unmount(mount, 0); err != nil {
@@ -176,4 +152,98 @@ func removeMounts(mounts []string) error {
 	}
 
 	return nil
+}
+
+// storageHandler is the type of callback to be defined to handle every
+// type of storage driver.
+type storageHandler func(storage pb.Storage) (string, error)
+
+// storageHandlerList lists the supported drivers.
+var storageHandlerList = map[string]storageHandler{
+	driver9pType:   virtio9pStorageHandler,
+	driverBlkType:  virtioBlkStorageHandler,
+	driverSCSIType: virtioSCSIStorageHandler,
+}
+
+// virtio9pStorageHandler handles the storage for 9p driver.
+func virtio9pStorageHandler(storage pb.Storage) (string, error) {
+	return commonStorageHandler(storage)
+}
+
+// virtioBlkStorageHandler handles the storage for blk driver.
+func virtioBlkStorageHandler(storage pb.Storage) (string, error) {
+	// First need to make sure the expected device shows up properly.
+	devName := strings.TrimPrefix(storage.Source, devPrefix)
+	checkUevent := func(uEv *uevent.Uevent) bool {
+		return (uEv.Action == "add" &&
+			filepath.Base(uEv.DevPath) == devName)
+	}
+	if err := waitForDevice(storage.Source, devName, checkUevent); err != nil {
+		return "", err
+	}
+
+	return commonStorageHandler(storage)
+}
+
+// virtioSCSIStorageHandler handles the storage for scsi driver.
+func virtioSCSIStorageHandler(storage pb.Storage) (string, error) {
+	// Retrieve the device path from SCSI address.
+	devPath, err := getSCSIDevPath(storage.Source)
+	if err != nil {
+		return "", err
+	}
+	storage.Source = devPath
+
+	return commonStorageHandler(storage)
+}
+
+func commonStorageHandler(storage pb.Storage) (string, error) {
+	// Mount the storage device.
+	if err := mountStorage(storage); err != nil {
+		return "", err
+	}
+
+	return storage.MountPoint, nil
+}
+
+// mountStorage performs the mount described by the storage structure.
+func mountStorage(storage pb.Storage) error {
+	flags, options, err := parseMountFlagsAndOptions(storage.Options)
+	if err != nil {
+		return err
+	}
+
+	return mount(storage.Source, storage.MountPoint, storage.Fstype, flags, options)
+}
+
+// addStorages takes a list of storages passed by the caller, and perform the
+// associated operations such as waiting for the device to show up, and mount
+// it to a specific location, according to the type of handler chosen, and for
+// each storage.
+func addStorages(storages []*pb.Storage) ([]string, error) {
+	var mountList []string
+
+	for _, storage := range storages {
+		if storage == nil {
+			continue
+		}
+
+		devHandler, ok := storageHandlerList[storage.Driver]
+		if !ok {
+			return nil, grpcStatus.Errorf(codes.InvalidArgument,
+				"Unknown storage driver %q", storage.Driver)
+		}
+
+		mountPoint, err := devHandler(*storage)
+		if err != nil {
+			return nil, err
+		}
+
+		if mountPoint != "" {
+			// Prepend mount point to mount list.
+			mountList = append([]string{mountPoint}, mountList...)
+		}
+	}
+
+	return mountList, nil
 }
