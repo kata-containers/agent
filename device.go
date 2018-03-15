@@ -276,16 +276,55 @@ func addDevices(devices []*pb.Device, spec *pb.Spec) error {
 			continue
 		}
 
-		devHandler, ok := deviceHandlerList[device.Type]
-		if !ok {
-			return grpcStatus.Errorf(codes.InvalidArgument,
-				"Unknown device type %q", device.Type)
-		}
-
-		if err := devHandler(*device, spec); err != nil {
+		err := addDevice(device, spec)
+		if err != nil {
 			return err
 		}
+
 	}
 
 	return nil
+}
+
+func addDevice(device *pb.Device, spec *pb.Spec) error {
+	if device == nil {
+		return grpcStatus.Error(codes.InvalidArgument, "invalid device")
+	}
+
+	if spec == nil {
+		return grpcStatus.Error(codes.InvalidArgument, "invalid spec")
+	}
+
+	// log before validation to help with debugging gRPC protocol
+	// version differences.
+	agentLog.WithFields(logrus.Fields{
+		"device-id":             device.Id,
+		"device-type":           device.Type,
+		"device-vm-path":        device.VmPath,
+		"device-container-path": device.ContainerPath,
+		"device-options":        device.Options,
+	}).Debug()
+
+	if device.Type == "" {
+		return grpcStatus.Errorf(codes.InvalidArgument,
+			"invalid type for device %v", device)
+	}
+
+	if device.VmPath == "" {
+		return grpcStatus.Errorf(codes.InvalidArgument,
+			"invalid VM path for device %v", device)
+	}
+
+	if device.ContainerPath == "" {
+		return grpcStatus.Errorf(codes.InvalidArgument,
+			"invalid container path for device %v", device)
+	}
+
+	devHandler, ok := deviceHandlerList[device.Type]
+	if !ok {
+		return grpcStatus.Errorf(codes.InvalidArgument,
+			"Unknown device type %q", device.Type)
+	}
+
+	return devHandler(*device, spec)
 }
