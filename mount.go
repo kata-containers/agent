@@ -7,6 +7,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/kata-containers/agent/pkg/uevent"
 	pb "github.com/kata-containers/agent/protocols/grpc"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	grpcStatus "google.golang.org/grpc/status"
@@ -67,6 +69,32 @@ func createDestinationDir(dest string) error {
 // * ensure the source exists
 func mount(source, destination, fsType string, flags int, options string) error {
 	var absSource string
+
+	// Log before validation. This is useful to debug cases where the gRPC
+	// protocol version being used by the client is out-of-sync with the
+	// agents version. gRPC message members are strictly ordered, so it's
+	// quite possible that if the protocol changes, the client may
+	// try to pass a valid mountpoint, but the gRPC layer may change that
+	// through the member ordering to be a mount *option* for example.
+	agentLog.WithFields(logrus.Fields{
+		"mount-source":      source,
+		"mount-destination": destination,
+		"mount-fstype":      fsType,
+		"mount-flags":       flags,
+		"mount-options":     options,
+	}).Debug()
+
+	if source == "" {
+		return fmt.Errorf("need mount source")
+	}
+
+	if destination == "" {
+		return fmt.Errorf("need mount destination")
+	}
+
+	if fsType == "" {
+		return fmt.Errorf("need mount FS type")
+	}
 
 	if fsType != type9pFs {
 		var err error
