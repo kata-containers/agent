@@ -167,12 +167,6 @@ func (p *reaperOSProcess) wait() {
 	(*os.Process)(p).Wait()
 }
 
-type reaperExecCmd exec.Cmd
-
-func (c *reaperExecCmd) wait() {
-	(*exec.Cmd)(c).Wait()
-}
-
 type reaperLibcontainerProcess libcontainer.Process
 
 func (p *reaperLibcontainerProcess) wait() {

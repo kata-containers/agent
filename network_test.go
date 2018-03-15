@@ -68,7 +68,11 @@ func TestUpdateRemoveInterface(t *testing.T) {
 	// Try with a different valid MTU.  Make sure we can assign a new set of IP addresses
 	ifc.Mtu = 500
 	ifc.IPAddresses[0].Address = "192.168.0.102"
-	ip2 := pb.IPAddress{0, "182.168.0.103", "24"}
+	ip2 := pb.IPAddress{
+		Family:  0,
+		Address: "182.168.0.103",
+		Mask:    "24",
+	}
 	ifc.IPAddresses = append(ifc.IPAddresses, &ip2)
 
 	resultingIfc, err = s.updateInterface(netHandle, &ifc)

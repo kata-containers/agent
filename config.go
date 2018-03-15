@@ -43,8 +43,7 @@ func (c *agentConfig) getConfig(cmdLineFile string) error {
 	}
 
 	words := strings.Fields(string(kernelCmdline))
-	for _, w := range words {
-		word := string(w)
+	for _, word := range words {
 		if err := c.parseCmdlineOption(word); err != nil {
 			agentLog.WithFields(logrus.Fields{
 				"error":  err,
