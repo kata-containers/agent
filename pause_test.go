@@ -17,10 +17,8 @@ import (
 )
 
 func TestForkPauseBin(t *testing.T) {
-	if os.Getuid() != 0 {
-		t.Skip("skipping fork pause bin test that requires root")
-		return
-	}
+	skipUnlessRoot(t)
+
 	cmd := &exec.Cmd{
 		Path: selfBinPath,
 		Args: []string{os.Args[0], pauseBinArg},

@@ -8,7 +8,6 @@ package main
 
 import (
 	"net"
-	"os"
 	"reflect"
 	"runtime"
 	"testing"
@@ -20,6 +19,7 @@ import (
 )
 
 func TestUpdateRemoveInterface(t *testing.T) {
+	skipUnlessRoot(t)
 
 	s := sandbox{}
 
@@ -100,12 +100,6 @@ func TestUpdateRemoveInterface(t *testing.T) {
 }
 
 type teardownNetworkTest func()
-
-func skipUnlessRoot(t *testing.T) {
-	if os.Getuid() != 0 {
-		t.Skip("")
-	}
-}
 
 func setupNetworkTest(t *testing.T) teardownNetworkTest {
 	skipUnlessRoot(t)

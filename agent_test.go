@@ -20,6 +20,12 @@ const (
 	testContainerID = "testContainerID"
 )
 
+func skipUnlessRoot(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skip("Test disabled as requires root user")
+	}
+}
+
 func TestClosePostStartFDsAllNil(t *testing.T) {
 	p := &process{}
 
