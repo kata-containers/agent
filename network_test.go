@@ -19,6 +19,7 @@ import (
 )
 
 func TestUpdateRemoveInterface(t *testing.T) {
+	skipUnlessRoot(t)
 
 	s := sandbox{}
 

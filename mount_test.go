@@ -31,6 +31,8 @@ func createSafeAndFakeStorage() (pb.Storage, error) {
 }
 
 func TestVirtio9pStorageHandlerSuccessful(t *testing.T) {
+	skipUnlessRoot(t)
+
 	storage, err := createSafeAndFakeStorage()
 	if err != nil {
 		t.Fatal(err)
@@ -46,6 +48,8 @@ func TestVirtio9pStorageHandlerSuccessful(t *testing.T) {
 }
 
 func TestVirtioBlkStorageHandlerSuccessful(t *testing.T) {
+	skipUnlessRoot(t)
+
 	devPath, err := createFakeDevicePath()
 	if err != nil {
 		t.Fatal(err)
