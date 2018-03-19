@@ -41,3 +41,16 @@ groups:
           - "*.md"
         exclude:
           - "vendor/*"
+
+  protocol-changes:
+    required: 2
+    teams:
+      - architecture-committee
+      - builder
+      - packaging
+    conditions:
+      files:
+        include:
+          - "*.proto"
+        exclude:
+          - "vendor/*"
