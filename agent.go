@@ -9,6 +9,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -30,6 +31,8 @@ import (
 	"google.golang.org/grpc/codes"
 	grpcStatus "google.golang.org/grpc/status"
 )
+
+const meminfo = "/proc/meminfo"
 
 type process struct {
 	id          string
@@ -326,6 +329,43 @@ func (s *sandbox) setSubreaper() error {
 	return nil
 }
 
+// getMemory returns a string containing the total amount of memory reported
+// by the kernell. The string includes a suffix denoting the units the memory
+// is measured in.
+func getMemory() (string, error) {
+	bytes, err := ioutil.ReadFile(meminfo)
+	if err != nil {
+		return "", err
+	}
+
+	lines := string(bytes)
+
+	for _, line := range strings.Split(lines, "\n") {
+		if !strings.HasPrefix(line, "MemTotal") {
+			continue
+		}
+
+		expectedFields := 2
+
+		fields := strings.Split(line, ":")
+		count := len(fields)
+
+		if count != expectedFields {
+			return "", fmt.Errorf("expected %d fields, got %d in line %q", expectedFields, count, line)
+		}
+
+		if fields[1] == "" {
+			return "", fmt.Errorf("cannot determine total memory from line %q", line)
+		}
+
+		memTotal := strings.TrimSpace(fields[1])
+
+		return memTotal, nil
+	}
+
+	return "", fmt.Errorf("no lines in file %q", meminfo)
+}
+
 func getAnnounceFields() (logrus.Fields, error) {
 	var deviceHandlers []string
 	var storageHandlers []string
@@ -338,10 +378,16 @@ func getAnnounceFields() (logrus.Fields, error) {
 		storageHandlers = append(storageHandlers, handler)
 	}
 
+	memTotal, err := getMemory()
+	if err != nil {
+		return logrus.Fields{}, err
+	}
+
 	return logrus.Fields{
 		"version":          version,
 		"device-handlers":  strings.Join(deviceHandlers, ","),
 		"storage-handlers": strings.Join(storageHandlers, ","),
+		"system-memory":    memTotal,
 	}, nil
 }
 
