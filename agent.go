@@ -327,8 +327,21 @@ func (s *sandbox) setSubreaper() error {
 }
 
 func getAnnounceFields() (logrus.Fields, error) {
+	var deviceHandlers []string
+	var storageHandlers []string
+
+	for handler := range deviceHandlerList {
+		deviceHandlers = append(deviceHandlers, handler)
+	}
+
+	for handler := range storageHandlerList {
+		storageHandlers = append(storageHandlers, handler)
+	}
+
 	return logrus.Fields{
-		"version": version,
+		"version":          version,
+		"device-handlers":  strings.Join(deviceHandlers, ","),
+		"storage-handlers": strings.Join(storageHandlers, ","),
 	}, nil
 }
 
