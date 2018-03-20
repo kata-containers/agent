@@ -155,7 +155,7 @@ func TestAddDevicesNoopHandlerSuccessful(t *testing.T) {
 
 	spec := &pb.Spec{}
 
-	testAddDevicesSuccessful(t, devices, spec)
+	testAddDevicesFailure(t, devices, spec)
 }
 
 func testAddDevicesFailure(t *testing.T, devices []*pb.Device, spec *pb.Spec) {
@@ -192,4 +192,128 @@ func TestAddDevicesNoopHandlerFailure(t *testing.T) {
 	spec := &pb.Spec{}
 
 	testAddDevicesFailure(t, devices, spec)
+}
+
+func TestAddDevice(t *testing.T) {
+	assert := assert.New(t)
+
+	emptySpec := &pb.Spec{}
+
+	// Use a dummy handler so that addDevice() will be successful
+	// if the Device itself is valid.
+	noopHandlerTag := "noop"
+	deviceHandlerList = map[string]deviceHandler{
+		noopHandlerTag: noopDeviceHandlerReturnNil,
+	}
+
+	type testData struct {
+		device      *pb.Device
+		spec        *pb.Spec
+		expectError bool
+	}
+
+	data := []testData{
+		{
+			device:      nil,
+			spec:        nil,
+			expectError: true,
+		},
+		{
+			device:      &pb.Device{},
+			spec:        emptySpec,
+			expectError: true,
+		},
+		{
+			device: &pb.Device{
+				Id: "foo",
+			},
+			spec:        emptySpec,
+			expectError: true,
+		},
+		{
+			device: &pb.Device{
+				Id: "foo",
+			},
+			spec:        emptySpec,
+			expectError: true,
+		},
+		{
+			device: &pb.Device{
+				// Missing type
+				VmPath:        "/foo",
+				ContainerPath: "/foo",
+			},
+			spec:        emptySpec,
+			expectError: true,
+		},
+		{
+			device: &pb.Device{
+				// Missing VmPath
+				Type:          noopHandlerTag,
+				ContainerPath: "/foo",
+			},
+			spec:        emptySpec,
+			expectError: true,
+		},
+		{
+			device: &pb.Device{
+				// Missing ContainerPath
+				Type:   noopHandlerTag,
+				VmPath: "/foo",
+			},
+			spec:        emptySpec,
+			expectError: true,
+		},
+		{
+			device: &pb.Device{
+				// Id is optional
+				Type:          noopHandlerTag,
+				VmPath:        "/foo",
+				ContainerPath: "/foo",
+				Options:       []string{},
+			},
+			spec:        emptySpec,
+			expectError: false,
+		},
+		{
+			device: &pb.Device{
+				// Options are... optional ;)
+				Id:            "foo",
+				Type:          noopHandlerTag,
+				VmPath:        "/foo",
+				ContainerPath: "/foo",
+			},
+			spec:        emptySpec,
+			expectError: false,
+		},
+		{
+			device: &pb.Device{
+				Id:            "foo",
+				Type:          noopHandlerTag,
+				VmPath:        "/foo",
+				ContainerPath: "/foo",
+				Options:       []string{},
+			},
+			spec:        emptySpec,
+			expectError: false,
+		},
+		{
+			device: &pb.Device{
+				Type:          noopHandlerTag,
+				VmPath:        "/foo",
+				ContainerPath: "/foo",
+			},
+			spec:        emptySpec,
+			expectError: false,
+		},
+	}
+
+	for i, d := range data {
+		err := addDevice(d.device, d.spec)
+		if d.expectError {
+			assert.Errorf(err, "test %d (%+v)", i, d)
+		} else {
+			assert.NoErrorf(err, "test %d (%+v)", i, d)
+		}
+	}
 }
