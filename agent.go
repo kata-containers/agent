@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -323,6 +324,34 @@ func (s *sandbox) setSubreaper() error {
 	return nil
 }
 
+func getAnnounceFields() (logrus.Fields, error) {
+	return logrus.Fields{
+		"version": version,
+	}, nil
+}
+
+// announce logs details of the agents version and capabilities.
+func announce() error {
+	announceFields, err := getAnnounceFields()
+	if err != nil {
+		return err
+	}
+
+	if os.Getpid() == 1 {
+		var values []string
+
+		for k, v := range announceFields {
+			values = append(values, fmt.Sprintf("%s=%q", k, v))
+		}
+
+		fmt.Printf("announce: %s\n", strings.Join(values, ","))
+	} else {
+		agentLog.WithFields(announceFields).Info("announce")
+	}
+
+	return nil
+}
+
 func (s *sandbox) initLogger() error {
 	agentLog.Logger.Formatter = &logrus.TextFormatter{DisableColors: true, TimestampFormat: time.RFC3339Nano}
 
@@ -332,9 +361,7 @@ func (s *sandbox) initLogger() error {
 	}
 	config.applyConfig()
 
-	agentLog.WithField("version", version).Info()
-
-	return nil
+	return announce()
 }
 
 func (s *sandbox) initChannel() error {
@@ -416,8 +443,6 @@ var initRootfsMounts = []initMount{
 // initAgentAsInit will do the initializations such as setting up the rootfs
 // when this agent has been run as the init process.
 func initAgentAsInit() error {
-	fmt.Printf("initAgentAsInit(), agent version: %s\n", version)
-
 	for _, m := range initRootfsMounts {
 		if err := os.MkdirAll(m.dest, os.FileMode(0755)); err != nil {
 			return err
@@ -438,7 +463,7 @@ func initAgentAsInit() error {
 	syscall.Syscall(syscall.SYS_IOCTL, os.Stdin.Fd(), syscall.TIOCSCTTY, 1)
 	os.Setenv("PATH", "/bin:/sbin/:/usr/bin/:/usr/sbin/")
 
-	return nil
+	return announce()
 }
 
 func init() {
