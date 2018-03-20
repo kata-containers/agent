@@ -75,11 +75,13 @@ type namespace struct {
 	exitCodeCh <-chan int
 }
 
-var agentLog = logrus.WithFields(logrus.Fields{
+var agentFields = logrus.Fields{
 	"name":   agentName,
 	"pid":    os.Getpid(),
 	"source": "agent",
-})
+}
+
+var agentLog = logrus.WithFields(agentFields)
 
 // version is the agent version. This variable is populated at build time.
 var version = "unknown"
@@ -339,6 +341,10 @@ func announce() error {
 
 	if os.Getpid() == 1 {
 		var values []string
+
+		for k, v := range agentFields {
+			values = append(values, fmt.Sprintf("%s=%q", k, v))
+		}
 
 		for k, v := range announceFields {
 			values = append(values, fmt.Sprintf("%s=%q", k, v))
