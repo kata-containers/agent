@@ -9,12 +9,14 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
 	"os/signal"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -29,6 +31,8 @@ import (
 	"google.golang.org/grpc/codes"
 	grpcStatus "google.golang.org/grpc/status"
 )
+
+const meminfo = "/proc/meminfo"
 
 type process struct {
 	id          string
@@ -74,11 +78,13 @@ type namespace struct {
 	exitCodeCh <-chan int
 }
 
-var agentLog = logrus.WithFields(logrus.Fields{
+var agentFields = logrus.Fields{
 	"name":   agentName,
 	"pid":    os.Getpid(),
 	"source": "agent",
-})
+}
+
+var agentLog = logrus.WithFields(agentFields)
 
 // version is the agent version. This variable is populated at build time.
 var version = "unknown"
@@ -323,6 +329,94 @@ func (s *sandbox) setSubreaper() error {
 	return nil
 }
 
+// getMemory returns a string containing the total amount of memory reported
+// by the kernell. The string includes a suffix denoting the units the memory
+// is measured in.
+func getMemory() (string, error) {
+	bytes, err := ioutil.ReadFile(meminfo)
+	if err != nil {
+		return "", err
+	}
+
+	lines := string(bytes)
+
+	for _, line := range strings.Split(lines, "\n") {
+		if !strings.HasPrefix(line, "MemTotal") {
+			continue
+		}
+
+		expectedFields := 2
+
+		fields := strings.Split(line, ":")
+		count := len(fields)
+
+		if count != expectedFields {
+			return "", fmt.Errorf("expected %d fields, got %d in line %q", expectedFields, count, line)
+		}
+
+		if fields[1] == "" {
+			return "", fmt.Errorf("cannot determine total memory from line %q", line)
+		}
+
+		memTotal := strings.TrimSpace(fields[1])
+
+		return memTotal, nil
+	}
+
+	return "", fmt.Errorf("no lines in file %q", meminfo)
+}
+
+func getAnnounceFields() (logrus.Fields, error) {
+	var deviceHandlers []string
+	var storageHandlers []string
+
+	for handler := range deviceHandlerList {
+		deviceHandlers = append(deviceHandlers, handler)
+	}
+
+	for handler := range storageHandlerList {
+		storageHandlers = append(storageHandlers, handler)
+	}
+
+	memTotal, err := getMemory()
+	if err != nil {
+		return logrus.Fields{}, err
+	}
+
+	return logrus.Fields{
+		"version":          version,
+		"device-handlers":  strings.Join(deviceHandlers, ","),
+		"storage-handlers": strings.Join(storageHandlers, ","),
+		"system-memory":    memTotal,
+	}, nil
+}
+
+// announce logs details of the agents version and capabilities.
+func announce() error {
+	announceFields, err := getAnnounceFields()
+	if err != nil {
+		return err
+	}
+
+	if os.Getpid() == 1 {
+		var values []string
+
+		for k, v := range agentFields {
+			values = append(values, fmt.Sprintf("%s=%q", k, v))
+		}
+
+		for k, v := range announceFields {
+			values = append(values, fmt.Sprintf("%s=%q", k, v))
+		}
+
+		fmt.Printf("announce: %s\n", strings.Join(values, ","))
+	} else {
+		agentLog.WithFields(announceFields).Info("announce")
+	}
+
+	return nil
+}
+
 func (s *sandbox) initLogger() error {
 	agentLog.Logger.Formatter = &logrus.TextFormatter{DisableColors: true, TimestampFormat: time.RFC3339Nano}
 
@@ -332,9 +426,7 @@ func (s *sandbox) initLogger() error {
 	}
 	config.applyConfig()
 
-	agentLog.WithField("version", version).Info()
-
-	return nil
+	return announce()
 }
 
 func (s *sandbox) initChannel() error {
@@ -416,8 +508,6 @@ var initRootfsMounts = []initMount{
 // initAgentAsInit will do the initializations such as setting up the rootfs
 // when this agent has been run as the init process.
 func initAgentAsInit() error {
-	fmt.Printf("initAgentAsInit(), agent version: %s\n", version)
-
 	for _, m := range initRootfsMounts {
 		if err := os.MkdirAll(m.dest, os.FileMode(0755)); err != nil {
 			return err
@@ -438,7 +528,7 @@ func initAgentAsInit() error {
 	syscall.Syscall(syscall.SYS_IOCTL, os.Stdin.Fd(), syscall.TIOCSCTTY, 1)
 	os.Setenv("PATH", "/bin:/sbin/:/usr/bin/:/usr/sbin/")
 
-	return nil
+	return announce()
 }
 
 func init() {
