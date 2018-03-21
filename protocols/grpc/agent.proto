@@ -187,6 +187,13 @@ message UpdateRoutesRequest {
 }
 
 message OnlineCPUMemRequest {
+	// Wait specifies if the caller waits for the agent to online all resources.
+	// If true the agent returns once all resources have been connected, otherwise all
+	// resources are connected asynchronously and the agent returns immediately.
+	bool wait = 1;
+
+	// NbCpus specifies the number of CPUs that were added and the agent has to online.
+	uint32 nb_cpus = 2;
 }
 
 // Storage represents both the rootfs of the container, and any volume that

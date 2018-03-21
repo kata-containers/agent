@@ -12,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -43,10 +45,13 @@ const (
 
 // CPU and Memory hotplug
 const (
+	cpuRegexpPattern = "cpu[0-9]*"
+	memRegexpPattern = "memory[0-9]*"
+)
+
+var (
 	sysfsCPUOnlinePath = "/sys/devices/system/cpu"
 	sysfsMemOnlinePath = "/sys/devices/system/memory"
-	cpuRegexpPattern   = "cpu[0-9]*"
-	memRegexpPattern   = "memory[0-9]*"
 )
 
 type onlineResource struct {
@@ -56,40 +61,99 @@ type onlineResource struct {
 
 var emptyResp = &gpb.Empty{}
 
-func onlineCPUMem() error {
-	resourceList := []onlineResource{
-		{
-			sysfsOnlinePath: sysfsCPUOnlinePath,
-			regexpPattern:   cpuRegexpPattern,
-		},
-		{
-			sysfsOnlinePath: sysfsMemOnlinePath,
-			regexpPattern:   memRegexpPattern,
-		},
+var onlineCPUMemLock sync.Mutex
+
+const onlineCPUMemWaitTime = 100 * time.Millisecond
+
+const onlineCPUMaxTries = 10
+
+// Online resources, nbResources specifies the maximum number of resources to online.
+// If nbResources is <= 0 then there is no limit and all resources are connected.
+// Returns the number of resources connected.
+func onlineResources(resource onlineResource, nbResources int32) (uint32, error) {
+	files, err := ioutil.ReadDir(resource.sysfsOnlinePath)
+	if err != nil {
+		return 0, err
 	}
 
-	for _, resource := range resourceList {
-		files, err := ioutil.ReadDir(resource.sysfsOnlinePath)
+	var count uint32
+	for _, file := range files {
+		matched, err := regexp.MatchString(resource.regexpPattern, file.Name())
+		if err != nil {
+			return count, err
+		}
+
+		if !matched {
+			continue
+		}
+
+		onlinePath := filepath.Join(resource.sysfsOnlinePath, file.Name(), "online")
+		status, err := ioutil.ReadFile(onlinePath)
+		if err != nil {
+			// resource cold plugged
+			continue
+		}
+
+		if strings.Trim(string(status), "\n\t ") == "0" {
+			if err := ioutil.WriteFile(onlinePath, []byte("1"), 0600); err != nil {
+				agentLog.WithField("online-path", onlinePath).WithError(err).Errorf("Could not online resource")
+				continue
+			}
+			count++
+			if nbResources > 0 && count == uint32(nbResources) {
+				return count, nil
+			}
+		}
+	}
+
+	return count, nil
+}
+
+func onlineCPUResources(nbCpus uint32) error {
+	resource := onlineResource{
+		sysfsOnlinePath: sysfsCPUOnlinePath,
+		regexpPattern:   cpuRegexpPattern,
+	}
+
+	var count uint32
+	for i := uint32(0); i < onlineCPUMaxTries; i++ {
+		r, err := onlineResources(resource, int32(nbCpus-count))
 		if err != nil {
 			return err
 		}
-
-		for _, file := range files {
-			matched, err := regexp.MatchString(resource.regexpPattern, file.Name())
-			if err != nil {
-				return err
-			}
-
-			if !matched {
-				continue
-			}
-
-			onlinePath := filepath.Join(resource.sysfsOnlinePath, file.Name(), "online")
-			ioutil.WriteFile(onlinePath, []byte("1"), 0600)
+		count += r
+		if count == nbCpus {
+			return nil
 		}
+		time.Sleep(onlineCPUMemWaitTime)
 	}
 
-	return nil
+	return fmt.Errorf("only %d of %d were connected", count, nbCpus)
+}
+
+func onlineMemResources() error {
+	resource := onlineResource{
+		sysfsOnlinePath: sysfsMemOnlinePath,
+		regexpPattern:   memRegexpPattern,
+	}
+
+	_, err := onlineResources(resource, -1)
+	return err
+}
+
+func onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
+	if req.NbCpus <= 0 {
+		return fmt.Errorf("requested number of CPUs '%d' must be greater than 0", req.NbCpus)
+	}
+
+	onlineCPUMemLock.Lock()
+	defer onlineCPUMemLock.Unlock()
+
+	if err := onlineCPUResources(req.NbCpus); err != nil {
+		return err
+	}
+
+	return onlineMemResources()
 }
 
 func setConsoleCarriageReturn(fd int) error {
@@ -752,7 +816,10 @@ func (a *agentGRPC) UpdateRoutes(ctx context.Context, req *pb.UpdateRoutesReques
 }
 
 func (a *agentGRPC) OnlineCPUMem(ctx context.Context, req *pb.OnlineCPUMemRequest) (*gpb.Empty, error) {
-	go onlineCPUMem()
+	if !req.Wait {
+		go onlineCPUMem(req)
+		return emptyResp, nil
+	}
 
-	return emptyResp, nil
+	return emptyResp, onlineCPUMem(req)
 }
