@@ -143,3 +143,34 @@ func TestAddStoragesNoopHandlerFailure(t *testing.T) {
 
 	testAddStoragesFailure(t, storages)
 }
+
+func TestMount(t *testing.T) {
+	assert := assert.New(t)
+
+	type testData struct {
+		source      string
+		destination string
+		fsType      string
+		flags       int
+		options     string
+
+		expectError bool
+	}
+
+	data := []testData{
+		{"", "", "", 0, "", true},
+		{"", "/foo", "9p", 0, "", true},
+		{"proc", "", "9p", 0, "", true},
+		{"proc", "/proc", "", 0, "", true},
+	}
+
+	for i, d := range data {
+		err := mount(d.source, d.destination, d.fsType, d.flags, d.options)
+
+		if d.expectError {
+			assert.Errorf(err, "test %d (%+v)", i, d)
+		} else {
+			assert.NoErrorf(err, "test %d (%+v)", i, d)
+		}
+	}
+}
