@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	gpb "github.com/gogo/protobuf/types"
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/opencontainers/runc/libcontainer"
@@ -165,10 +166,12 @@ func buildProcess(agentProcess *pb.Process, procID string) (*process, error) {
 }
 
 func (a *agentGRPC) Check(ctx context.Context, req *pb.CheckRequest) (*pb.HealthCheckResponse, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	return &pb.HealthCheckResponse{Status: pb.HealthCheckResponse_SERVING}, nil
 }
 
 func (a *agentGRPC) Version(ctx context.Context, req *pb.CheckRequest) (*pb.VersionCheckResponse, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	return &pb.VersionCheckResponse{
 		GrpcVersion:  pb.APIVersion,
 		AgentVersion: a.version,
@@ -324,6 +327,7 @@ func (a *agentGRPC) updateContainerConfig(spec *specs.Spec, config *configs.Conf
 }
 
 func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainerRequest) (*gpb.Empty, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	if a.sandbox.running == false {
 		return emptyResp, grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started, impossible to run a new container")
 	}
@@ -417,6 +421,7 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 }
 
 func (a *agentGRPC) StartContainer(ctx context.Context, req *pb.StartContainerRequest) (*gpb.Empty, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	ctr, err := a.getContainer(req.ContainerId)
 	if err != nil {
 		return emptyResp, err
@@ -439,6 +444,7 @@ func (a *agentGRPC) StartContainer(ctx context.Context, req *pb.StartContainerRe
 }
 
 func (a *agentGRPC) ExecProcess(ctx context.Context, req *pb.ExecProcessRequest) (*gpb.Empty, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	ctr, err := a.getContainer(req.ContainerId)
 	if err != nil {
 		return emptyResp, err
@@ -466,6 +472,7 @@ func (a *agentGRPC) ExecProcess(ctx context.Context, req *pb.ExecProcessRequest)
 }
 
 func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequest) (*gpb.Empty, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	if a.sandbox.running == false {
 		return emptyResp, grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started, impossible to signal the container")
 	}
@@ -514,6 +521,7 @@ func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequ
 }
 
 func (a *agentGRPC) WaitProcess(ctx context.Context, req *pb.WaitProcessRequest) (*pb.WaitProcessResponse, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	proc, ctr, err := a.sandbox.getProcess(req.ContainerId, req.ExecId)
 	if err != nil {
 		return &pb.WaitProcessResponse{}, err
@@ -537,6 +545,7 @@ func (a *agentGRPC) WaitProcess(ctx context.Context, req *pb.WaitProcessRequest)
 }
 
 func (a *agentGRPC) RemoveContainer(ctx context.Context, req *pb.RemoveContainerRequest) (*gpb.Empty, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	ctr, err := a.sandbox.getContainer(req.ContainerId)
 	if err != nil {
 		return emptyResp, err
@@ -577,6 +586,7 @@ func (a *agentGRPC) RemoveContainer(ctx context.Context, req *pb.RemoveContainer
 }
 
 func (a *agentGRPC) WriteStdin(ctx context.Context, req *pb.WriteStreamRequest) (*pb.WriteStreamResponse, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	proc, _, err := a.sandbox.getProcess(req.ContainerId, req.ExecId)
 	if err != nil {
 		return &pb.WriteStreamResponse{}, err
@@ -600,6 +610,7 @@ func (a *agentGRPC) WriteStdin(ctx context.Context, req *pb.WriteStreamRequest) 
 }
 
 func (a *agentGRPC) ReadStdout(ctx context.Context, req *pb.ReadStreamRequest) (*pb.ReadStreamResponse, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	data, err := a.sandbox.readStdio(req.ContainerId, req.ExecId, int(req.Len), true)
 	if err != nil {
 		return &pb.ReadStreamResponse{}, err
@@ -611,6 +622,7 @@ func (a *agentGRPC) ReadStdout(ctx context.Context, req *pb.ReadStreamRequest) (
 }
 
 func (a *agentGRPC) ReadStderr(ctx context.Context, req *pb.ReadStreamRequest) (*pb.ReadStreamResponse, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	data, err := a.sandbox.readStdio(req.ContainerId, req.ExecId, int(req.Len), false)
 	if err != nil {
 		return &pb.ReadStreamResponse{}, err
@@ -622,6 +634,7 @@ func (a *agentGRPC) ReadStderr(ctx context.Context, req *pb.ReadStreamRequest) (
 }
 
 func (a *agentGRPC) CloseStdin(ctx context.Context, req *pb.CloseStdinRequest) (*gpb.Empty, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	proc, _, err := a.sandbox.getProcess(req.ContainerId, req.ExecId)
 	if err != nil {
 		return emptyResp, err
@@ -642,6 +655,7 @@ func (a *agentGRPC) CloseStdin(ctx context.Context, req *pb.CloseStdinRequest) (
 }
 
 func (a *agentGRPC) TtyWinResize(ctx context.Context, req *pb.TtyWinResizeRequest) (*gpb.Empty, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	proc, _, err := a.sandbox.getProcess(req.ContainerId, req.ExecId)
 	if err != nil {
 		return emptyResp, err
@@ -665,6 +679,7 @@ func (a *agentGRPC) TtyWinResize(ctx context.Context, req *pb.TtyWinResizeReques
 }
 
 func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequest) (*gpb.Empty, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	if a.sandbox.running == true {
 		return emptyResp, grpcStatus.Error(codes.AlreadyExists, "Sandbox already started, impossible to start again")
 	}
@@ -695,6 +710,7 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 }
 
 func (a *agentGRPC) DestroySandbox(ctx context.Context, req *pb.DestroySandboxRequest) (*gpb.Empty, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	if a.sandbox.running == false {
 		agentLog.WithField("sandbox", a.sandbox.id).Info("Sandbox not started, this is a no-op")
 		return emptyResp, nil
@@ -736,22 +752,27 @@ func (a *agentGRPC) DestroySandbox(ctx context.Context, req *pb.DestroySandboxRe
 }
 
 func (a *agentGRPC) AddInterface(ctx context.Context, req *pb.AddInterfaceRequest) (*pb.Interface, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	return a.sandbox.addInterface(nil, req.Interface)
 }
 
 func (a *agentGRPC) UpdateInterface(ctx context.Context, req *pb.UpdateInterfaceRequest) (*pb.Interface, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	return a.sandbox.updateInterface(nil, req.Interface)
 }
 
 func (a *agentGRPC) RemoveInterface(ctx context.Context, req *pb.RemoveInterfaceRequest) (*pb.Interface, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	return a.sandbox.removeInterface(nil, req.Interface)
 }
 
 func (a *agentGRPC) UpdateRoutes(ctx context.Context, req *pb.UpdateRoutesRequest) (*pb.Routes, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	return a.sandbox.updateRoutes(nil, req.Routes)
 }
 
 func (a *agentGRPC) OnlineCPUMem(ctx context.Context, req *pb.OnlineCPUMemRequest) (*gpb.Empty, error) {
+	agentLog.Debugf("req: %s", spew.Sdump(req))
 	go onlineCPUMem()
 
 	return emptyResp, nil
