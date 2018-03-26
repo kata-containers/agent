@@ -310,9 +310,9 @@ func addDevice(device *pb.Device, spec *pb.Spec) error {
 			"invalid type for device %v", device)
 	}
 
-	if device.VmPath == "" {
+	if device.Id == "" && device.VmPath == "" {
 		return grpcStatus.Errorf(codes.InvalidArgument,
-			"invalid VM path for device %v", device)
+			"invalid ID and VM path for device %v", device)
 	}
 
 	if device.ContainerPath == "" {

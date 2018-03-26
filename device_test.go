@@ -248,7 +248,7 @@ func TestAddDevice(t *testing.T) {
 		},
 		{
 			device: &pb.Device{
-				// Missing VmPath
+				// Missing Id and missing VmPath
 				Type:          noopHandlerTag,
 				ContainerPath: "/foo",
 			},
@@ -266,9 +266,20 @@ func TestAddDevice(t *testing.T) {
 		},
 		{
 			device: &pb.Device{
-				// Id is optional
+				// Id is optional if VmPath is provided
 				Type:          noopHandlerTag,
 				VmPath:        "/foo",
+				ContainerPath: "/foo",
+				Options:       []string{},
+			},
+			spec:        emptySpec,
+			expectError: false,
+		},
+		{
+			device: &pb.Device{
+				// VmPath is optional if Id is provided
+				Id:            "foo",
+				Type:          noopHandlerTag,
 				ContainerPath: "/foo",
 				Options:       []string{},
 			},
