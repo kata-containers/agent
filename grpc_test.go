@@ -155,3 +155,27 @@ func TestOnlineCPUMem(t *testing.T) {
 	_, err = a.OnlineCPUMem(context.TODO(), req)
 	assert.NoError(err)
 }
+
+func TestGetPIDIndex(t *testing.T) {
+	assert := assert.New(t)
+
+	title := "UID PID PPID C STIME TTY TIME CMD"
+	pidIndex := 1
+	index := getPIDIndex(title)
+	assert.Equal(pidIndex, index)
+
+	title = "PID PPID C STIME TTY TIME CMD"
+	pidIndex = 0
+	index = getPIDIndex(title)
+	assert.Equal(pidIndex, index)
+
+	title = "PPID C STIME TTY TIME CMD PID"
+	pidIndex = 6
+	index = getPIDIndex(title)
+	assert.Equal(pidIndex, index)
+
+	title = "PPID C STIME TTY TIME CMD"
+	pidIndex = -1
+	index = getPIDIndex(title)
+	assert.Equal(pidIndex, index)
+}

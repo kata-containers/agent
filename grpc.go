@@ -7,11 +7,15 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -621,6 +625,97 @@ func (a *agentGRPC) WaitProcess(ctx context.Context, req *pb.WaitProcessRequest)
 	return &pb.WaitProcessResponse{
 		Status: int32(exitCode),
 	}, nil
+}
+
+func getPIDIndex(title string) int {
+	// looking for PID field in ps title
+	fields := strings.Fields(title)
+	for i, f := range fields {
+		if f == "PID" {
+			return i
+		}
+	}
+	return -1
+}
+
+func (a *agentGRPC) ListProcesses(ctx context.Context, req *pb.ListProcessesRequest) (*pb.ListProcessesResponse, error) {
+	resp := &pb.ListProcessesResponse{}
+
+	c, err := a.sandbox.getContainer(req.ContainerId)
+	if err != nil {
+		return resp, err
+	}
+
+	// Get the list of processes that are running inside the containers.
+	// the PIDs match with the system PIDs, not with container's namespace
+	pids, err := c.container.Processes()
+	if err != nil {
+		return resp, err
+	}
+
+	switch req.Format {
+	case "table":
+	case "json":
+		resp.ProcessList, err = json.Marshal(pids)
+		return resp, err
+	default:
+		return resp, fmt.Errorf("invalid format option")
+	}
+
+	psArgs := req.Args
+	if len(psArgs) == 0 {
+		psArgs = []string{"-ef"}
+	}
+
+	// All container's processes are visibles from agent's namespace.
+	// pids already contains the list of processes that are running
+	// inside a container, now we have to use that list to filter
+	// ps output and return just container's processes
+	cmd := exec.Command("ps", psArgs...)
+	output, err := a.sandbox.subreaper.combinedOutput(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %s", err, output)
+	}
+
+	lines := strings.Split(string(output), "\n")
+
+	pidIndex := getPIDIndex(lines[0])
+
+	// PID field not found
+	if pidIndex == -1 {
+		return nil, fmt.Errorf("failed to find PID field in ps output")
+	}
+
+	// append title
+	var result bytes.Buffer
+
+	result.WriteString(lines[0] + "\n")
+
+	for _, line := range lines[1:] {
+		if len(line) == 0 {
+			continue
+		}
+		fields := strings.Fields(line)
+		if pidIndex >= len(fields) {
+			return nil, fmt.Errorf("missing PID field: %s", line)
+		}
+
+		p, err := strconv.Atoi(fields[pidIndex])
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert pid to int: %s", fields[pidIndex])
+		}
+
+		// appends pid line
+		for _, pid := range pids {
+			if pid == p {
+				result.WriteString(line + "\n")
+				break
+			}
+		}
+	}
+
+	resp.ProcessList = result.Bytes()
+	return resp, nil
 }
 
 func (a *agentGRPC) RemoveContainer(ctx context.Context, req *pb.RemoveContainerRequest) (*gpb.Empty, error) {
