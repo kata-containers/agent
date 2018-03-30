@@ -323,18 +323,37 @@ func (a *agentGRPC) updateContainerConfig(spec *specs.Spec, config *configs.Conf
 	return a.updateContainerConfigPrivileges(spec, config)
 }
 
-func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainerRequest) (*gpb.Empty, error) {
+// rollbackFailingContainerCreation rolls back important steps that might have
+// been performed before the container creation failed.
+// - Destroy the container created by libcontainer
+// - Delete the container from the agent internal map
+// - Unmount all mounts related to this container
+func (a *agentGRPC) rollbackFailingContainerCreation(ctr *container, err error) {
+	if err != nil {
+		if ctr.container != nil {
+			ctr.container.Destroy()
+		}
+
+		a.sandbox.deleteContainer(ctr.id)
+
+		if err2 := removeMounts(ctr.mounts); err2 != nil {
+			agentLog.WithError(err2).Error("rollback failed")
+		}
+	}
+}
+
+func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainerRequest) (resp *gpb.Empty, err error) {
 	if a.sandbox.running == false {
 		return emptyResp, grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started, impossible to run a new container")
 	}
 
-	if _, err := a.sandbox.getContainer(req.ContainerId); err == nil {
+	if _, err = a.sandbox.getContainer(req.ContainerId); err == nil {
 		return emptyResp, grpcStatus.Errorf(codes.AlreadyExists, "Container %s already exists, impossible to create", req.ContainerId)
 	}
 
 	// re-scan PCI bus
 	// looking for hidden devices
-	if err := ioutil.WriteFile(pciBusRescanFile, []byte("1"), pciBusMode); err != nil {
+	if err = ioutil.WriteFile(pciBusRescanFile, []byte("1"), pciBusMode); err != nil {
 		agentLog.WithError(err).Warn("Could not rescan PCI bus")
 	}
 
@@ -343,7 +362,7 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 	// updates the devices listed in the OCI spec, so that they actually
 	// match real devices inside the VM. This step is necessary since we
 	// cannot predict everything from the caller.
-	if err := addDevices(req.Devices, req.OCI); err != nil {
+	if err = addDevices(req.Devices, req.OCI); err != nil {
 		return emptyResp, err
 	}
 
@@ -358,6 +377,18 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 	if err != nil {
 		return emptyResp, err
 	}
+
+	ctr := &container{
+		id:        req.ContainerId,
+		processes: make(map[string]*process),
+		mounts:    mountList,
+	}
+
+	a.sandbox.setContainer(req.ContainerId, ctr)
+
+	// In case the container creation failed, make sure we cleanup
+	// properly by rolling back the actions previously performed.
+	defer a.rollbackFailingContainerCreation(ctr, err)
 
 	// Convert the spec to an actual OCI specification structure.
 	ociSpec, err := pb.GRPCtoOCI(req.OCI)
@@ -378,7 +409,7 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 
 	// Update libcontainer configuration for specific cases not handled
 	// by the specconv converter.
-	if err := a.updateContainerConfig(ociSpec, config); err != nil {
+	if err = a.updateContainerConfig(ociSpec, config); err != nil {
 		return emptyResp, err
 	}
 
@@ -388,32 +419,22 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		return emptyResp, err
 	}
 
-	libContContainer, err := factory.Create(req.ContainerId, config)
+	ctr.container, err = factory.Create(req.ContainerId, config)
+	if err != nil {
+		return emptyResp, err
+	}
+	ctr.config = *config
+
+	ctr.initProcess, err = buildProcess(req.OCI.Process, req.ExecId)
 	if err != nil {
 		return emptyResp, err
 	}
 
-	builtProcess, err := buildProcess(req.OCI.Process, req.ExecId)
-	if err != nil {
+	if err = a.execProcess(ctr, ctr.initProcess, true); err != nil {
 		return emptyResp, err
 	}
 
-	container := &container{
-		id:          req.ContainerId,
-		initProcess: builtProcess,
-		container:   libContContainer,
-		config:      *config,
-		processes:   make(map[string]*process),
-		mounts:      mountList,
-	}
-
-	a.sandbox.setContainer(req.ContainerId, container)
-
-	if err := a.execProcess(container, container.initProcess, true); err != nil {
-		return emptyResp, err
-	}
-
-	return emptyResp, a.postExecProcess(container, container.initProcess)
+	return emptyResp, a.postExecProcess(ctr, ctr.initProcess)
 }
 
 func (a *agentGRPC) StartContainer(ctx context.Context, req *pb.StartContainerRequest) (*gpb.Empty, error) {
