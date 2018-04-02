@@ -117,7 +117,7 @@ func mount(source, destination, fsType string, flags int, options string) error 
 
 	if err := syscall.Mount(absSource, destination,
 		fsType, uintptr(flags), options); err != nil {
-		return grpcStatus.Errorf(codes.Internal, "Could not bind mount %v to %v: %v",
+		return grpcStatus.Errorf(codes.Internal, "Could not mount %v to %v: %v",
 			absSource, destination, err)
 	}
 
