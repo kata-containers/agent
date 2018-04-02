@@ -55,8 +55,11 @@ func (c *agentConfig) getConfig(cmdLineFile string) error {
 	return nil
 }
 
-func (c *agentConfig) applyConfig() {
+func (c *agentConfig) applyConfig(s *sandbox) {
 	agentLog.Logger.SetLevel(c.logLevel)
+	if c.logLevel == logrus.DebugLevel {
+		s.enableGrpcTrace = true
+	}
 }
 
 //Parse a string that represents a kernel cmdline option

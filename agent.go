@@ -22,11 +22,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	_ "github.com/opencontainers/runc/libcontainer/nsenter"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/net/context"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -60,17 +62,18 @@ type container struct {
 type sandbox struct {
 	sync.RWMutex
 
-	id          string
-	running     bool
-	noPivotRoot bool
-	containers  map[string]*container
-	channel     channel
-	network     network
-	wg          sync.WaitGroup
-	sharedPidNs namespace
-	mounts      []string
-	subreaper   reaper
-	server      *grpc.Server
+	id              string
+	running         bool
+	noPivotRoot     bool
+	enableGrpcTrace bool
+	containers      map[string]*container
+	channel         channel
+	network         network
+	wg              sync.WaitGroup
+	sharedPidNs     namespace
+	mounts          []string
+	subreaper       reaper
+	server          *grpc.Server
 }
 
 type namespace struct {
@@ -425,7 +428,7 @@ func (s *sandbox) initLogger() error {
 	if err := config.getConfig(kernelCmdlineFile); err != nil {
 		agentLog.WithError(err).Warn("Failed to get config from kernel cmdline")
 	}
-	config.applyConfig()
+	config.applyConfig(s)
 
 	return announce()
 }
@@ -441,13 +444,44 @@ func (s *sandbox) initChannel() error {
 	return nil
 }
 
+func grpcTracer(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+	message := req.(proto.Message)
+	agentLog.WithFields(logrus.Fields{
+		"request": info.FullMethod,
+		"req":     message.String()}).Debug("new request")
+
+	start := time.Now()
+	resp, err = handler(ctx, req)
+	elapsed := time.Now().Sub(start)
+
+	message = resp.(proto.Message)
+	logger := agentLog.WithFields(logrus.Fields{
+		"request":  info.FullMethod,
+		"duration": elapsed.String(),
+		"resp":     message.String()})
+	if err != nil {
+		logger = logger.WithError(err)
+	}
+	logger.Debug("request end")
+
+	return resp, err
+}
+
 func (s *sandbox) startGRPC() {
 	grpcImpl := &agentGRPC{
 		sandbox: s,
 		version: version,
 	}
 
-	grpcServer := grpc.NewServer()
+	var grpcServer *grpc.Server
+	if s.enableGrpcTrace {
+		agentLog.Info("Enable grpc tracing")
+		opt := grpc.UnaryInterceptor(grpcTracer)
+		grpcServer = grpc.NewServer(opt)
+	} else {
+		grpcServer = grpc.NewServer()
+	}
+
 	pb.RegisterAgentServiceServer(grpcServer, grpcImpl)
 	pb.RegisterHealthServer(grpcServer, grpcImpl)
 	s.server = grpcServer
