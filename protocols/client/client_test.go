@@ -12,7 +12,9 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/hashicorp/yamux"
 	"github.com/stretchr/testify/assert"
 	context "golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -31,21 +33,31 @@ const (
 	mockBadVsockScheme = "vsock://100"
 )
 
-func startMockServer(t *testing.T) (*grpc.Server, chan error, error) {
+func startMockServer(t *testing.T, enableYamux bool) (*grpc.Server, chan error, error) {
 	os.Remove(mockSockAddr)
 
 	l, err := net.Listen("unix", mockSockAddr)
 	assert.Nil(t, err, "Listen on %s failed: %s", mockSockAddr, err)
 
 	mock := mockserver.NewMockServer()
-
-	stopWait := make(chan error, 1)
+	waitCh := make(chan error, 1)
 	go func() {
-		mock.Serve(l)
-		stopWait <- nil
+		// notify server ready
+		waitCh <- nil
+		servLis := l
+		if enableYamux {
+			rawConn, err := l.Accept()
+			assert.Nil(t, err, "Accept raw socket")
+			servLis, err = yamux.Server(rawConn, nil)
+			assert.Nil(t, err, "Create yamux server listener")
+		}
+
+		mock.Serve(servLis)
+		// notify server stop
+		waitCh <- nil
 	}()
 
-	return mock, stopWait, nil
+	return mock, waitCh, nil
 }
 
 func checkHealth(cli *AgentClient) error {
@@ -75,31 +87,63 @@ func checkVersion(cli *AgentClient) error {
 	return nil
 }
 
+func agentClientTest(t *testing.T, sock string, success, enableYamux bool, expect string) {
+	dialTimeout := defaultDialTimeout
+	defaultDialTimeout = 1 * time.Second
+	defer func() {
+		defaultDialTimeout = dialTimeout
+	}()
+	cli, err := NewAgentClient(sock, enableYamux)
+	if success {
+		assert.Nil(t, err, "Failed to create new agent client: %s", err)
+	} else if !success {
+		assert.NotNil(t, err, "Unexpected success with sock address: %s", sock)
+	}
+	if err == nil {
+		err = checkHealth(cli)
+		assert.Nil(t, err, "failed checking grpc server status: %s", err)
+		err = checkVersion(cli)
+		assert.Nil(t, err, "failed checking grpc server version: %s", err)
+
+		cli.Close()
+	} else if expect != "" {
+		assert.True(t, strings.Contains(err.Error(), expect), "expect err message: %s\tgot: %s", expect, err)
+	}
+}
+
 func TestNewAgentClient(t *testing.T) {
-	mock, waitCh, err := startMockServer(t)
+	mock, waitCh, err := startMockServer(t, false)
 	assert.Nil(t, err, "failed to start mock server: %s", err)
 
 	cliFunc := func(sock string, success bool, expect string) {
-		cli, err := NewAgentClient(sock)
-		if success {
-			assert.Nil(t, err, "Failed to create new agent client: %s", err)
-		} else if !success {
-			assert.NotNil(t, err, "Unexpected success with sock address: %s", sock)
-		}
-		if err == nil {
-			err = checkHealth(cli)
-			assert.Nil(t, err, "failed checking grpc server status: %s", err)
-			err = checkVersion(cli)
-			assert.Nil(t, err, "failed checking grpc server version: %s", err)
-
-			cli.Close()
-		} else if expect != "" {
-			assert.True(t, strings.Contains(err.Error(), expect), "expect err message: %s\tgot: %s", expect, err)
-		}
+		agentClientTest(t, sock, success, false, expect)
 	}
 
+	// server starts
+	<-waitCh
 	cliFunc(mockSockAddr, true, "")
 	cliFunc(unixMockAddr, true, "")
+	cliFunc(mockBadSchemeAddr, false, "Invalid scheme:")
+	cliFunc(mockBadVsockScheme, false, "Invalid vsock scheme:")
+	cliFunc(mockVsockBadCid, false, "Invalid vsock cid")
+	cliFunc(mockVsockBadPort, false, "Invalid vsock port")
+	cliFunc(mockFakeVsockAddr, false, "context deadline exceeded")
+
+	// wait mock server to stop
+	mock.Stop()
+	<-waitCh
+}
+
+func TestNewAgentClientWithYamux(t *testing.T) {
+	mock, waitCh, err := startMockServer(t, true)
+	assert.Nil(t, err, "failed to start mock server: %s", err)
+
+	cliFunc := func(sock string, success bool, expect string) {
+		agentClientTest(t, sock, success, true, expect)
+	}
+	// server starts
+	<-waitCh
+	cliFunc(mockSockAddr, true, "")
 	cliFunc(mockBadSchemeAddr, false, "Invalid scheme:")
 	cliFunc(mockBadVsockScheme, false, "Invalid vsock scheme:")
 	cliFunc(mockVsockBadCid, false, "Invalid vsock cid")
