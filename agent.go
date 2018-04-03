@@ -69,7 +69,7 @@ type sandbox struct {
 	grpcListener net.Listener
 	sharedPidNs  namespace
 	mounts       []string
-	subreaper    *reaper
+	subreaper    reaper
 }
 
 type namespace struct {
@@ -575,6 +575,9 @@ func main() {
 		os.Exit(exitSuccess)
 	}()
 
+	r := &agentReaper{}
+	r.init()
+
 	// Initialize unique sandbox structure.
 	s := &sandbox{
 		containers: make(map[string]*container),
@@ -582,9 +585,7 @@ func main() {
 		// pivot_root won't work for init, see
 		// Documention/filesystem/ramfs-rootfs-initramfs.txt
 		noPivotRoot: os.Getpid() == 1,
-		subreaper: &reaper{
-			exitCodeChans: make(map[int]chan<- int),
-		},
+		subreaper:   r,
 	}
 
 	if err = s.initLogger(); err != nil {
