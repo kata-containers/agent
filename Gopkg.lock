@@ -107,7 +107,7 @@
     "libcontainer/user",
     "libcontainer/utils"
   ]
-  revision = "e6516b3d5dc780cb57a976013c242a9a93052543"
+  revision = "cc4307ab6643668ce5abc6b524e1764a54c32550"
 
 [[projects]]
   name = "github.com/opencontainers/runtime-spec"
@@ -255,6 +255,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "d47e191aaef03b9e18299bdaba587092ca6428b5d6bf7e2cd1dcf8ce51043759"
+  inputs-digest = "93b5fff12a090f22895db2641ba5cd2569bc14a82c2f86e9fe3813f9a5e30cc9"
   solver-name = "gps-cdcl"
   solver-version = 1
