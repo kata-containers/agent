@@ -328,17 +328,15 @@ func (a *agentGRPC) updateContainerConfig(spec *specs.Spec, config *configs.Conf
 // - Destroy the container created by libcontainer
 // - Delete the container from the agent internal map
 // - Unmount all mounts related to this container
-func (a *agentGRPC) rollbackFailingContainerCreation(ctr *container, err error) {
-	if err != nil {
-		if ctr.container != nil {
-			ctr.container.Destroy()
-		}
+func (a *agentGRPC) rollbackFailingContainerCreation(ctr *container) {
+	if ctr.container != nil {
+		ctr.container.Destroy()
+	}
 
-		a.sandbox.deleteContainer(ctr.id)
+	a.sandbox.deleteContainer(ctr.id)
 
-		if err2 := removeMounts(ctr.mounts); err2 != nil {
-			agentLog.WithError(err2).Error("rollback failed")
-		}
+	if err := removeMounts(ctr.mounts); err != nil {
+		agentLog.WithError(err).Error("rollback failed removeMounts()")
 	}
 }
 
@@ -388,7 +386,11 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 
 	// In case the container creation failed, make sure we cleanup
 	// properly by rolling back the actions previously performed.
-	defer a.rollbackFailingContainerCreation(ctr, err)
+	defer func() {
+		if err != nil {
+			a.rollbackFailingContainerCreation(ctr)
+		}
+	}()
 
 	// Convert the spec to an actual OCI specification structure.
 	ociSpec, err := pb.GRPCtoOCI(req.OCI)
