@@ -7,9 +7,14 @@
 package main
 
 import (
+	"context"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
+	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
@@ -101,4 +106,52 @@ func TestUpdateContainerConfigPrivilegesNoNewPrivileges(t *testing.T) {
 
 		testUpdateContainerConfigPrivileges(t, spec, config, expectedConfig)
 	}
+}
+
+func TestOnlineCPUMem(t *testing.T) {
+	assert := assert.New(t)
+	a := &agentGRPC{}
+
+	req := &pb.OnlineCPUMemRequest{
+		NbCpus: 1,
+		Wait:   true,
+	}
+	sysfsCPUOnlinePath = "/xyz/123/rgb/abc"
+	sysfsMemOnlinePath = "/xyz/123/rgb/abc"
+
+	_, err := a.OnlineCPUMem(context.TODO(), req)
+	assert.Error(err, "sysfs paths do not exist")
+
+	sysfsCPUOnlinePath, err = ioutil.TempDir("", "cpu")
+	assert.NoError(err)
+	defer os.RemoveAll(sysfsCPUOnlinePath)
+
+	sysfsMemOnlinePath, err = ioutil.TempDir("", "memory")
+	assert.NoError(err)
+	defer os.RemoveAll(sysfsMemOnlinePath)
+
+	_, err = a.OnlineCPUMem(context.TODO(), req)
+	assert.Error(err, "CPU sysfs is empty")
+
+	cpu0dir := filepath.Join(sysfsCPUOnlinePath, "cpu0")
+	err = os.Mkdir(cpu0dir, 0775)
+	assert.NoError(err)
+
+	_, err = a.OnlineCPUMem(context.TODO(), req)
+	assert.Error(err)
+
+	cpu0Online := filepath.Join(cpu0dir, "online")
+	err = ioutil.WriteFile(cpu0Online, []byte("0"), 0755)
+	assert.NoError(err)
+
+	memory0dir := filepath.Join(sysfsCPUOnlinePath, "memory0")
+	err = os.Mkdir(memory0dir, 0775)
+	assert.NoError(err)
+
+	memory0Online := filepath.Join(memory0dir, "online")
+	err = ioutil.WriteFile(memory0Online, []byte("0"), 0755)
+	assert.NoError(err)
+
+	_, err = a.OnlineCPUMem(context.TODO(), req)
+	assert.NoError(err)
 }
