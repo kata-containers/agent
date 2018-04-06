@@ -270,8 +270,8 @@ func (a *agentGRPC) execProcess(ctr *container, proc *process, createContainer b
 	// miss the opportunity to get the exit code, leading WaitProcess() to
 	// wait forever on the new channel.
 	// This lock has to be taken before we run the new process.
-	a.sandbox.subreaper.RLock()
-	defer a.sandbox.subreaper.RUnlock()
+	a.sandbox.subreaper.lock()
+	defer a.sandbox.subreaper.unlock()
 
 	if createContainer {
 		err = ctr.container.Start(&proc.process)

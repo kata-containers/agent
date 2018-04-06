@@ -18,7 +18,19 @@ import (
 	grpcStatus "google.golang.org/grpc/status"
 )
 
-type reaper struct {
+type reaper interface {
+	init()
+	getExitCodeCh(pid int) (chan<- int, error)
+	setExitCodeCh(pid int, exitCodeCh chan<- int)
+	deleteExitCodeCh(pid int)
+	reap() error
+	start(c *exec.Cmd) (<-chan int, error)
+	wait(exitCodeCh <-chan int, proc waitProcess) (int, error)
+	lock()
+	unlock()
+}
+
+type agentReaper struct {
 	sync.RWMutex
 
 	chansLock     sync.RWMutex
@@ -33,7 +45,19 @@ func exitStatus(status unix.WaitStatus) int {
 	return status.ExitStatus()
 }
 
-func (r *reaper) getExitCodeCh(pid int) (chan<- int, error) {
+func (r *agentReaper) init() {
+	r.exitCodeChans = make(map[int]chan<- int)
+}
+
+func (r *agentReaper) lock() {
+	r.RLock()
+}
+
+func (r *agentReaper) unlock() {
+	r.RUnlock()
+}
+
+func (r *agentReaper) getExitCodeCh(pid int) (chan<- int, error) {
 	r.chansLock.RLock()
 	defer r.chansLock.RUnlock()
 
@@ -45,21 +69,21 @@ func (r *reaper) getExitCodeCh(pid int) (chan<- int, error) {
 	return exitCodeCh, nil
 }
 
-func (r *reaper) setExitCodeCh(pid int, exitCodeCh chan<- int) {
+func (r *agentReaper) setExitCodeCh(pid int, exitCodeCh chan<- int) {
 	r.chansLock.Lock()
 	defer r.chansLock.Unlock()
 
 	r.exitCodeChans[pid] = exitCodeCh
 }
 
-func (r *reaper) deleteExitCodeCh(pid int) {
+func (r *agentReaper) deleteExitCodeCh(pid int) {
 	r.chansLock.Lock()
 	defer r.chansLock.Unlock()
 
 	delete(r.exitCodeChans, pid)
 }
 
-func (r *reaper) reap() error {
+func (r *agentReaper) reap() error {
 	var (
 		ws  unix.WaitStatus
 		rus unix.Rusage
@@ -119,7 +143,7 @@ func (r *reaper) reap() error {
 // start starts the exec command and registers the process to the reaper.
 // This function is a helper for exec.Cmd.Start() since this needs to be
 // in sync with exec.Cmd.Wait().
-func (r *reaper) start(c *exec.Cmd) (<-chan int, error) {
+func (r *agentReaper) start(c *exec.Cmd) (<-chan int, error) {
 	// This lock is very important to avoid any race with reaper.reap().
 	// We don't want the reaper to reap a process before we have added
 	// it to the exit code channel list.
@@ -143,7 +167,7 @@ func (r *reaper) start(c *exec.Cmd) (<-chan int, error) {
 // from the subreaper, the exit code is sent through the provided channel.
 // This function is a helper for exec.Cmd.Wait() and os.Process.Wait() since
 // both cannot be used directly, because of the subreaper.
-func (r *reaper) wait(exitCodeCh <-chan int, proc waitProcess) (int, error) {
+func (r *agentReaper) wait(exitCodeCh <-chan int, proc waitProcess) (int, error) {
 	// Wait for the subreaper to receive the SIGCHLD signal. Once it gets
 	// it, this channel will be notified by receiving the exit code of the
 	// corresponding process.
