@@ -12,6 +12,8 @@ import (
 	"reflect"
 	"sync"
 
+	"golang.org/x/sys/unix"
+
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -101,7 +103,7 @@ func (s *sandbox) addInterface(netHandle *netlink.Handle, iface *pb.Interface) (
 	defer s.network.ifacesLock.Unlock()
 
 	if netHandle == nil {
-		netHandle, err = netlink.NewHandle()
+		netHandle, err = netlink.NewHandle(unix.NETLINK_ROUTE)
 		if err != nil {
 			return nil, err
 		}
@@ -146,7 +148,7 @@ func (s *sandbox) removeInterface(netHandle *netlink.Handle, iface *pb.Interface
 	defer s.network.ifacesLock.Unlock()
 
 	if netHandle == nil {
-		netHandle, err = netlink.NewHandle()
+		netHandle, err = netlink.NewHandle(unix.NETLINK_ROUTE)
 		if err != nil {
 			return nil, err
 		}
@@ -192,7 +194,7 @@ func (s *sandbox) updateInterface(netHandle *netlink.Handle, iface *pb.Interface
 	}
 
 	if netHandle == nil {
-		netHandle, err = netlink.NewHandle()
+		netHandle, err = netlink.NewHandle(unix.NETLINK_ROUTE)
 		if err != nil {
 			return nil, err
 		}
@@ -288,7 +290,7 @@ func getInterface(netHandle *netlink.Handle, link netlink.Link) (*pb.Interface, 
 func (s *sandbox) updateRoutes(netHandle *netlink.Handle, requestedRoutes *pb.Routes) (resultingRoutes *pb.Routes, err error) {
 
 	if netHandle == nil {
-		netHandle, err = netlink.NewHandle()
+		netHandle, err = netlink.NewHandle(unix.NETLINK_ROUTE)
 		if err != nil {
 			return nil, err
 		}
@@ -365,7 +367,7 @@ func (s *sandbox) updateRoutes(netHandle *netlink.Handle, requestedRoutes *pb.Ro
 func getCurrentRoutes(netHandle *netlink.Handle) (*pb.Routes, error) {
 
 	if netHandle == nil {
-		netHandle, err := netlink.NewHandle()
+		netHandle, err := netlink.NewHandle(unix.NETLINK_ROUTE)
 		if err != nil {
 			return nil, err
 		}
@@ -416,7 +418,7 @@ func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *pb.Route, add bo
 	defer s.network.routesLock.Unlock()
 
 	if netHandle == nil {
-		netHandle, err = netlink.NewHandle()
+		netHandle, err = netlink.NewHandle(unix.NETLINK_ROUTE)
 		if err != nil {
 			return err
 		}
@@ -500,7 +502,7 @@ func removeDNS(dns []string) error {
 
 // Remove everything related to network.
 func (s *sandbox) removeNetwork() error {
-	netHandle, err := netlink.NewHandle()
+	netHandle, err := netlink.NewHandle(unix.NETLINK_ROUTE)
 	if err != nil {
 		return err
 	}
