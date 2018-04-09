@@ -7,6 +7,7 @@
 package main
 
 import (
+	"os/exec"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -66,4 +67,21 @@ func TestMockReaperLock(t *testing.T) {
 func TestMockReaperUnlock(t *testing.T) {
 	m := &mockreaper{}
 	m.unlock()
+}
+
+func TestMockReaperRun(t *testing.T) {
+	assert := assert.New(t)
+	m := &mockreaper{}
+	c := exec.Command("echo", "hi")
+	assert.NoError(m.run(c))
+}
+
+func TestMockReaperCombinedOutput(t *testing.T) {
+	expectedOutput := []byte("hi")
+	assert := assert.New(t)
+	m := &mockreaper{}
+	c := exec.Command("echo", "-n", "hi")
+	output, err := m.combinedOutput(c)
+	assert.NoError(err)
+	assert.Equal(expectedOutput, output)
 }
