@@ -464,6 +464,12 @@ func (s *sandbox) startGRPC() {
 				return
 			}
 
+			err = s.channel.wait()
+			if err != nil {
+				agentLog.WithError(err).Warn("Failed to wait agent grpc channel ready")
+				return
+			}
+
 			var l net.Listener
 			l, err = s.channel.listen()
 			if err != nil {
