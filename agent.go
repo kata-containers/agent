@@ -9,6 +9,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"os"
@@ -59,17 +60,16 @@ type container struct {
 type sandbox struct {
 	sync.RWMutex
 
-	id           string
-	running      bool
-	noPivotRoot  bool
-	containers   map[string]*container
-	channel      channel
-	network      network
-	wg           sync.WaitGroup
-	grpcListener net.Listener
-	sharedPidNs  namespace
-	mounts       []string
-	subreaper    reaper
+	id          string
+	running     bool
+	noPivotRoot bool
+	containers  map[string]*container
+	channel     channel
+	network     network
+	wg          sync.WaitGroup
+	sharedPidNs namespace
+	mounts      []string
+	subreaper   reaper
 }
 
 type namespace struct {
@@ -437,17 +437,10 @@ func (s *sandbox) initChannel() error {
 
 	s.channel = c
 
-	return s.channel.setup()
+	return nil
 }
 
-func (s *sandbox) startGRPC() error {
-	l, err := s.channel.listen()
-	if err != nil {
-		return err
-	}
-
-	s.grpcListener = l
-
+func (s *sandbox) startGRPC() {
 	grpcImpl := &agentGRPC{
 		sandbox: s,
 		version: version,
@@ -461,18 +454,35 @@ func (s *sandbox) startGRPC() error {
 	go func() {
 		defer s.wg.Done()
 
-		grpcServer.Serve(l)
+		var err error
+		for err == nil || err == io.EOF {
+			agentLog.Info("agent grpc server starts")
+
+			err = s.channel.setup()
+			if err != nil {
+				agentLog.WithError(err).Warn("Failed to setup agent grpc channel")
+				return
+			}
+
+			var l net.Listener
+			l, err = s.channel.listen()
+			if err != nil {
+				agentLog.WithError(err).Warn("Failed to create agent grpc listener")
+				return
+			}
+
+			// l is closed when Serve() returns
+			err = grpcServer.Serve(l)
+			if err != nil {
+				agentLog.WithError(err).Warn("agent grpc server quits")
+			}
+
+			errT := s.channel.teardown()
+			if errT != nil {
+				agentLog.WithError(errT).Warn("agent grpc channel teardown failed")
+			}
+		}
 	}()
-
-	return nil
-}
-
-func (s *sandbox) teardown() error {
-	if err := s.grpcListener.Close(); err != nil {
-		return err
-	}
-
-	return s.channel.teardown()
 }
 
 type initMount struct {
@@ -604,14 +614,7 @@ func main() {
 	}
 
 	// Start gRPC server.
-	if err = s.startGRPC(); err != nil {
-		return
-	}
+	s.startGRPC()
 
 	s.wg.Wait()
-
-	// Tear down properly.
-	if err = s.teardown(); err != nil {
-		return
-	}
 }
