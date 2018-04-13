@@ -70,6 +70,7 @@ type sandbox struct {
 	sharedPidNs namespace
 	mounts      []string
 	subreaper   reaper
+	server      *grpc.Server
 }
 
 type namespace struct {
@@ -449,6 +450,7 @@ func (s *sandbox) startGRPC() {
 	grpcServer := grpc.NewServer()
 	pb.RegisterAgentServiceServer(grpcServer, grpcImpl)
 	pb.RegisterHealthServer(grpcServer, grpcImpl)
+	s.server = grpcServer
 
 	s.wg.Add(1)
 	go func() {
@@ -489,6 +491,13 @@ func (s *sandbox) startGRPC() {
 			}
 		}
 	}()
+}
+
+func (s *sandbox) stopGRPC() {
+	if s.server != nil {
+		s.server.Stop()
+		s.server = nil
+	}
 }
 
 type initMount struct {
