@@ -155,3 +155,74 @@ func TestOnlineCPUMem(t *testing.T) {
 	_, err = a.OnlineCPUMem(context.TODO(), req)
 	assert.NoError(err)
 }
+
+func TestGetPIDIndex(t *testing.T) {
+	assert := assert.New(t)
+
+	title := "UID PID PPID C STIME TTY TIME CMD"
+	pidIndex := 1
+	index := getPIDIndex(title)
+	assert.Equal(pidIndex, index)
+
+	title = "PID PPID C STIME TTY TIME CMD"
+	pidIndex = 0
+	index = getPIDIndex(title)
+	assert.Equal(pidIndex, index)
+
+	title = "PPID C STIME TTY TIME CMD PID"
+	pidIndex = 6
+	index = getPIDIndex(title)
+	assert.Equal(pidIndex, index)
+
+	title = "PPID C STIME TTY TIME CMD"
+	pidIndex = -1
+	index = getPIDIndex(title)
+	assert.Equal(pidIndex, index)
+}
+
+func TestListProcesses(t *testing.T) {
+	containerID := "1"
+	assert := assert.New(t)
+	req := &pb.ListProcessesRequest{
+		ContainerId: containerID,
+		Format:      "table",
+		Args:        []string{"-ef"},
+	}
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+			subreaper:  &mockreaper{},
+		},
+	}
+	// getContainer should fail
+	r, err := a.ListProcesses(context.TODO(), req)
+	assert.Error(err)
+	assert.NotNil(r)
+
+	// should fail, unknown format
+	req.Format = "unknown"
+	a.sandbox.containers[containerID] = &container{
+		container: &mockContainer{
+			id:        containerID,
+			processes: []int{1},
+		},
+	}
+	r, err = a.ListProcesses(context.TODO(), req)
+	assert.Error(err)
+	assert.NotNil(r)
+
+	// json format
+	req.Format = "json"
+	r, err = a.ListProcesses(context.TODO(), req)
+	assert.NoError(err)
+	assert.NotNil(r)
+	assert.NotEmpty(r.ProcessList)
+
+	// table format
+	req.Format = "table"
+	r, err = a.ListProcesses(context.TODO(), req)
+	assert.NoError(err)
+	assert.NotNil(r)
+	assert.NotEmpty(r.ProcessList)
+}

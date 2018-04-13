@@ -7,6 +7,9 @@
 package main
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"sync"
@@ -28,6 +31,8 @@ type reaper interface {
 	wait(exitCodeCh <-chan int, proc waitProcess) (int, error)
 	lock()
 	unlock()
+	run(c *exec.Cmd) error
+	combinedOutput(c *exec.Cmd) ([]byte, error)
 }
 
 type agentReaper struct {
@@ -179,6 +184,34 @@ func (r *agentReaper) wait(exitCodeCh <-chan int, proc waitProcess) (int, error)
 	proc.wait()
 
 	return exitCode, nil
+}
+
+// run runs the exec command and waits for it, returns once the command
+// has been reaped
+func (r *agentReaper) run(c *exec.Cmd) error {
+	exitCodeCh, err := r.start(c)
+	if err != nil {
+		return fmt.Errorf("reaper: Could not start process: %v", err)
+	}
+	_, err = r.wait(exitCodeCh, (*reaperOSProcess)(c.Process))
+	return err
+}
+
+// combinedOutput combines command's stdout and stderr in one buffer,
+// returns once the command has been reaped
+func (r *agentReaper) combinedOutput(c *exec.Cmd) ([]byte, error) {
+	if c.Stdout != nil {
+		return nil, errors.New("reaper: Stdout already set")
+	}
+	if c.Stderr != nil {
+		return nil, errors.New("reaper: Stderr already set")
+	}
+
+	var b bytes.Buffer
+	c.Stdout = &b
+	c.Stderr = &b
+	err := r.run(c)
+	return b.Bytes(), err
 }
 
 type waitProcess interface {

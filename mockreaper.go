@@ -6,7 +6,12 @@
 
 package main
 
-import "os/exec"
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"os/exec"
+)
 
 type mockreaper struct {
 }
@@ -40,4 +45,26 @@ func (r *mockreaper) lock() {
 }
 
 func (r *mockreaper) unlock() {
+}
+
+func (r *mockreaper) run(c *exec.Cmd) error {
+	if err := c.Run(); err != nil {
+		return fmt.Errorf("reaper: Could not start process: %v", err)
+	}
+	return nil
+}
+
+func (r *mockreaper) combinedOutput(c *exec.Cmd) ([]byte, error) {
+	if c.Stdout != nil {
+		return nil, errors.New("reaper: Stdout already set")
+	}
+	if c.Stderr != nil {
+		return nil, errors.New("reaper: Stderr already set")
+	}
+
+	var b bytes.Buffer
+	c.Stdout = &b
+	c.Stderr = &b
+	err := r.run(c)
+	return b.Bytes(), err
 }

@@ -335,3 +335,13 @@ func (m *mockServer) OnlineCPUMem(ctx context.Context, req *pb.OnlineCPUMemReque
 
 	return &types.Empty{}, nil
 }
+
+func (m *mockServer) ListProcesses(ctx context.Context, req *pb.ListProcessesRequest) (*pb.ListProcessesResponse, error) {
+	mockLock.RLock()
+	defer mockLock.RUnlock()
+	if err := m.podExist(); err != nil {
+		return nil, err
+	}
+
+	return &pb.ListProcessesResponse{}, nil
+}
