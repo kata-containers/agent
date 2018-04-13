@@ -252,3 +252,19 @@ func TestGetProcessFromSandbox(t *testing.T) {
 		"Process structures should be identical: got %+v, expecting %+v",
 		proc, p)
 }
+
+func TestStartStopGRPCServer(t *testing.T) {
+	_, out, err := os.Pipe()
+	assert.Nil(t, err, "%v", err)
+
+	s := &sandbox{
+		containers: make(map[string]*container),
+		channel:    &serialChannel{serialConn: out},
+	}
+
+	s.startGRPC()
+	assert.NotNil(t, s.server, "failed starting grpc server")
+
+	s.stopGRPC()
+	assert.Nil(t, s.server, "failed stopping grpc server")
+}
