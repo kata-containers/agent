@@ -59,3 +59,41 @@ func TestTeardownVSockChannel(t *testing.T) {
 	err := c.teardown()
 	assert.Nil(t, err, "%v", err)
 }
+
+func TestWaitVSockChannel(t *testing.T) {
+	c := &vSockChannel{}
+
+	err := c.wait()
+	assert.Nil(t, err, "%v", err)
+}
+
+func TestWaitSerialChannel(t *testing.T) {
+	_, f, err := os.Pipe()
+	assert.Nil(t, err, "%v", err)
+	defer f.Close()
+
+	c := &serialChannel{serialConn: f}
+
+	err = c.wait()
+	assert.Nil(t, err, "%v", err)
+}
+
+func TestListenSerialChannel(t *testing.T) {
+	_, f, err := os.Pipe()
+	assert.Nil(t, err, "%v", err)
+
+	c := &serialChannel{serialConn: f}
+
+	_, err = c.listen()
+	assert.Nil(t, err, "%v", err)
+}
+
+func TestTeardownSerialChannel(t *testing.T) {
+	_, f, err := os.Pipe()
+	assert.Nil(t, err, "%v", err)
+
+	c := &serialChannel{serialConn: f}
+
+	err = c.teardown()
+	assert.Nil(t, err, "%v", err)
+}
