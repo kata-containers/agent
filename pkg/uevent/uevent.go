@@ -9,7 +9,6 @@ package uevent
 import (
 	"bufio"
 	"io"
-	"os"
 	"strings"
 
 	"golang.org/x/sys/unix"
@@ -35,7 +34,9 @@ type ReaderCloser struct {
 func NewReaderCloser() (io.ReadCloser, error) {
 	nl := unix.SockaddrNetlink{
 		Family: unix.AF_NETLINK,
-		Pid:    uint32(os.Getpid()),
+		// Passing Pid as 0 here allows the kernel to take care of assigning
+		// it. This allows multiple netlink sockets to be used.
+		Pid:    uint32(0),
 		Groups: 1,
 	}
 
