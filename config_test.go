@@ -140,3 +140,27 @@ func TestGetConfig(t *testing.T) {
 		"Log levels should be identical: got %+v, expecting %+v",
 		a.logLevel, logrus.InfoLevel)
 }
+
+func TestSetGrpcTrace(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentConfig{}
+
+	tmpFile, err := ioutil.TempFile("", "test")
+	assert.NoError(err, "%v", err)
+	fileName := tmpFile.Name()
+
+	tmpFile.Write([]byte(logLevelFlag + "=debug"))
+	tmpFile.Close()
+
+	defer os.Remove(fileName)
+
+	err = a.getConfig(fileName)
+	assert.NoError(err, "%v", err)
+
+	s := &sandbox{}
+
+	a.applyConfig(s)
+
+	assert.True(s.enableGrpcTrace, "grpc trace should be enabled")
+}
