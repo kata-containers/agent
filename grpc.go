@@ -54,8 +54,10 @@ const (
 )
 
 var (
-	sysfsCPUOnlinePath = "/sys/devices/system/cpu"
-	sysfsMemOnlinePath = "/sys/devices/system/memory"
+	sysfsCPUOnlinePath     = "/sys/devices/system/cpu"
+	sysfsMemOnlinePath     = "/sys/devices/system/memory"
+	sysfsConnectedCPUsPath = filepath.Join(sysfsCPUOnlinePath, "online")
+	sysfsDockerCpusetPath  = "/sys/fs/cgroup/cpuset/docker/cpuset.cpus"
 )
 
 type onlineResource struct {
@@ -70,6 +72,17 @@ var onlineCPUMemLock sync.Mutex
 const onlineCPUMemWaitTime = 100 * time.Millisecond
 
 const onlineCPUMaxTries = 10
+
+const dockerCpusetMode = 0644
+
+// handleError will log the specified error if wait is true
+func handleError(wait bool, err error) error {
+	if wait {
+		agentLog.WithError(err).Error()
+	}
+
+	return err
+}
 
 // Online resources, nbResources specifies the maximum number of resources to online.
 // If nbResources is <= 0 then there is no limit and all resources are connected.
@@ -145,19 +158,55 @@ func onlineMemResources() error {
 	return err
 }
 
-func onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
+func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
 	if req.NbCpus <= 0 {
-		return fmt.Errorf("requested number of CPUs '%d' must be greater than 0", req.NbCpus)
+		return handleError(req.Wait, fmt.Errorf("requested number of CPUs '%d' must be greater than 0", req.NbCpus))
 	}
 
 	onlineCPUMemLock.Lock()
 	defer onlineCPUMemLock.Unlock()
 
 	if err := onlineCPUResources(req.NbCpus); err != nil {
-		return err
+		return handleError(req.Wait, err)
 	}
 
-	return onlineMemResources()
+	if err := onlineMemResources(); err != nil {
+		return handleError(req.Wait, err)
+	}
+
+	// At this point all CPUs have been connected, we need to know
+	// the actual range of CPUs
+	cpus, err := ioutil.ReadFile(sysfsConnectedCPUsPath)
+	if err != nil {
+		return handleError(req.Wait, fmt.Errorf("Could not get the actual range of connected CPUs: %v", err))
+	}
+	connectedCpus := strings.Trim(string(cpus), "\t\n ")
+
+	// In order to update container's cpuset cgroups, docker's cpuset cgroup MUST BE updated with
+	// the actual number of connected CPUs
+	if err := ioutil.WriteFile(sysfsDockerCpusetPath, []byte(connectedCpus), dockerCpusetMode); err != nil {
+		return handleError(req.Wait, fmt.Errorf("Could not update docker cpuset cgroup '%s': %v", connectedCpus, err))
+	}
+
+	// Now that we know the actual range of connected CPUs, we need to iterate over
+	// all containers an update each cpuset cgroup. This is not required in docker
+	// containers since they don't hot add/remove CPUs.
+	for _, c := range a.sandbox.containers {
+		contConfig := c.container.Config()
+		// Don't update cpuset cgroup if one was already defined.
+		if contConfig.Cgroups.Resources.CpusetCpus != "" {
+			continue
+		}
+		contConfig.Cgroups.Resources = &configs.Resources{
+			CpusetCpus: connectedCpus,
+		}
+		if err := c.container.Set(contConfig); err != nil {
+			return handleError(req.Wait, err)
+		}
+
+	}
+
+	return nil
 }
 
 func setConsoleCarriageReturn(fd int) error {
@@ -936,9 +985,9 @@ func (a *agentGRPC) UpdateRoutes(ctx context.Context, req *pb.UpdateRoutesReques
 
 func (a *agentGRPC) OnlineCPUMem(ctx context.Context, req *pb.OnlineCPUMemRequest) (*gpb.Empty, error) {
 	if !req.Wait {
-		go onlineCPUMem(req)
+		go a.onlineCPUMem(req)
 		return emptyResp, nil
 	}
 
-	return emptyResp, onlineCPUMem(req)
+	return emptyResp, a.onlineCPUMem(req)
 }
