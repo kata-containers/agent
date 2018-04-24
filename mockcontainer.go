@@ -16,6 +16,7 @@ import (
 type mockContainer struct {
 	id        string
 	status    libcontainer.Status
+	stats     libcontainer.Stats
 	processes []int
 }
 
@@ -46,7 +47,7 @@ func (m *mockContainer) Processes() ([]int, error) {
 }
 
 func (m *mockContainer) Stats() (*libcontainer.Stats, error) {
-	return nil, nil
+	return &m.stats, nil
 }
 
 func (m *mockContainer) Set(config configs.Config) error {

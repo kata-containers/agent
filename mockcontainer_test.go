@@ -7,6 +7,7 @@
 package main
 
 import (
+	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"syscall"
 	"testing"
 
@@ -58,10 +59,13 @@ func TestMockContainerProcesses(t *testing.T) {
 
 func TestMockContainerStats(t *testing.T) {
 	assert := assert.New(t)
-	m := &mockContainer{}
+	expectedStats := &libcontainer.Stats{
+		CgroupStats: &cgroups.Stats{},
+	}
+	m := &mockContainer{stats: *expectedStats}
 	st, err := m.Stats()
 	assert.NoError(err)
-	assert.Nil(st)
+	assert.Equal(expectedStats, st)
 }
 
 func TestMockContainerSet(t *testing.T) {
