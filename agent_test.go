@@ -11,8 +11,12 @@ import (
 	"reflect"
 	"testing"
 
+	"google.golang.org/grpc"
+
+	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/net/context"
 )
 
 const (
@@ -267,4 +271,29 @@ func TestStartStopGRPCServer(t *testing.T) {
 
 	s.stopGRPC()
 	assert.Nil(t, s.server, "failed stopping grpc server")
+}
+
+func TestSettingGrpcTracer(t *testing.T) {
+	_, out, err := os.Pipe()
+	assert.Nil(t, err, "%v", err)
+
+	s := &sandbox{
+		containers:      make(map[string]*container),
+		channel:         &serialChannel{serialConn: out},
+		enableGrpcTrace: true,
+	}
+
+	s.startGRPC()
+	assert.NotNil(t, s.server, "failed starting grpc server")
+
+	s.stopGRPC()
+	assert.Nil(t, s.server, "failed stopping grpc server")
+}
+
+func TestGrpcTracer(t *testing.T) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return &pb.HealthCheckResponse{}, nil
+	}
+	_, err := grpcTracer(context.Background(), &pb.CheckRequest{}, &grpc.UnaryServerInfo{}, handler)
+	assert.Nil(t, err, "failed to trace grpc request: %v", err)
 }
