@@ -387,7 +387,7 @@ func (s *sandbox) setSubreaper() error {
 }
 
 // getMemory returns a string containing the total amount of memory reported
-// by the kernell. The string includes a suffix denoting the units the memory
+// by the kernel. The string includes a suffix denoting the units the memory
 // is measured in.
 func getMemory() (string, error) {
 	bytes, err := ioutil.ReadFile(meminfo)
