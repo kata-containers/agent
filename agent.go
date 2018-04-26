@@ -97,6 +97,8 @@ var agentLog = logrus.WithFields(agentFields)
 // version is the agent version. This variable is populated at build time.
 var version = "unknown"
 
+var debug = false
+
 // if true, coredump when an internal error occurs or a fatal signal is received
 var crashOnError = false
 
@@ -383,6 +385,12 @@ func (s *sandbox) signalHandlerLoop(sigCh chan os.Signal) {
 		if fatalSignal(nativeSignal) {
 			logger.Error("received fatal signal")
 			die()
+		}
+
+		if debug && nonFatalSignal(nativeSignal) {
+			logger.Debug("handling signal")
+			backtrace()
+			continue
 		}
 
 		logger.Info("ignoring unexpected signal")

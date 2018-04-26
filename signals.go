@@ -27,6 +27,7 @@ var handledSignalsMap = map[syscall.Signal]bool{
 	syscall.SIGSTKFLT: true,
 	syscall.SIGSYS:    true,
 	syscall.SIGTRAP:   true,
+	syscall.SIGUSR1:   false,
 }
 
 func handlePanic() {
@@ -63,6 +64,15 @@ func fatalSignal(sig syscall.Signal) bool {
 	}
 
 	return s
+}
+
+func nonFatalSignal(sig syscall.Signal) bool {
+	s, exists := handledSignalsMap[sig]
+	if !exists {
+		return false
+	}
+
+	return !s
 }
 
 func handledSignals() []syscall.Signal {

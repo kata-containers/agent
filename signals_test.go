@@ -18,6 +18,19 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestSignalFatalSignal(t *testing.T) {
+	assert := assert.New(t)
+
+	for sig, fatal := range handledSignalsMap {
+		result := nonFatalSignal(sig)
+		if fatal {
+			assert.False(result)
+		} else {
+			assert.True(result)
+		}
+	}
+}
+
 func TestSignalHandledSignalsMap(t *testing.T) {
 	assert := assert.New(t)
 
@@ -53,12 +66,34 @@ func TestSignalHandledSignals(t *testing.T) {
 	assert.True(reflect.DeepEqual(expected, got))
 }
 
+func TestSignalNonFatalSignal(t *testing.T) {
+	assert := assert.New(t)
+
+	for sig, fatal := range handledSignalsMap {
+		result := nonFatalSignal(sig)
+		if fatal {
+			assert.False(result)
+		} else {
+			assert.True(result)
+		}
+	}
+}
+
 func TestSignalFatalSignalInvalidSignal(t *testing.T) {
 	assert := assert.New(t)
 
 	sig := syscall.SIGXCPU
 
 	result := fatalSignal(sig)
+	assert.False(result)
+}
+
+func TestSignalNonFatalSignalInvalidSignal(t *testing.T) {
+	assert := assert.New(t)
+
+	sig := syscall.SIGXCPU
+
+	result := nonFatalSignal(sig)
 	assert.False(result)
 }
 
