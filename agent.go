@@ -359,7 +359,7 @@ func (s *sandbox) listenToUdevEvents() {
 }
 
 // This loop is meant to be run inside a separate Go routine.
-func (s *sandbox) reaperLoop(sigCh chan os.Signal) {
+func (s *sandbox) signalHandlerLoop(sigCh chan os.Signal) {
 	for sig := range sigCh {
 		switch sig {
 		case unix.SIGCHLD:
@@ -373,15 +373,17 @@ func (s *sandbox) reaperLoop(sigCh chan os.Signal) {
 	}
 }
 
-func (s *sandbox) setSubreaper() error {
-	if err := unix.Prctl(unix.PR_SET_CHILD_SUBREAPER, uintptr(1), 0, 0, 0); err != nil {
+func (s *sandbox) setupSignalHandler() error {
+	// Set agent as subreaper
+	err := unix.Prctl(unix.PR_SET_CHILD_SUBREAPER, uintptr(1), 0, 0, 0)
+	if err != nil {
 		return err
 	}
 
 	sigCh := make(chan os.Signal, 512)
 	signal.Notify(sigCh, unix.SIGCHLD)
 
-	go s.reaperLoop(sigCh)
+	go s.signalHandlerLoop(sigCh)
 
 	return nil
 }
@@ -707,8 +709,7 @@ func main() {
 		return
 	}
 
-	// Set agent as subreaper.
-	if err = s.setSubreaper(); err != nil {
+	if err = s.setupSignalHandler(); err != nil {
 		agentLog.WithError(err).Error("failed to setup signal handler")
 		return
 	}
