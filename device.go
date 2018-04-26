@@ -29,6 +29,8 @@ const (
 	driverSCSIType = "scsi"
 )
 
+const rootBusPath = "/devices/pci0000:00"
+
 // SCSI variables
 var (
 	// Here in "0:0", the first number is the SCSI host number because

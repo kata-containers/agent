@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/kata-containers/agent/pkg/uevent"
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
@@ -74,6 +76,8 @@ type sandbox struct {
 	mounts          []string
 	subreaper       reaper
 	server          *grpc.Server
+	pciDeviceMap    map[string]string
+	deviceWatchers  map[string](chan string)
 }
 
 type namespace struct {
@@ -303,6 +307,55 @@ func (s *sandbox) teardownSharedPidNs() error {
 	s.sharedPidNs = namespace{}
 
 	return nil
+}
+
+func (s *sandbox) listenToUdevEvents() {
+	fieldLogger := agentLog.WithField("subsystem", "udevlistener")
+
+	uEvHandler, err := uevent.NewHandler()
+	if err != nil {
+		fieldLogger.Warnf("Error starting uevent listening loop %s", err)
+		return
+	}
+	defer uEvHandler.Close()
+
+	for {
+		uEv, err := uEvHandler.Read()
+		if err != nil {
+			fieldLogger.Error(err)
+			continue
+		}
+
+		fieldLogger = fieldLogger.WithFields(logrus.Fields{
+			"uevent-action":    uEv.Action,
+			"uevent-devpath":   uEv.DevPath,
+			"uevent-subsystem": uEv.SubSystem,
+			"uevent-seqnum":    uEv.SeqNum,
+			"uevent-devname":   uEv.DevName,
+		})
+
+		// Check if device hotplug event results in a device node being created.
+		if uEv.DevName != "" && uEv.Action == "add" && strings.HasPrefix(uEv.DevPath, rootBusPath) {
+			// Lock is needed to safey read and modify the pciDeviceMap and deviceWatchers.
+			// This makes sure that watchers do not access the map while it is being updated.
+			s.Lock()
+
+			// Add the device node name to the pci device map.
+			s.pciDeviceMap[uEv.DevPath] = uEv.DevName
+
+			// Notify watchers that are interested in the udev event.
+			// Close the channel after watcher has been notified.
+			for devPCIAddress, ch := range s.deviceWatchers {
+				if ch != nil && strings.HasPrefix(uEv.DevPath, filepath.Join(rootBusPath, devPCIAddress)) {
+					ch <- uEv.DevName
+					close(ch)
+					delete(s.deviceWatchers, uEv.DevName)
+				}
+			}
+
+			s.Unlock()
+		}
+	}
 }
 
 // This loop is meant to be run inside a separate Go routine.
@@ -643,8 +696,10 @@ func main() {
 		running:    false,
 		// pivot_root won't work for init, see
 		// Documention/filesystem/ramfs-rootfs-initramfs.txt
-		noPivotRoot: os.Getpid() == 1,
-		subreaper:   r,
+		noPivotRoot:    os.Getpid() == 1,
+		subreaper:      r,
+		pciDeviceMap:   make(map[string]string),
+		deviceWatchers: make(map[string](chan string)),
 	}
 
 	if err = s.initLogger(); err != nil {
@@ -664,6 +719,8 @@ func main() {
 
 	// Start gRPC server.
 	s.startGRPC()
+
+	go s.listenToUdevEvents()
 
 	s.wg.Wait()
 }
