@@ -21,6 +21,7 @@ const (
 	uEventDevPath   = "DEVPATH"
 	uEventSubSystem = "SUBSYSTEM"
 	uEventSeqNum    = "SEQNUM"
+	uEventDevName   = "DEVNAME"
 
 	paramDelim = 0x00
 )
@@ -69,6 +70,7 @@ type Uevent struct {
 	DevPath   string
 	SubSystem string
 	SeqNum    string
+	DevName   string
 }
 
 // Handler represents a uevent handler.
@@ -129,6 +131,8 @@ func (h *Handler) Read() (*Uevent, error) {
 			uEv.DevPath = val
 		case uEventSubSystem:
 			uEv.SubSystem = val
+		case uEventDevName:
+			uEv.DevName = val
 		case uEventSeqNum:
 			uEv.SeqNum = val
 
