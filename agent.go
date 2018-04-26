@@ -703,17 +703,20 @@ func main() {
 	}
 
 	if err = s.initLogger(); err != nil {
+		agentLog.WithError(err).Error("failed to setup logger")
 		return
 	}
 
 	// Set agent as subreaper.
 	if err = s.setSubreaper(); err != nil {
+		agentLog.WithError(err).Error("failed to setup signal handler")
 		return
 	}
 
 	// Check for vsock vs serial. This will fill the sandbox structure with
 	// information about the channel.
 	if err = s.initChannel(); err != nil {
+		agentLog.WithError(err).Error("failed to setup channels")
 		return
 	}
 
