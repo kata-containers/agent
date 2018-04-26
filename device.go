@@ -31,6 +31,12 @@ const (
 
 const rootBusPath = "/devices/pci0000:00"
 
+var (
+	sysBusPrefix     = "/sys/bus/pci/devices"
+	pciBusPathFormat = "%s/%s/pci_bus/"
+	systemDevPath    = "/dev"
+)
+
 // SCSI variables
 var (
 	// Here in "0:0", the first number is the SCSI host number because
@@ -44,31 +50,123 @@ var (
 	scsiHostPath    = filepath.Join(sysClassPrefix, "scsi_host")
 )
 
-type deviceHandler func(device pb.Device, spec *pb.Spec) error
+type deviceHandler func(device pb.Device, spec *pb.Spec, s *sandbox) error
 
 var deviceHandlerList = map[string]deviceHandler{
 	driverBlkType:  virtioBlkDeviceHandler,
 	driverSCSIType: virtioSCSIDeviceHandler,
 }
 
-func virtioBlkDeviceHandler(device pb.Device, spec *pb.Spec) error {
-	// First need to make sure the expected device shows up properly,
-	// and then we need to retrieve its device info (such as major and
-	// minor numbers), useful to update the device provided
-	// through the OCI specification.
-	devName := strings.TrimPrefix(device.VmPath, devPrefix)
-	checkUevent := func(uEv *uevent.Uevent) bool {
-		return (uEv.Action == "add" &&
-			filepath.Base(uEv.DevPath) == devName)
+// getDevicePCIAddress fetches the complete PCI address in sysfs, based on the PCI
+// identifier provided. This should be in the format: "bridgeAddr/deviceAddr".
+// Here, bridgeAddr is the address at which the brige is attached on the root bus,
+// while deviceAddr is the address at which the device is attached on the bridge.
+func getDevicePCIAddress(pciID string) (string, error) {
+	tokens := strings.Split(pciID, "/")
+
+	if len(tokens) != 2 {
+		return "", fmt.Errorf("PCI Identifier for device should be of format [bridgeAddr/deviceAddr], got %s", pciID)
 	}
-	if err := waitForDevice(device.VmPath, devName, checkUevent); err != nil {
+
+	bridgeID := tokens[0]
+	deviceID := tokens[1]
+
+	// Deduce the complete bridge address based on the bridge address identifier passed
+	// and the fact that bridges are attached on the main bus with function 0.
+	pciBridgeAddr := fmt.Sprintf("0000:00:%s.0", bridgeID)
+
+	// Find out the bus exposed by bridge
+	bridgeBusPath := fmt.Sprintf(pciBusPathFormat, sysBusPrefix, pciBridgeAddr)
+
+	files, err := ioutil.ReadDir(bridgeBusPath)
+	if err != nil {
+		return "", fmt.Errorf("Error with getting bridge pci bus : %s", err)
+	}
+
+	busNum := len(files)
+	if busNum != 1 {
+		return "", fmt.Errorf("Expected an entry for bus in %s, got %d entries instead", bridgeBusPath, busNum)
+	}
+
+	bus := files[0].Name()
+
+	// Device address is based on the bus of the bridge to which it is attached.
+	// We do not pass devices as multifunction, hence the trailing 0 in the address.
+	pciDeviceAddr := fmt.Sprintf("%s:%s.0", bus, deviceID)
+
+	bridgeDevicePCIAddr := fmt.Sprintf("%s/%s", pciBridgeAddr, pciDeviceAddr)
+	agentLog.WithField("completePCIAddr", bridgeDevicePCIAddr).Info("Fetched PCI address for device")
+
+	return bridgeDevicePCIAddr, nil
+}
+
+func getBlockDeviceNodeName(s *sandbox, pciID string) (string, error) {
+	pciAddr, err := getDevicePCIAddress(pciID)
+	if err != nil {
+		return "", err
+	}
+
+	var devName string
+	var notifyChan chan string
+
+	fieldLogger := agentLog.WithField("pciID", pciID)
+
+	// Check if the PCI identifier is in PCI device map.
+	s.Lock()
+	for key, value := range s.pciDeviceMap {
+		if strings.Contains(key, pciAddr) {
+			devName = value
+			fieldLogger.Info("Device found in pci device map")
+			break
+		}
+	}
+
+	// If device is not found in the device map, hotplug event has not
+	// been received yet, create and add channel to the watchers map.
+	// The key of the watchers map is the device we are interested in.
+	// Note this is done inside the lock, not to miss any events from the
+	// global udev listener.
+	if devName == "" {
+		notifyChan := make(chan string, 1)
+		s.deviceWatchers[pciAddr] = notifyChan
+	}
+	s.Unlock()
+
+	if devName == "" {
+		fieldLogger.Info("Waiting on channel for device notification")
+		select {
+		case devName = <-notifyChan:
+		case <-time.After(time.Duration(timeoutHotplug) * time.Second):
+			s.Lock()
+			delete(s.deviceWatchers, pciAddr)
+			close(notifyChan)
+			s.Unlock()
+
+			return "", grpcStatus.Errorf(codes.DeadlineExceeded,
+				"Timeout reached after %ds waiting for device %s",
+				timeoutHotplug, pciAddr)
+		}
+	}
+
+	return filepath.Join(systemDevPath, devName), nil
+}
+
+// device.Id should be the PCI address in the format  "bridgeAddr/deviceAddr".
+// Here, bridgeAddr is the address at which the brige is attached on the root bus,
+// while deviceAddr is the address at which the device is attached on the bridge.
+func virtioBlkDeviceHandler(device pb.Device, spec *pb.Spec, s *sandbox) error {
+	// Get the device node path based on the PCI device address
+	devPath, err := getBlockDeviceNodeName(s, device.Id)
+	if err != nil {
 		return err
 	}
+	device.VmPath = devPath
 
 	return updateSpecDeviceList(device, spec)
 }
 
-func virtioSCSIDeviceHandler(device pb.Device, spec *pb.Spec) error {
+// device.Id should be the SCSI address of the disk in the format "scsiID:lunID"
+func virtioSCSIDeviceHandler(device pb.Device, spec *pb.Spec, s *sandbox) error {
 	// Retrieve the device path from SCSI address.
 	devPath, err := getSCSIDevPath(device.Id)
 	if err != nil {
@@ -272,13 +370,13 @@ func getSCSIDevPath(scsiAddr string) (string, error) {
 	return filepath.Join(devPrefix, scsiDiskName), nil
 }
 
-func addDevices(devices []*pb.Device, spec *pb.Spec) error {
+func addDevices(devices []*pb.Device, spec *pb.Spec, s *sandbox) error {
 	for _, device := range devices {
 		if device == nil {
 			continue
 		}
 
-		err := addDevice(device, spec)
+		err := addDevice(device, spec, s)
 		if err != nil {
 			return err
 		}
@@ -288,7 +386,7 @@ func addDevices(devices []*pb.Device, spec *pb.Spec) error {
 	return nil
 }
 
-func addDevice(device *pb.Device, spec *pb.Spec) error {
+func addDevice(device *pb.Device, spec *pb.Spec, s *sandbox) error {
 	if device == nil {
 		return grpcStatus.Error(codes.InvalidArgument, "invalid device")
 	}
@@ -328,5 +426,5 @@ func addDevice(device *pb.Device, spec *pb.Spec) error {
 			"Unknown device type %q", device.Type)
 	}
 
-	return devHandler(*device, spec)
+	return devHandler(*device, spec, s)
 }
