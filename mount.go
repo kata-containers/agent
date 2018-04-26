@@ -13,7 +13,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/kata-containers/agent/pkg/uevent"
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
@@ -184,7 +183,7 @@ func removeMounts(mounts []string) error {
 
 // storageHandler is the type of callback to be defined to handle every
 // type of storage driver.
-type storageHandler func(storage pb.Storage) (string, error)
+type storageHandler func(storage pb.Storage, s *sandbox) (string, error)
 
 // storageHandlerList lists the supported drivers.
 var storageHandlerList = map[string]storageHandler{
@@ -194,27 +193,25 @@ var storageHandlerList = map[string]storageHandler{
 }
 
 // virtio9pStorageHandler handles the storage for 9p driver.
-func virtio9pStorageHandler(storage pb.Storage) (string, error) {
+func virtio9pStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
 	return commonStorageHandler(storage)
 }
 
 // virtioBlkStorageHandler handles the storage for blk driver.
-func virtioBlkStorageHandler(storage pb.Storage) (string, error) {
-	// First need to make sure the expected device shows up properly.
-	devName := strings.TrimPrefix(storage.Source, devPrefix)
-	checkUevent := func(uEv *uevent.Uevent) bool {
-		return (uEv.Action == "add" &&
-			filepath.Base(uEv.DevPath) == devName)
-	}
-	if err := waitForDevice(storage.Source, devName, checkUevent); err != nil {
+func virtioBlkStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
+	// Get the device node path based on the PCI address provided
+	// in Storage Source
+	devPath, err := getBlockDeviceNodeName(s, storage.Source)
+	if err != nil {
 		return "", err
 	}
+	storage.Source = devPath
 
 	return commonStorageHandler(storage)
 }
 
 // virtioSCSIStorageHandler handles the storage for scsi driver.
-func virtioSCSIStorageHandler(storage pb.Storage) (string, error) {
+func virtioSCSIStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
 	// Retrieve the device path from SCSI address.
 	devPath, err := getSCSIDevPath(storage.Source)
 	if err != nil {
@@ -248,7 +245,7 @@ func mountStorage(storage pb.Storage) error {
 // associated operations such as waiting for the device to show up, and mount
 // it to a specific location, according to the type of handler chosen, and for
 // each storage.
-func addStorages(storages []*pb.Storage) ([]string, error) {
+func addStorages(storages []*pb.Storage, s *sandbox) ([]string, error) {
 	var mountList []string
 
 	for _, storage := range storages {
@@ -262,7 +259,7 @@ func addStorages(storages []*pb.Storage) ([]string, error) {
 				"Unknown storage driver %q", storage.Driver)
 		}
 
-		mountPoint, err := devHandler(*storage)
+		mountPoint, err := devHandler(*storage, s)
 		if err != nil {
 			return nil, err
 		}

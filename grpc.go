@@ -439,7 +439,7 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 	// After all those storages have been processed, no matter the order
 	// here, the agent will rely on libcontainer (using the oci.Mounts
 	// list) to bind mount all of them inside the container.
-	mountList, err := addStorages(req.Storages)
+	mountList, err := addStorages(req.Storages, a.sandbox)
 	if err != nil {
 		return emptyResp, err
 	}
@@ -862,7 +862,7 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 		}
 	}
 
-	mountList, err := addStorages(req.Storages)
+	mountList, err := addStorages(req.Storages, a.sandbox)
 	if err != nil {
 		return emptyResp, err
 	}

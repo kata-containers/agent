@@ -43,12 +43,30 @@ func TestVirtio9pStorageHandlerSuccessful(t *testing.T) {
 	storage.Fstype = "bind"
 	storage.Options = []string{"rbind"}
 
-	_, err = virtio9pStorageHandler(storage)
+	_, err = virtio9pStorageHandler(storage, &sandbox{})
 	assert.Nil(t, err, "storage9pDriverHandler() failed: %v", err)
 }
 
 func TestVirtioBlkStorageHandlerSuccessful(t *testing.T) {
 	skipUnlessRoot(t)
+
+	testDir, err := ioutil.TempDir("", "kata-agent-tmp-")
+	if err != nil {
+		t.Fatal(t, err)
+	}
+
+	bridgeID := "02"
+	deviceID := "03"
+	pciBus := "0000:01"
+	completePCIAddr := fmt.Sprintf("0000:00:%s.0/%s:%s.0", bridgeID, pciBus, deviceID)
+
+	pciID := fmt.Sprintf("%s/%s", bridgeID, deviceID)
+
+	sysBusPrefix = testDir
+	bridgeBusPath := fmt.Sprintf(pciBusPathFormat, sysBusPrefix, "0000:00:02.0")
+
+	err = os.MkdirAll(filepath.Join(bridgeBusPath, pciBus), mountPerm)
+	assert.Nil(t, err)
 
 	devPath, err := createFakeDevicePath()
 	if err != nil {
@@ -56,22 +74,36 @@ func TestVirtioBlkStorageHandlerSuccessful(t *testing.T) {
 	}
 	defer os.RemoveAll(devPath)
 
-	storage, err := createSafeAndFakeStorage()
+	dirPath, err := ioutil.TempDir("", "fake-dir")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(storage.Source)
+	defer os.RemoveAll(dirPath)
+
+	storage := pb.Storage{
+		Source:     pciID,
+		MountPoint: filepath.Join(dirPath, "test-mount"),
+	}
 	defer syscall.Unmount(storage.MountPoint, 0)
+
+	s := &sandbox{
+		pciDeviceMap: make(map[string]string),
+	}
+
+	s.Lock()
+	s.pciDeviceMap[completePCIAddr] = devPath
+	s.Unlock()
 
 	storage.Fstype = "bind"
 	storage.Options = []string{"rbind"}
 
-	_, err = virtioBlkStorageHandler(storage)
+	systemDevPath = ""
+	_, err = virtioBlkStorageHandler(storage, s)
 	assert.Nil(t, err, "storageBlockStorageDriverHandler() failed: %v", err)
 }
 
 func testAddStoragesSuccessful(t *testing.T, storages []*pb.Storage) {
-	_, err := addStorages(storages)
+	_, err := addStorages(storages, &sandbox{})
 	assert.Nil(t, err, "addStorages() failed: %v", err)
 }
 
@@ -89,11 +121,11 @@ func TestAddStoragesNilStoragesSuccessful(t *testing.T) {
 	testAddStoragesSuccessful(t, storages)
 }
 
-func noopStorageHandlerReturnNil(storage pb.Storage) (string, error) {
+func noopStorageHandlerReturnNil(storage pb.Storage, s *sandbox) (string, error) {
 	return "", nil
 }
 
-func noopStorageHandlerReturnError(storage pb.Storage) (string, error) {
+func noopStorageHandlerReturnError(storage pb.Storage, s *sandbox) (string, error) {
 	return "", fmt.Errorf("Noop handler failure")
 }
 
@@ -113,7 +145,7 @@ func TestAddStoragesNoopHandlerSuccessful(t *testing.T) {
 }
 
 func testAddStoragesFailure(t *testing.T, storages []*pb.Storage) {
-	_, err := addStorages(storages)
+	_, err := addStorages(storages, &sandbox{})
 	assert.NotNil(t, err, "addStorages() should have failed")
 }
 
