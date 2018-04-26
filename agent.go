@@ -7,6 +7,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -17,7 +18,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"runtime/debug"
 	"strings"
 	"sync"
 	"syscall"
@@ -96,6 +96,9 @@ var agentLog = logrus.WithFields(agentFields)
 
 // version is the agent version. This variable is populated at build time.
 var version = "unknown"
+
+// if true, coredump when an internal error occurs or a fatal signal is received
+var crashOnError = false
 
 // This is the list of file descriptors we can properly close after the process
 // has been started. When the new process is exec(), those file descriptors are
@@ -363,15 +366,26 @@ func (s *sandbox) signalHandlerLoop(sigCh chan os.Signal) {
 	for sig := range sigCh {
 		logger := agentLog.WithField("signal", sig)
 
-		switch sig {
-		case unix.SIGCHLD:
+		if sig == unix.SIGCHLD {
 			if err := s.subreaper.reap(); err != nil {
 				logger.WithError(err).Error("failed to reap")
-				return
+				continue
 			}
-		default:
-			logger.Info("ignoring unexpected signal")
 		}
+
+		nativeSignal, ok := sig.(syscall.Signal)
+		if !ok {
+			err := errors.New("unknown signal")
+			logger.WithError(err).Error("failed to handle signal")
+			continue
+		}
+
+		if fatalSignal(nativeSignal) {
+			logger.Error("received fatal signal")
+			die()
+		}
+
+		logger.Info("ignoring unexpected signal")
 	}
 }
 
@@ -384,6 +398,10 @@ func (s *sandbox) setupSignalHandler() error {
 
 	sigCh := make(chan os.Signal, 512)
 	signal.Notify(sigCh, unix.SIGCHLD)
+
+	for _, sig := range handledSignals() {
+		signal.Notify(sigCh, sig)
+	}
 
 	go s.signalHandlerLoop(sigCh)
 
@@ -648,9 +666,6 @@ func initAgentAsInit() error {
 }
 
 func init() {
-	// Force full stacktrace on internal error
-	debug.SetTraceback("system")
-
 	if len(os.Args) > 1 && os.Args[1] == "init" {
 		runtime.GOMAXPROCS(1)
 		runtime.LockOSThread()
@@ -662,7 +677,7 @@ func init() {
 	}
 }
 
-func main() {
+func realMain() {
 	var err error
 	var showVersion bool
 
@@ -729,4 +744,9 @@ func main() {
 	go s.listenToUdevEvents()
 
 	s.wg.Wait()
+}
+
+func main() {
+	defer handlePanic()
+	realMain()
 }

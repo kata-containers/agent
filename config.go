@@ -18,6 +18,7 @@ import (
 const (
 	optionPrefix      = "agent."
 	logLevelFlag      = optionPrefix + "log"
+	devModeFlag       = optionPrefix + "devmode"
 	kernelCmdlineFile = "/proc/cmdline"
 )
 
@@ -83,6 +84,8 @@ func (c *agentConfig) parseCmdlineOption(option string) error {
 			return err
 		}
 		c.logLevel = level
+	case devModeFlag:
+		crashOnError = true
 	default:
 		if strings.HasPrefix(split[optionPosition], optionPrefix) {
 			return grpcStatus.Errorf(codes.NotFound, "Unknown option %s", split[optionPosition])
