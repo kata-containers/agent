@@ -361,14 +361,16 @@ func (s *sandbox) listenToUdevEvents() {
 // This loop is meant to be run inside a separate Go routine.
 func (s *sandbox) signalHandlerLoop(sigCh chan os.Signal) {
 	for sig := range sigCh {
+		logger := agentLog.WithField("signal", sig)
+
 		switch sig {
 		case unix.SIGCHLD:
 			if err := s.subreaper.reap(); err != nil {
-				agentLog.Error(err)
+				logger.WithError(err).Error("failed to reap")
 				return
 			}
 		default:
-			agentLog.Infof("Unexpected signal %s, nothing to do...", sig.String())
+			logger.Info("ignoring unexpected signal")
 		}
 	}
 }
