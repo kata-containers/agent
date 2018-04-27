@@ -249,3 +249,45 @@ func TestListProcesses(t *testing.T) {
 	assert.NotNil(r)
 	assert.NotEmpty(r.ProcessList)
 }
+
+func TestUpdateContainer(t *testing.T) {
+	containerID := "1"
+	assert := assert.New(t)
+	req := &pb.UpdateContainerRequest{
+		ContainerId: containerID,
+	}
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	// Resources are nil, should fail
+	r, err := a.UpdateContainer(context.TODO(), req)
+	assert.Error(err)
+	assert.Equal(emptyResp, r)
+
+	// getContainer should fail
+	req.Resources = &pb.LinuxResources{
+		BlockIO: &pb.LinuxBlockIO{},
+		Memory:  &pb.LinuxMemory{},
+		CPU:     &pb.LinuxCPU{},
+		Pids:    &pb.LinuxPids{},
+		Network: &pb.LinuxNetwork{},
+	}
+	r, err = a.UpdateContainer(context.TODO(), req)
+	assert.Error(err)
+	assert.Equal(emptyResp, r)
+
+	a.sandbox.containers[containerID] = &container{
+		container: &mockContainer{
+			id:        containerID,
+			processes: []int{1},
+		},
+	}
+
+	r, err = a.UpdateContainer(context.TODO(), req)
+	assert.NoError(err)
+	assert.Equal(emptyResp, r)
+}

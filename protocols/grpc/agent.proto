@@ -29,6 +29,7 @@ service AgentService {
 	rpc SignalProcess(SignalProcessRequest) returns (google.protobuf.Empty);
 	rpc WaitProcess(WaitProcessRequest) returns (WaitProcessResponse); // wait & reap like waitpid(2)
 	rpc ListProcesses(ListProcessesRequest) returns (ListProcessesResponse);
+	rpc UpdateContainer(UpdateContainerRequest) returns (google.protobuf.Empty);
 
 	// stdio
 	rpc WriteStdin(WriteStreamRequest) returns (WriteStreamResponse);
@@ -108,6 +109,11 @@ message ListProcessesRequest {
 // ListProcessesResponse represents the list of running processes inside the container
 message ListProcessesResponse {
 	bytes process_list = 1;
+}
+
+message UpdateContainerRequest {
+	string container_id = 1;
+	LinuxResources resources = 2;
 }
 
 message WriteStreamRequest {
