@@ -71,6 +71,15 @@ const onlineCPUMemWaitTime = 100 * time.Millisecond
 
 const onlineCPUMaxTries = 10
 
+// handleError will log the specified error if wait is false
+func handleError(wait bool, err error) error {
+	if !wait {
+		agentLog.WithError(err).Error()
+	}
+
+	return err
+}
+
 // Online resources, nbResources specifies the maximum number of resources to online.
 // If nbResources is <= 0 then there is no limit and all resources are connected.
 // Returns the number of resources connected.
