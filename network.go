@@ -25,10 +25,10 @@ import (
 // related information.
 type network struct {
 	ifacesLock sync.Mutex
-	ifaces     []*pb.Interface
+	ifaces     map[string]*pb.Interface
 
 	routesLock sync.Mutex
-	routes     []*pb.Route
+	routes     []pb.Route
 
 	dns []string
 }
@@ -139,7 +139,7 @@ func (s *sandbox) addInterface(netHandle *netlink.Handle, iface *pb.Interface) (
 	}
 
 	// Update sandbox interface list.
-	s.network.ifaces = append(s.network.ifaces, iface)
+	s.network.ifaces[iface.Name] = iface
 
 	return iface, nil
 }
@@ -172,12 +172,7 @@ func (s *sandbox) removeInterface(netHandle *netlink.Handle, iface *pb.Interface
 	}
 
 	// Update sandbox interface list.
-	for idx, sIface := range s.network.ifaces {
-		if sIface.Name == iface.Name {
-			s.network.ifaces = append(s.network.ifaces[:idx], s.network.ifaces[idx+1:]...)
-			break
-		}
-	}
+	delete(s.network.ifaces, iface.Name)
 
 	return nil, nil
 }
@@ -465,7 +460,7 @@ func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *pb.Route, add bo
 		}
 
 		// Add route to sandbox route list.
-		s.network.routes = append(s.network.routes, route)
+		s.network.routes = append(s.network.routes, *route)
 	} else {
 		if err := netHandle.RouteDel(netRoute); err != nil {
 			return grpcStatus.Errorf(codes.Internal, "Could not remove route dest(%s)/gw(%s)/dev(%s): %v",
@@ -508,8 +503,9 @@ func (s *sandbox) removeNetwork() error {
 	}
 	defer netHandle.Delete()
 
-	for _, route := range s.network.routes {
-		if err := s.removeRoute(netHandle, route); err != nil {
+	routeList := s.network.routes
+	for _, route := range routeList {
+		if err := s.removeRoute(netHandle, &route); err != nil {
 			return grpcStatus.Errorf(codes.Internal, "Could not remove network route %v: %v",
 				route, err)
 		}
