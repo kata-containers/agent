@@ -404,10 +404,6 @@ func getCurrentRoutes(netHandle *netlink.Handle) (*pb.Routes, error) {
 	return &routes, nil
 }
 
-func (s *sandbox) removeRoute(netHandle *netlink.Handle, route *pb.Route) error {
-	return s.updateRoute(netHandle, route, false)
-}
-
 func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *pb.Route, add bool) (err error) {
 	s.network.routesLock.Lock()
 	defer s.network.routesLock.Unlock()
@@ -487,10 +483,6 @@ func setupDNS(dns []string) error {
 	return nil
 }
 
-func removeDNS(dns []string) error {
-	return nil
-}
-
 ////////////
 // Global //
 ////////////
@@ -503,23 +495,11 @@ func (s *sandbox) removeNetwork() error {
 	}
 	defer netHandle.Delete()
 
-	routeList := s.network.routes
-	for _, route := range routeList {
-		if err := s.removeRoute(netHandle, &route); err != nil {
-			return grpcStatus.Errorf(codes.Internal, "Could not remove network route %v: %v",
-				route, err)
-		}
-	}
-
 	for _, iface := range s.network.ifaces {
 		if _, err := s.removeInterface(netHandle, iface); err != nil {
 			return grpcStatus.Errorf(codes.Internal, "Could not remove network interface %v: %v",
 				iface, err)
 		}
-	}
-
-	if err := removeDNS(s.network.dns); err != nil {
-		return grpcStatus.Errorf(codes.Internal, "Could not remove network DNS: %v", err)
 	}
 
 	return nil
