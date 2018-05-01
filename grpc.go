@@ -853,6 +853,7 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 
 	a.sandbox.id = req.Hostname
 	a.sandbox.containers = make(map[string]*container)
+	a.sandbox.network.ifaces = make(map[string]*pb.Interface)
 	a.sandbox.network.dns = req.Dns
 	a.sandbox.running = true
 
