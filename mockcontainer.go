@@ -32,7 +32,13 @@ func (m *mockContainer) State() (*libcontainer.State, error) {
 }
 
 func (m *mockContainer) Config() configs.Config {
-	return configs.Config{}
+	return configs.Config{
+		Capabilities: &configs.Capabilities{},
+		Cgroups: &configs.Cgroup{
+			Resources: &configs.Resources{},
+		},
+		Seccomp: &configs.Seccomp{},
+	}
 }
 
 func (m *mockContainer) Processes() ([]int, error) {

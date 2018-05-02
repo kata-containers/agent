@@ -345,3 +345,13 @@ func (m *mockServer) ListProcesses(ctx context.Context, req *pb.ListProcessesReq
 
 	return &pb.ListProcessesResponse{}, nil
 }
+
+func (m *mockServer) UpdateContainer(ctx context.Context, req *pb.UpdateContainerRequest) (*types.Empty, error) {
+	mockLock.RLock()
+	defer mockLock.RUnlock()
+	if err := m.podExist(); err != nil {
+		return nil, err
+	}
+
+	return &types.Empty{}, nil
+}

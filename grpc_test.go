@@ -110,7 +110,11 @@ func TestUpdateContainerConfigPrivilegesNoNewPrivileges(t *testing.T) {
 
 func TestOnlineCPUMem(t *testing.T) {
 	assert := assert.New(t)
-	a := &agentGRPC{}
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
 
 	req := &pb.OnlineCPUMemRequest{
 		NbCpus: 1,
@@ -125,6 +129,7 @@ func TestOnlineCPUMem(t *testing.T) {
 	sysfsCPUOnlinePath, err = ioutil.TempDir("", "cpu")
 	assert.NoError(err)
 	defer os.RemoveAll(sysfsCPUOnlinePath)
+	sysfsConnectedCPUsPath = filepath.Join(sysfsCPUOnlinePath, "online")
 
 	sysfsMemOnlinePath, err = ioutil.TempDir("", "memory")
 	assert.NoError(err)
@@ -144,12 +149,30 @@ func TestOnlineCPUMem(t *testing.T) {
 	err = ioutil.WriteFile(cpu0Online, []byte("0"), 0755)
 	assert.NoError(err)
 
-	memory0dir := filepath.Join(sysfsCPUOnlinePath, "memory0")
+	memory0dir := filepath.Join(sysfsMemOnlinePath, "memory0")
 	err = os.Mkdir(memory0dir, 0775)
 	assert.NoError(err)
 
 	memory0Online := filepath.Join(memory0dir, "online")
 	err = ioutil.WriteFile(memory0Online, []byte("0"), 0755)
+	assert.NoError(err)
+
+	_, err = a.OnlineCPUMem(context.TODO(), req)
+	assert.Error(err, "connected cpus path does not exist")
+	sysfsConnectedCPUsPath = filepath.Join(sysfsCPUOnlinePath, "online")
+	ioutil.WriteFile(sysfsConnectedCPUsPath, []byte("0-4"), 0644)
+
+	_, err = a.OnlineCPUMem(context.TODO(), req)
+	assert.Error(err, "docker cgroup path does not exist")
+
+	dockerCpusetPath, err := ioutil.TempDir("", "docker")
+	assert.NoError(err)
+	defer os.RemoveAll(dockerCpusetPath)
+	sysfsDockerCpusetPath = filepath.Join(dockerCpusetPath, "cpuset.cpus")
+
+	err = ioutil.WriteFile(memory0Online, []byte("0"), 0755)
+	assert.NoError(err)
+	err = ioutil.WriteFile(cpu0Online, []byte("0"), 0755)
 	assert.NoError(err)
 
 	_, err = a.OnlineCPUMem(context.TODO(), req)
@@ -225,4 +248,46 @@ func TestListProcesses(t *testing.T) {
 	assert.NoError(err)
 	assert.NotNil(r)
 	assert.NotEmpty(r.ProcessList)
+}
+
+func TestUpdateContainer(t *testing.T) {
+	containerID := "1"
+	assert := assert.New(t)
+	req := &pb.UpdateContainerRequest{
+		ContainerId: containerID,
+	}
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	// Resources are nil, should fail
+	r, err := a.UpdateContainer(context.TODO(), req)
+	assert.Error(err)
+	assert.Equal(emptyResp, r)
+
+	// getContainer should fail
+	req.Resources = &pb.LinuxResources{
+		BlockIO: &pb.LinuxBlockIO{},
+		Memory:  &pb.LinuxMemory{},
+		CPU:     &pb.LinuxCPU{},
+		Pids:    &pb.LinuxPids{},
+		Network: &pb.LinuxNetwork{},
+	}
+	r, err = a.UpdateContainer(context.TODO(), req)
+	assert.Error(err)
+	assert.Equal(emptyResp, r)
+
+	a.sandbox.containers[containerID] = &container{
+		container: &mockContainer{
+			id:        containerID,
+			processes: []int{1},
+		},
+	}
+
+	r, err = a.UpdateContainer(context.TODO(), req)
+	assert.NoError(err)
+	assert.Equal(emptyResp, r)
 }
