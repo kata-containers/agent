@@ -40,7 +40,7 @@ func testVirtioBlkDeviceHandlerFailure(t *testing.T, device pb.Device, spec *pb.
 	device.VmPath = devPath
 	device.ContainerPath = "some-not-empty-path"
 
-	err = virtioBlkDeviceHandler(device, spec)
+	err = virtioBlkDeviceHandler(device, spec, &sandbox{})
 	assert.NotNil(t, err, "blockDeviceHandler() should have failed")
 }
 
@@ -71,6 +71,49 @@ func TestVirtioBlkDeviceHandlerEmptyLinuxDevicesSpecFailure(t *testing.T) {
 	}
 
 	testVirtioBlkDeviceHandlerFailure(t, device, spec)
+}
+
+func TestGetPCIAddress(t *testing.T) {
+	testDir, err := ioutil.TempDir("", "kata-agent-tmp-")
+	if err != nil {
+		t.Fatal(t, err)
+	}
+	defer os.RemoveAll(testDir)
+
+	pciID := "02"
+	_, err = getDevicePCIAddress(pciID)
+	assert.NotNil(t, err)
+
+	pciID = "02/03/04"
+	_, err = getDevicePCIAddress(pciID)
+	assert.NotNil(t, err)
+
+	bridgeID := "02"
+	deviceID := "03"
+	pciBus := "0000:01"
+	expectedPCIAddress := "0000:00:02.0/0000:01:03.0"
+	pciID = fmt.Sprintf("%s/%s", bridgeID, deviceID)
+
+	// Set sysBusPrefix to test directory for unit tests.
+	sysBusPrefix = testDir
+	bridgeBusPath := fmt.Sprintf(pciBusPathFormat, sysBusPrefix, "0000:00:02.0")
+
+	_, err = getDevicePCIAddress(pciID)
+	assert.NotNil(t, err)
+
+	err = os.MkdirAll(bridgeBusPath, mountPerm)
+	assert.Nil(t, err)
+
+	_, err = getDevicePCIAddress(pciID)
+	assert.NotNil(t, err)
+
+	err = os.MkdirAll(filepath.Join(bridgeBusPath, pciBus), mountPerm)
+	assert.Nil(t, err)
+
+	addr, err := getDevicePCIAddress(pciID)
+	assert.Nil(t, err)
+
+	assert.Equal(t, addr, expectedPCIAddress)
 }
 
 func TestScanSCSIBus(t *testing.T) {
@@ -112,7 +155,7 @@ func TestScanSCSIBus(t *testing.T) {
 }
 
 func testAddDevicesSuccessful(t *testing.T, devices []*pb.Device, spec *pb.Spec) {
-	err := addDevices(devices, spec)
+	err := addDevices(devices, spec, &sandbox{})
 	assert.Nil(t, err, "addDevices() failed: %v", err)
 }
 
@@ -133,11 +176,11 @@ func TestAddDevicesNilMountsSuccessful(t *testing.T) {
 	testAddDevicesSuccessful(t, devices, spec)
 }
 
-func noopDeviceHandlerReturnNil(device pb.Device, spec *pb.Spec) error {
+func noopDeviceHandlerReturnNil(device pb.Device, spec *pb.Spec, s *sandbox) error {
 	return nil
 }
 
-func noopDeviceHandlerReturnError(device pb.Device, spec *pb.Spec) error {
+func noopDeviceHandlerReturnError(device pb.Device, spec *pb.Spec, s *sandbox) error {
 	return fmt.Errorf("Noop handler failure")
 }
 
@@ -159,7 +202,7 @@ func TestAddDevicesNoopHandlerSuccessful(t *testing.T) {
 }
 
 func testAddDevicesFailure(t *testing.T, devices []*pb.Device, spec *pb.Spec) {
-	err := addDevices(devices, spec)
+	err := addDevices(devices, spec, &sandbox{})
 	assert.NotNil(t, err, "addDevices() should have failed")
 }
 
@@ -319,8 +362,10 @@ func TestAddDevice(t *testing.T) {
 		},
 	}
 
+	s := &sandbox{}
+
 	for i, d := range data {
-		err := addDevice(d.device, d.spec)
+		err := addDevice(d.device, d.spec, s)
 		if d.expectError {
 			assert.Errorf(err, "test %d (%+v)", i, d)
 		} else {
