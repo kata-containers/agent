@@ -355,3 +355,13 @@ func (m *mockServer) UpdateContainer(ctx context.Context, req *pb.UpdateContaine
 
 	return &types.Empty{}, nil
 }
+func (m *mockServer) StatsContainer(ctx context.Context, req *pb.StatsContainerRequest) (*pb.StatsContainerResponse, error) {
+	mockLock.RLock()
+	defer mockLock.RUnlock()
+	if err := m.podExist(); err != nil {
+		return nil, err
+	}
+
+	return &pb.StatsContainerResponse{}, nil
+
+}

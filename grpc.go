@@ -817,6 +817,35 @@ func (a *agentGRPC) UpdateContainer(ctx context.Context, req *pb.UpdateContainer
 	return emptyResp, c.container.Set(config)
 }
 
+func (a *agentGRPC) StatsContainer(ctx context.Context, req *pb.StatsContainerRequest) (*pb.StatsContainerResponse, error) {
+	c, err := a.sandbox.getContainer(req.ContainerId)
+	if err != nil {
+		return nil, err
+	}
+
+	stats, err := c.container.Stats()
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := json.Marshal(stats.CgroupStats)
+	if err != nil {
+		return nil, err
+	}
+
+	var cgroupStats pb.CgroupStats
+	err = json.Unmarshal(data, &cgroupStats)
+	if err != nil {
+		return nil, err
+	}
+	resp := &pb.StatsContainerResponse{
+		CgroupStats: &cgroupStats,
+	}
+
+	return resp, nil
+
+}
+
 func (a *agentGRPC) RemoveContainer(ctx context.Context, req *pb.RemoveContainerRequest) (*gpb.Empty, error) {
 	ctr, err := a.sandbox.getContainer(req.ContainerId)
 	if err != nil {

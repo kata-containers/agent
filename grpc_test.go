@@ -291,3 +291,33 @@ func TestUpdateContainer(t *testing.T) {
 	assert.NoError(err)
 	assert.Equal(emptyResp, r)
 }
+
+func TestStatsContainer(t *testing.T) {
+	containerID := "1"
+	assert := assert.New(t)
+	req := &pb.StatsContainerRequest{
+		ContainerId: containerID,
+	}
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	//getcontainer should failed
+	r, err := a.StatsContainer(context.TODO(), req)
+	assert.Error(err)
+	assert.Nil(r)
+
+	a.sandbox.containers[containerID] = &container{
+		container: &mockContainer{
+			id: containerID,
+		},
+	}
+
+	r, err = a.StatsContainer(context.TODO(), req)
+	assert.NoError(err)
+	assert.NotNil(r)
+
+}
