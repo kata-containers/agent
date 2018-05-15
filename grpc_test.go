@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -320,4 +321,21 @@ func TestStatsContainer(t *testing.T) {
 	assert.NoError(err)
 	assert.NotNil(r)
 
+}
+
+func TestHandleError(t *testing.T) {
+	assert := assert.New(t)
+
+	err := errors.New("")
+	e := handleError(true, err)
+	assert.Error(e)
+
+	e = handleError(true, nil)
+	assert.NoError(e)
+
+	e = handleError(false, err)
+	assert.Error(e)
+
+	e = handleError(false, nil)
+	assert.NoError(e)
 }
