@@ -7,6 +7,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -17,7 +18,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"runtime/debug"
 	"strings"
 	"sync"
 	"syscall"
@@ -96,6 +96,11 @@ var agentLog = logrus.WithFields(agentFields)
 
 // version is the agent version. This variable is populated at build time.
 var version = "unknown"
+
+var debug = false
+
+// if true, coredump when an internal error occurs or a fatal signal is received
+var crashOnError = false
 
 // This is the list of file descriptors we can properly close after the process
 // has been started. When the new process is exec(), those file descriptors are
@@ -359,35 +364,60 @@ func (s *sandbox) listenToUdevEvents() {
 }
 
 // This loop is meant to be run inside a separate Go routine.
-func (s *sandbox) reaperLoop(sigCh chan os.Signal) {
+func (s *sandbox) signalHandlerLoop(sigCh chan os.Signal) {
 	for sig := range sigCh {
-		switch sig {
-		case unix.SIGCHLD:
+		logger := agentLog.WithField("signal", sig)
+
+		if sig == unix.SIGCHLD {
 			if err := s.subreaper.reap(); err != nil {
-				agentLog.Error(err)
-				return
+				logger.WithError(err).Error("failed to reap")
+				continue
 			}
-		default:
-			agentLog.Infof("Unexpected signal %s, nothing to do...", sig.String())
 		}
+
+		nativeSignal, ok := sig.(syscall.Signal)
+		if !ok {
+			err := errors.New("unknown signal")
+			logger.WithError(err).Error("failed to handle signal")
+			continue
+		}
+
+		if fatalSignal(nativeSignal) {
+			logger.Error("received fatal signal")
+			die()
+		}
+
+		if debug && nonFatalSignal(nativeSignal) {
+			logger.Debug("handling signal")
+			backtrace()
+			continue
+		}
+
+		logger.Info("ignoring unexpected signal")
 	}
 }
 
-func (s *sandbox) setSubreaper() error {
-	if err := unix.Prctl(unix.PR_SET_CHILD_SUBREAPER, uintptr(1), 0, 0, 0); err != nil {
+func (s *sandbox) setupSignalHandler() error {
+	// Set agent as subreaper
+	err := unix.Prctl(unix.PR_SET_CHILD_SUBREAPER, uintptr(1), 0, 0, 0)
+	if err != nil {
 		return err
 	}
 
 	sigCh := make(chan os.Signal, 512)
 	signal.Notify(sigCh, unix.SIGCHLD)
 
-	go s.reaperLoop(sigCh)
+	for _, sig := range handledSignals() {
+		signal.Notify(sigCh, sig)
+	}
+
+	go s.signalHandlerLoop(sigCh)
 
 	return nil
 }
 
 // getMemory returns a string containing the total amount of memory reported
-// by the kernell. The string includes a suffix denoting the units the memory
+// by the kernel. The string includes a suffix denoting the units the memory
 // is measured in.
 func getMemory() (string, error) {
 	bytes, err := ioutil.ReadFile(meminfo)
@@ -644,9 +674,6 @@ func initAgentAsInit() error {
 }
 
 func init() {
-	// Force full stacktrace on internal error
-	debug.SetTraceback("system")
-
 	if len(os.Args) > 1 && os.Args[1] == "init" {
 		runtime.GOMAXPROCS(1)
 		runtime.LockOSThread()
@@ -658,7 +685,7 @@ func init() {
 	}
 }
 
-func main() {
+func realMain() {
 	var err error
 	var showVersion bool
 
@@ -703,17 +730,19 @@ func main() {
 	}
 
 	if err = s.initLogger(); err != nil {
+		agentLog.WithError(err).Error("failed to setup logger")
 		return
 	}
 
-	// Set agent as subreaper.
-	if err = s.setSubreaper(); err != nil {
+	if err = s.setupSignalHandler(); err != nil {
+		agentLog.WithError(err).Error("failed to setup signal handler")
 		return
 	}
 
 	// Check for vsock vs serial. This will fill the sandbox structure with
 	// information about the channel.
 	if err = s.initChannel(); err != nil {
+		agentLog.WithError(err).Error("failed to setup channels")
 		return
 	}
 
@@ -723,4 +752,9 @@ func main() {
 	go s.listenToUdevEvents()
 
 	s.wg.Wait()
+}
+
+func main() {
+	defer handlePanic()
+	realMain()
 }

@@ -71,10 +71,15 @@ func TestParseCmdlineOptionCorrectOptions(t *testing.T) {
 	logFlagList := []string{"debug", "info", "warn", "error", "fatal", "panic"}
 
 	for _, logFlag := range logFlagList {
+		debug = false
 		option := logLevelFlag + "=" + logFlag
 
 		err := a.parseCmdlineOption(option)
 		assert.NoError(err, "%v", err)
+
+		if logFlag == "debug" {
+			assert.True(debug)
+		}
 	}
 }
 
@@ -90,6 +95,45 @@ func TestParseCmdlineOptionIncorrectOptions(t *testing.T) {
 
 		err := a.parseCmdlineOption(option)
 		assert.Errorf(err, "Should fail because of incorrect option %q", logFlag)
+	}
+}
+
+func TestParseCmdlineOptionDevMode(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentConfig{}
+
+	type testData struct {
+		option               string
+		expectDevModeEnabled bool
+	}
+
+	data := []testData{
+		{"agent.Devmode", false},
+		{"agent.DevMode", false},
+		{"devmode", false},
+		{"DevMode", false},
+		{"agent.devmodel", false},
+		{"agent.devmode.", false},
+		{"agent.devmode-", false},
+		{"agent.devmode:", false},
+
+		{"agent.devmode", true},
+	}
+
+	for i, d := range data {
+		debug = false
+		crashOnError = false
+
+		err := a.parseCmdlineOption(d.option)
+		assert.NoError(err)
+
+		if !d.expectDevModeEnabled {
+			continue
+		}
+
+		assert.True(debug, "test %d (%+v)", i, d)
+		assert.True(crashOnError, "test %d (%+v)", i, d)
 	}
 }
 

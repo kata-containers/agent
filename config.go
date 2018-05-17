@@ -18,6 +18,7 @@ import (
 const (
 	optionPrefix      = "agent."
 	logLevelFlag      = optionPrefix + "log"
+	devModeFlag       = optionPrefix + "devmode"
 	kernelCmdlineFile = "/proc/cmdline"
 )
 
@@ -70,6 +71,13 @@ func (c *agentConfig) parseCmdlineOption(option string) error {
 		optionSeparator = "="
 	)
 
+	if option == devModeFlag {
+		crashOnError = true
+		debug = true
+
+		return nil
+	}
+
 	split := strings.Split(option, optionSeparator)
 
 	if len(split) < valuePosition+1 {
@@ -83,6 +91,9 @@ func (c *agentConfig) parseCmdlineOption(option string) error {
 			return err
 		}
 		c.logLevel = level
+		if level == logrus.DebugLevel {
+			debug = true
+		}
 	default:
 		if strings.HasPrefix(split[optionPosition], optionPrefix) {
 			return grpcStatus.Errorf(codes.NotFound, "Unknown option %s", split[optionPosition])
