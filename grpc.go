@@ -75,9 +75,9 @@ const onlineCPUMaxTries = 10
 
 const dockerCpusetMode = 0644
 
-// handleError will log the specified error if wait is true
+// handleError will log the specified error if wait is false
 func handleError(wait bool, err error) error {
-	if wait {
+	if !wait {
 		agentLog.WithError(err).Error()
 	}
 
