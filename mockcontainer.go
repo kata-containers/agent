@@ -7,6 +7,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/opencontainers/runc/libcontainer"
@@ -37,6 +38,7 @@ func (m *mockContainer) Config() configs.Config {
 		Capabilities: &configs.Capabilities{},
 		Cgroups: &configs.Cgroup{
 			Resources: &configs.Resources{},
+			Path:      fmt.Sprintf("/cgroup/%s", m.id),
 		},
 		Seccomp: &configs.Seccomp{},
 	}

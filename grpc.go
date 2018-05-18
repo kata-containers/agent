@@ -17,7 +17,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -57,7 +56,7 @@ var (
 	sysfsCPUOnlinePath     = "/sys/devices/system/cpu"
 	sysfsMemOnlinePath     = "/sys/devices/system/memory"
 	sysfsConnectedCPUsPath = filepath.Join(sysfsCPUOnlinePath, "online")
-	sysfsDockerCpusetPath  = "/sys/fs/cgroup/cpuset/docker/cpuset.cpus"
+	sysfsCpusetPath        = "/sys/fs/cgroup/cpuset"
 )
 
 type onlineResource struct {
@@ -67,13 +66,11 @@ type onlineResource struct {
 
 var emptyResp = &gpb.Empty{}
 
-var onlineCPUMemLock sync.Mutex
-
 const onlineCPUMemWaitTime = 100 * time.Millisecond
 
 const onlineCPUMaxTries = 10
 
-const dockerCpusetMode = 0644
+const cpusetMode = 0644
 
 // handleError will log the specified error if wait is false
 func handleError(wait bool, err error) error {
@@ -163,9 +160,11 @@ func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
 		return handleError(req.Wait, fmt.Errorf("requested number of CPUs '%d' must be greater than 0", req.NbCpus))
 	}
 
-	onlineCPUMemLock.Lock()
-	defer onlineCPUMemLock.Unlock()
+	// we are going to update the containers of the sandbox, we have to lock it
+	a.sandbox.Lock()
+	defer a.sandbox.Unlock()
 
+	agentLog.WithField("vcpus-to-connect", req.NbCpus).Debug("connecting vCPUs")
 	if err := onlineCPUResources(req.NbCpus); err != nil {
 		return handleError(req.Wait, err)
 	}
@@ -181,29 +180,51 @@ func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
 		return handleError(req.Wait, fmt.Errorf("Could not get the actual range of connected CPUs: %v", err))
 	}
 	connectedCpus := strings.Trim(string(cpus), "\t\n ")
+	agentLog.WithField("range-of-vcpus", connectedCpus).Debug("connecting vCPUs")
 
-	// In order to update container's cpuset cgroups, docker's cpuset cgroup MUST BE updated with
-	// the actual number of connected CPUs
-	if err := ioutil.WriteFile(sysfsDockerCpusetPath, []byte(connectedCpus), dockerCpusetMode); err != nil {
-		return handleError(req.Wait, fmt.Errorf("Could not update docker cpuset cgroup '%s': %v", connectedCpus, err))
-	}
+	mapCgroupPaths := make(map[string]bool)
 
 	// Now that we know the actual range of connected CPUs, we need to iterate over
 	// all containers an update each cpuset cgroup. This is not required in docker
 	// containers since they don't hot add/remove CPUs.
 	for _, c := range a.sandbox.containers {
+		agentLog.WithField("container", c.container.ID()).Debug("updating cpuset cgroup")
 		contConfig := c.container.Config()
+
 		// Don't update cpuset cgroup if one was already defined.
 		if contConfig.Cgroups.Resources.CpusetCpus != "" {
+			agentLog.WithField("cpuset", contConfig.Cgroups.Resources.CpusetCpus).Debug("cpuset value is not empty")
 			continue
 		}
-		contConfig.Cgroups.Resources = &configs.Resources{
-			CpusetCpus: connectedCpus,
-		}
-		if err := c.container.Set(contConfig); err != nil {
-			return handleError(req.Wait, err)
-		}
 
+		// Each cpuset cgroup MUST BE updated with the actual number of vCPUs.
+		cpusetPath := sysfsCpusetPath
+		cgroupsPaths := strings.Split(contConfig.Cgroups.Path, "/")
+		for _, path := range cgroupsPaths {
+			// Skip if empty.
+			if path == "" {
+				continue
+			}
+
+			cpusetPath = filepath.Join(cpusetPath, path)
+
+			// check if the cgroup was already updated.
+			if mapCgroupPaths[cpusetPath] == true {
+				agentLog.WithField("path", cpusetPath).Debug("cpuset cgroup already updated")
+				continue
+			}
+
+			// Don't use c.container.Set because of it will modify container's config.
+			// c.container.Set MUST BE used only on update.
+			cpusetCpusPath := filepath.Join(cpusetPath, "cpuset.cpus")
+			agentLog.WithField("path", cpusetPath).Debug("updating cpuset cgroup")
+			if err := ioutil.WriteFile(cpusetCpusPath, []byte(connectedCpus), cpusetMode); err != nil {
+				return handleError(req.Wait, fmt.Errorf("Could not update cpuset cgroup '%s': %v", connectedCpus, err))
+			}
+
+			// add cgroup path to the map.
+			mapCgroupPaths[cpusetPath] = true
+		}
 	}
 
 	return nil

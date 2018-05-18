@@ -117,6 +117,17 @@ func TestOnlineCPUMem(t *testing.T) {
 		},
 	}
 
+	containerID := "1"
+	containerID2 := "2"
+	container := &container{
+		container: &mockContainer{
+			id:        containerID,
+			processes: []int{1},
+		},
+	}
+	a.sandbox.containers[containerID] = container
+	a.sandbox.containers[containerID2] = container
+
 	req := &pb.OnlineCPUMemRequest{
 		NbCpus: 1,
 		Wait:   true,
@@ -166,10 +177,13 @@ func TestOnlineCPUMem(t *testing.T) {
 	_, err = a.OnlineCPUMem(context.TODO(), req)
 	assert.Error(err, "docker cgroup path does not exist")
 
-	dockerCpusetPath, err := ioutil.TempDir("", "docker")
+	sysfsCpusetPath, err = ioutil.TempDir("", "cgroup")
 	assert.NoError(err)
-	defer os.RemoveAll(dockerCpusetPath)
-	sysfsDockerCpusetPath = filepath.Join(dockerCpusetPath, "cpuset.cpus")
+	cfg := container.container.Config()
+	cgroupPath := filepath.Join(sysfsCpusetPath, cfg.Cgroups.Path)
+	err = os.MkdirAll(cgroupPath, 0777)
+	assert.NoError(err)
+	defer os.RemoveAll(sysfsCpusetPath)
 
 	err = ioutil.WriteFile(memory0Online, []byte("0"), 0755)
 	assert.NoError(err)
