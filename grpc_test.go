@@ -337,6 +337,62 @@ func TestStatsContainer(t *testing.T) {
 
 }
 
+func TestPauseContainer(t *testing.T) {
+	containerID := "1"
+	assert := assert.New(t)
+	req := &pb.PauseContainerRequest{
+		ContainerId: containerID,
+	}
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	r, err := a.PauseContainer(context.TODO(), req)
+	assert.Error(err)
+	assert.Equal(r, emptyResp)
+
+	a.sandbox.containers[containerID] = &container{
+		container: &mockContainer{
+			id:        containerID,
+			processes: []int{1},
+		},
+	}
+	r, err = a.PauseContainer(context.TODO(), req)
+	assert.NoError(err)
+	assert.Equal(r, emptyResp)
+}
+
+func TestResumeContainer(t *testing.T) {
+	containerID := "1"
+	assert := assert.New(t)
+	req := &pb.ResumeContainerRequest{
+		ContainerId: containerID,
+	}
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	r, err := a.ResumeContainer(context.TODO(), req)
+	assert.Error(err)
+	assert.Equal(r, emptyResp)
+
+	a.sandbox.containers[containerID] = &container{
+		container: &mockContainer{
+			id:        containerID,
+			processes: []int{1},
+		},
+	}
+	r, err = a.ResumeContainer(context.TODO(), req)
+	assert.NoError(err)
+	assert.Equal(r, emptyResp)
+}
+
 func TestHandleError(t *testing.T) {
 	assert := assert.New(t)
 
