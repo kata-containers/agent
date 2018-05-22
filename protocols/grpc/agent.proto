@@ -59,6 +59,13 @@ message CreateContainerRequest {
 	repeated Device devices = 4;
 	repeated Storage storages = 5;
 	Spec OCI = 6;
+
+	// This field is used to indicate if the container needs to join
+	// sandbox shared pid ns or create a new namespace. This field is
+	// meant to override the NEWPID config settings in the OCI spec.
+	// The agent would receive an OCI spec with PID namespace cleared
+	// out altogether and not just the pid ns path.
+	bool sandbox_pidns = 7;
 }
 
 message StartContainerRequest {
@@ -244,6 +251,11 @@ message CreateSandboxRequest {
 	string hostname = 1;
 	repeated string dns = 2;
 	repeated Storage storages = 3;
+	
+	// This field means that a pause process needs to be created by the
+	// agent. This pid namespace of the pause process will be treated as 
+	// a shared pid namespace. All containers created will join this shared
+	// pid namespace.
 	bool sandbox_pidns = 4;
 }
 
