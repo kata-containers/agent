@@ -416,6 +416,8 @@ func (a *agentGRPC) postExecProcess(ctr *container, proc *process) error {
 // sense to rely on the namespace path provided by the host since namespaces
 // are different inside the guest.
 func (a *agentGRPC) updateContainerConfigNamespaces(config *configs.Config) error {
+	var pidNs, ipcNs, utsNs bool
+
 	// Update shared PID namespace.
 	for idx, ns := range config.Namespaces {
 		if ns.Type == configs.NEWPID {
@@ -423,19 +425,46 @@ func (a *agentGRPC) updateContainerConfigNamespaces(config *configs.Config) erro
 			// the containers to share the same PID namespace, a
 			// new PID ns is going to be created.
 			config.Namespaces[idx].Path = a.sandbox.sharedPidNs.path
-			return nil
+			pidNs = true
+		}
+
+		if ns.Type == configs.NEWIPC {
+			config.Namespaces[idx].Path = a.sandbox.sharedIPCNs.path
+			ipcNs = true
+		}
+
+		if ns.Type == configs.NEWUTS {
+			config.Namespaces[idx].Path = a.sandbox.sharedUTSNs.path
+			utsNs = true
 		}
 	}
 
 	// If no NEWPID type was found, let's make sure we add it. Otherwise,
 	// the container could end up in the same PID namespace than the agent
 	// and we want to prevent this for security reasons.
-	newPidNs := configs.Namespace{
-		Type: configs.NEWPID,
-		Path: a.sandbox.sharedPidNs.path,
+	if !pidNs {
+		newPidNs := configs.Namespace{
+			Type: configs.NEWPID,
+			Path: a.sandbox.sharedPidNs.path,
+		}
+		config.Namespaces = append(config.Namespaces, newPidNs)
 	}
 
-	config.Namespaces = append(config.Namespaces, newPidNs)
+	if !ipcNs {
+		newIPCNs := configs.Namespace{
+			Type: configs.NEWIPC,
+			Path: a.sandbox.sharedIPCNs.path,
+		}
+		config.Namespaces = append(config.Namespaces, newIPCNs)
+	}
+
+	if !utsNs {
+		newUTSNs := configs.Namespace{
+			Type: configs.NEWUTS,
+			Path: a.sandbox.sharedUTSNs.path,
+		}
+		config.Namespaces = append(config.Namespaces, newUTSNs)
+	}
 
 	return nil
 }
@@ -1030,6 +1059,11 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 	a.sandbox.network.dns = req.Dns
 	a.sandbox.running = true
 
+	// Set up shared UTS and IPC namespaces
+	if err := a.sandbox.setupSharedNamespaces(); err != nil {
+		return emptyResp, err
+	}
+
 	if req.SandboxPidns {
 		if err := a.sandbox.setupSharedPidNs(); err != nil {
 			return emptyResp, err
@@ -1075,6 +1109,10 @@ func (a *agentGRPC) DestroySandbox(ctx context.Context, req *pb.DestroySandboxRe
 	}
 
 	if err := a.sandbox.teardownSharedPidNs(); err != nil {
+		return emptyResp, err
+	}
+
+	if err := a.sandbox.unmountSharedNamespaces(); err != nil {
 		return emptyResp, err
 	}
 

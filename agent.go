@@ -78,12 +78,8 @@ type sandbox struct {
 	server          *grpc.Server
 	pciDeviceMap    map[string]string
 	deviceWatchers  map[string](chan string)
-}
-
-type namespace struct {
-	path       string
-	init       *os.Process
-	exitCodeCh <-chan int
+	sharedUTSNs     namespace
+	sharedIPCNs     namespace
 }
 
 var agentFields = logrus.Fields{
@@ -257,6 +253,36 @@ func (s *sandbox) readStdio(cid, execID string, length int, stdout bool) ([]byte
 	}
 
 	return buf[:bytesRead], nil
+}
+
+func (s *sandbox) setupSharedNamespaces() error {
+	// Set up shared IPC namespace
+	ns, err := setupPersistentNs(nsTypeIPC)
+	if err != nil {
+		return err
+	}
+	s.sharedIPCNs = *ns
+
+	// Set up shared UTS namespace
+	ns, err = setupPersistentNs(nsTypeUTS)
+	if err != nil {
+		return err
+	}
+	s.sharedUTSNs = *ns
+
+	return nil
+}
+
+func (s *sandbox) unmountSharedNamespaces() error {
+	if err := unix.Unmount(s.sharedIPCNs.path, unix.MNT_DETACH); err != nil {
+		return err
+	}
+
+	if err := unix.Unmount(s.sharedUTSNs.path, unix.MNT_DETACH); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // setupSharedPidNs will reexec this binary in order to execute the C routine
