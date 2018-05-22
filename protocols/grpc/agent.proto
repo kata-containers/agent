@@ -31,6 +31,8 @@ service AgentService {
 	rpc ListProcesses(ListProcessesRequest) returns (ListProcessesResponse);
 	rpc UpdateContainer(UpdateContainerRequest) returns (google.protobuf.Empty);
 	rpc StatsContainer(StatsContainerRequest) returns (StatsContainerResponse);
+	rpc PauseContainer(PauseContainerRequest) returns (google.protobuf.Empty);
+	rpc ResumeContainer(ResumeContainerRequest) returns (google.protobuf.Empty);
 
 	// stdio
 	rpc WriteStdin(WriteStreamRequest) returns (WriteStreamResponse);
@@ -118,6 +120,14 @@ message UpdateContainerRequest {
 }
 
 message StatsContainerRequest {
+    string container_id = 1;
+}
+
+message PauseContainerRequest {
+    string container_id = 1;
+}
+
+message ResumeContainerRequest {
     string container_id = 1;
 }
 

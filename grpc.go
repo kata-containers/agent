@@ -867,6 +867,30 @@ func (a *agentGRPC) StatsContainer(ctx context.Context, req *pb.StatsContainerRe
 
 }
 
+func (a *agentGRPC) PauseContainer(ctx context.Context, req *pb.PauseContainerRequest) (*gpb.Empty, error) {
+	c, err := a.sandbox.getContainer(req.ContainerId)
+	if err != nil {
+		return emptyResp, err
+	}
+
+	a.sandbox.Lock()
+	defer a.sandbox.Unlock()
+
+	return emptyResp, c.container.Pause()
+}
+
+func (a *agentGRPC) ResumeContainer(ctx context.Context, req *pb.ResumeContainerRequest) (*gpb.Empty, error) {
+	c, err := a.sandbox.getContainer(req.ContainerId)
+	if err != nil {
+		return emptyResp, err
+	}
+
+	a.sandbox.Lock()
+	defer a.sandbox.Unlock()
+
+	return emptyResp, c.container.Resume()
+}
+
 func (a *agentGRPC) RemoveContainer(ctx context.Context, req *pb.RemoveContainerRequest) (*gpb.Empty, error) {
 	ctr, err := a.sandbox.getContainer(req.ContainerId)
 	if err != nil {

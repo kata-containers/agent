@@ -365,3 +365,23 @@ func (m *mockServer) StatsContainer(ctx context.Context, req *pb.StatsContainerR
 	return &pb.StatsContainerResponse{}, nil
 
 }
+
+func (m *mockServer) PauseContainer(ctx context.Context, req *pb.PauseContainerRequest) (*types.Empty, error) {
+	mockLock.RLock()
+	defer mockLock.RUnlock()
+	if err := m.podExist(); err != nil {
+		return nil, err
+	}
+
+	return &types.Empty{}, nil
+}
+
+func (m *mockServer) ResumeContainer(ctx context.Context, req *pb.ResumeContainerRequest) (*types.Empty, error) {
+	mockLock.RLock()
+	defer mockLock.RUnlock()
+	if err := m.podExist(); err != nil {
+		return nil, err
+	}
+
+	return &types.Empty{}, nil
+}
