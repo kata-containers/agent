@@ -21,12 +21,20 @@ import (
 )
 
 var testSharedPidNs = "testSharedPidNs"
+var testSharedUTSNs = "testSharedUTSNs"
+var testSharedIPCNs = "testSharedIPCNs"
 
-func testUpdateContainerConfigNamespaces(t *testing.T, sharedPidNs string, config, expected configs.Config) {
+func testUpdateContainerConfigNamespaces(t *testing.T, sharedPidNs, sharedUTSNs, sharedIPCNs string, config, expected configs.Config) {
 	a := &agentGRPC{
 		sandbox: &sandbox{
 			sharedPidNs: namespace{
 				path: sharedPidNs,
+			},
+			sharedIPCNs: namespace{
+				path: sharedIPCNs,
+			},
+			sharedUTSNs: namespace{
+				path: sharedUTSNs,
 			},
 		},
 	}
@@ -45,6 +53,12 @@ func TestUpdateContainerConfigNamespacesNonEmptyConfig(t *testing.T) {
 			{
 				Type: configs.NEWPID,
 			},
+			{
+				Type: configs.NEWIPC,
+			},
+			{
+				Type: configs.NEWUTS,
+			},
 		},
 	}
 
@@ -54,10 +68,19 @@ func TestUpdateContainerConfigNamespacesNonEmptyConfig(t *testing.T) {
 				Type: configs.NEWPID,
 				Path: testSharedPidNs,
 			},
+
+			{
+				Type: configs.NEWIPC,
+				Path: testSharedIPCNs,
+			},
+			{
+				Type: configs.NEWUTS,
+				Path: testSharedUTSNs,
+			},
 		},
 	}
 
-	testUpdateContainerConfigNamespaces(t, testSharedPidNs, config, expectedConfig)
+	testUpdateContainerConfigNamespaces(t, testSharedPidNs, testSharedUTSNs, testSharedIPCNs, config, expectedConfig)
 }
 
 func TestUpdateContainerConfigNamespacesEmptyConfig(t *testing.T) {
@@ -67,10 +90,20 @@ func TestUpdateContainerConfigNamespacesEmptyConfig(t *testing.T) {
 				Type: configs.NEWPID,
 				Path: testSharedPidNs,
 			},
+
+			{
+				Type: configs.NEWIPC,
+				Path: testSharedIPCNs,
+			},
+			{
+				Type: configs.NEWUTS,
+				Path: testSharedUTSNs,
+			},
 		},
 	}
 
-	testUpdateContainerConfigNamespaces(t, testSharedPidNs, configs.Config{}, expectedConfig)
+	testUpdateContainerConfigNamespaces(t, testSharedPidNs, testSharedUTSNs, testSharedIPCNs, configs.Config{}, expectedConfig)
+	//testUpdateContainerConfigNamespaces(t, testSharedPidNs, configs.Config{}, expectedConfig)
 }
 
 func testUpdateContainerConfigPrivileges(t *testing.T, spec *specs.Spec, config, expected configs.Config) {
