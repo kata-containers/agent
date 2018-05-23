@@ -79,9 +79,6 @@ type sandbox struct {
 	sync.RWMutex
 
 	id              string
-	running         bool
-	noPivotRoot     bool
-	enableGrpcTrace bool
 	containers      map[string]*container
 	channel         channel
 	network         network
@@ -94,6 +91,9 @@ type sandbox struct {
 	deviceWatchers  map[string](chan string)
 	sharedUTSNs     namespace
 	sharedIPCNs     namespace
+	running         bool
+	noPivotRoot     bool
+	enableGrpcTrace bool
 	sandboxPidNs    bool
 }
 
