@@ -25,36 +25,52 @@ var testSharedPidNs = "testSharedPidNs"
 var testSharedUTSNs = "testSharedUTSNs"
 var testSharedIPCNs = "testSharedIPCNs"
 
-func testUpdateContainerConfigNamespaces(t *testing.T, sharedPidNs, sharedUTSNs, sharedIPCNs string, config, expected configs.Config) {
-	a := &agentGRPC{
-		sandbox: &sandbox{
-			sharedPidNs: namespace{
-				path: sharedPidNs,
-			},
-			sharedIPCNs: namespace{
-				path: sharedIPCNs,
-			},
-			sharedUTSNs: namespace{
-				path: sharedUTSNs,
-			},
+func testUpdateContainerConfigNamespacesSharedPid(t *testing.T, sharedPidNs, sharedUTSNs, sharedIPCNs string, config, expected configs.Config) {
+	testUpdateContainerConfigNamespaces(t, sharedPidNs, sharedUTSNs, sharedIPCNs, config, expected, true)
+}
+
+func testUpdateContainerConfigNamespacesNonSharedPid(t *testing.T, sharedPidNs, sharedUTSNs, sharedIPCNs string, config, expected configs.Config) {
+	testUpdateContainerConfigNamespaces(t, sharedPidNs, sharedUTSNs, sharedIPCNs, config, expected, false)
+}
+
+func testUpdateContainerConfigNamespaces(t *testing.T, sharedPidNs, sharedUTSNs, sharedIPCNs string, config, expected configs.Config, sharedPid bool) {
+	s := &sandbox{
+		sharedPidNs: namespace{
+			path: sharedPidNs,
 		},
+		sharedIPCNs: namespace{
+			path: sharedIPCNs,
+		},
+		sharedUTSNs: namespace{
+			path: sharedUTSNs,
+		},
+		containers: make(map[string]*container),
 	}
 
-	err := a.updateContainerConfigNamespaces(&config)
-	assert.Nil(t, err, "updateContainerConfigNamespaces() failed: %v", err)
+	contID := "testContainer"
+	ctr := &container{
+		id:              contID,
+		useSandboxPidNs: sharedPid,
+	}
+
+	s.containers[contID] = ctr
+
+	a := &agentGRPC{
+		sandbox: s,
+	}
+
+	a.updateContainerConfigNamespaces(&config, ctr)
 
 	assert.True(t, reflect.DeepEqual(config, expected),
 		"Config structures should be identical: got %+v, expecting %+v",
 		config, expected)
+
 }
 
 func TestUpdateContainerConfigNamespacesNonEmptyConfig(t *testing.T) {
 	config := configs.Config{
 		Namespaces: []configs.Namespace{
 			{
-				Type: configs.NEWPID,
-			},
-			{
 				Type: configs.NEWIPC,
 			},
 			{
@@ -66,10 +82,24 @@ func TestUpdateContainerConfigNamespacesNonEmptyConfig(t *testing.T) {
 	expectedConfig := configs.Config{
 		Namespaces: []configs.Namespace{
 			{
+				Type: configs.NEWIPC,
+				Path: testSharedIPCNs,
+			},
+			{
+				Type: configs.NEWUTS,
+				Path: testSharedUTSNs,
+			},
+			{
 				Type: configs.NEWPID,
 				Path: testSharedPidNs,
 			},
+		},
+	}
 
+	testUpdateContainerConfigNamespacesSharedPid(t, testSharedPidNs, testSharedUTSNs, testSharedIPCNs, config, expectedConfig)
+
+	expectedConfig = configs.Config{
+		Namespaces: []configs.Namespace{
 			{
 				Type: configs.NEWIPC,
 				Path: testSharedIPCNs,
@@ -78,20 +108,38 @@ func TestUpdateContainerConfigNamespacesNonEmptyConfig(t *testing.T) {
 				Type: configs.NEWUTS,
 				Path: testSharedUTSNs,
 			},
+			{
+				Type: configs.NEWPID,
+				Path: "",
+			},
 		},
 	}
 
-	testUpdateContainerConfigNamespaces(t, testSharedPidNs, testSharedUTSNs, testSharedIPCNs, config, expectedConfig)
+	testUpdateContainerConfigNamespacesNonSharedPid(t, testSharedPidNs, testSharedUTSNs, testSharedIPCNs, config, expectedConfig)
 }
 
 func TestUpdateContainerConfigNamespacesEmptyConfig(t *testing.T) {
 	expectedConfig := configs.Config{
 		Namespaces: []configs.Namespace{
 			{
+				Type: configs.NEWIPC,
+				Path: testSharedIPCNs,
+			},
+			{
+				Type: configs.NEWUTS,
+				Path: testSharedUTSNs,
+			},
+			{
 				Type: configs.NEWPID,
 				Path: testSharedPidNs,
 			},
+		},
+	}
 
+	testUpdateContainerConfigNamespacesSharedPid(t, testSharedPidNs, testSharedUTSNs, testSharedIPCNs, configs.Config{}, expectedConfig)
+
+	expectedConfig = configs.Config{
+		Namespaces: []configs.Namespace{
 			{
 				Type: configs.NEWIPC,
 				Path: testSharedIPCNs,
@@ -100,11 +148,14 @@ func TestUpdateContainerConfigNamespacesEmptyConfig(t *testing.T) {
 				Type: configs.NEWUTS,
 				Path: testSharedUTSNs,
 			},
+			{
+				Type: configs.NEWPID,
+				Path: "",
+			},
 		},
 	}
 
-	testUpdateContainerConfigNamespaces(t, testSharedPidNs, testSharedUTSNs, testSharedIPCNs, configs.Config{}, expectedConfig)
-	//testUpdateContainerConfigNamespaces(t, testSharedPidNs, configs.Config{}, expectedConfig)
+	testUpdateContainerConfigNamespacesNonSharedPid(t, testSharedPidNs, testSharedUTSNs, testSharedIPCNs, configs.Config{}, expectedConfig)
 }
 
 func testUpdateContainerConfigPrivileges(t *testing.T, spec *specs.Spec, config, expected configs.Config) {
