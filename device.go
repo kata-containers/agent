@@ -24,9 +24,10 @@ import (
 )
 
 const (
-	driver9pType   = "9p"
-	driverBlkType  = "blk"
-	driverSCSIType = "scsi"
+	driver9pType        = "9p"
+	driverBlkType       = "blk"
+	driverSCSIType      = "scsi"
+	driverEphemeralType = "ephemeral"
 )
 
 const rootBusPath = "/devices/pci0000:00"

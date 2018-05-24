@@ -22,6 +22,7 @@ import (
 
 const (
 	type9pFs       = "9p"
+	typeTmpFs      = "tmpfs"
 	devPrefix      = "/dev/"
 	timeoutHotplug = 3
 	mountPerm      = os.FileMode(0755)
@@ -95,26 +96,28 @@ func mount(source, destination, fsType string, flags int, options string) error 
 		return fmt.Errorf("need mount FS type")
 	}
 
-	if fsType != type9pFs {
-		var err error
-
+	var err error
+	switch fsType {
+	case type9pFs:
+		if err = createDestinationDir(destination); err != nil {
+			return err
+		}
+		absSource = source
+	case typeTmpFs:
+		absSource = source
+	default:
 		absSource, err = filepath.EvalSymlinks(source)
 		if err != nil {
 			return grpcStatus.Errorf(codes.Internal, "Could not resolve symlink for source %v", source)
 		}
 
-		if err := ensureDestinationExists(absSource, destination, fsType); err != nil {
+		if err = ensureDestinationExists(absSource, destination, fsType); err != nil {
 			return grpcStatus.Errorf(codes.Internal, "Could not create destination mount point: %v: %v",
 				destination, err)
 		}
-	} else {
-		if err := createDestinationDir(destination); err != nil {
-			return err
-		}
-		absSource = source
 	}
 
-	if err := syscall.Mount(absSource, destination,
+	if err = syscall.Mount(absSource, destination,
 		fsType, uintptr(flags), options); err != nil {
 		return grpcStatus.Errorf(codes.Internal, "Could not mount %v to %v: %v",
 			absSource, destination, err)
@@ -187,9 +190,20 @@ type storageHandler func(storage pb.Storage, s *sandbox) (string, error)
 
 // storageHandlerList lists the supported drivers.
 var storageHandlerList = map[string]storageHandler{
-	driver9pType:   virtio9pStorageHandler,
-	driverBlkType:  virtioBlkStorageHandler,
-	driverSCSIType: virtioSCSIStorageHandler,
+	driver9pType:        virtio9pStorageHandler,
+	driverBlkType:       virtioBlkStorageHandler,
+	driverSCSIType:      virtioSCSIStorageHandler,
+	driverEphemeralType: ephemeralStorageHandler,
+}
+
+func ephemeralStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
+	if _, err := os.Stat(storage.MountPoint); os.IsNotExist(err) {
+		if err = os.MkdirAll(storage.MountPoint, os.ModePerm); err == nil {
+			_, err = commonStorageHandler(storage)
+		}
+		return "", err
+	}
+	return "", nil
 }
 
 // virtio9pStorageHandler handles the storage for 9p driver.
