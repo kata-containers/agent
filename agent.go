@@ -7,6 +7,7 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"flag"
 	"fmt"
@@ -37,7 +38,19 @@ import (
 	grpcStatus "google.golang.org/grpc/status"
 )
 
-const meminfo = "/proc/meminfo"
+const (
+	procCgroups = "/proc/cgroups"
+	cgroupPath  = "/sys/fs/cgroup"
+	meminfo     = "/proc/meminfo"
+)
+
+var initRootfsMounts = []initMount{
+	{"proc", "proc", "/proc", []string{"nosuid", "nodev", "noexec"}},
+	{"sysfs", "sysfs", "/sys", []string{"nosuid", "nodev", "noexec"}},
+	{"devtmpfs", "dev", "/dev", []string{"nosuid"}},
+	{"tmpfs", "tmpfs", "/dev/shm", []string{"nosuid", "nodev"}},
+	{"devpts", "devpts", "/dev/pts", []string{"nosuid", "noexec"}},
+}
 
 type process struct {
 	id          string
@@ -648,43 +661,94 @@ type initMount struct {
 	options           []string
 }
 
-var initRootfsMounts = []initMount{
-	{"proc", "proc", "/proc", []string{"nosuid", "nodev", "noexec"}},
-	{"sysfs", "sysfs", "/sys", []string{"nosuid", "nodev", "noexec"}},
-	{"devtmpfs", "dev", "/dev", []string{"nosuid"}},
-	{"tmpfs", "tmpfs", "/dev/shm", []string{"nosuid", "nodev"}},
-	{"devpts", "devpts", "/dev/pts", []string{"nosuid", "noexec"}},
-	// mounts for cgroup, copied from rh7
-	{"tmpfs", "tmpfs", "/sys/fs/cgroup", []string{"nosuid", "nodev", "noexec", "mode=755"}},
-	{"cgroup", "cgroup", "/sys/fs/cgroup/devices", []string{"nosuid", "nodev", "noexec", "relatime", "devices"}},
-	{"cgroup", "cgroup", "/sys/fs/cgroup/cpu,cpuacct", []string{"nosuid", "nodev", "noexec", "relatime", "cpuacct", "cpu"}},
-	{"cgroup", "cgroup", "/sys/fs/cgroup/pids", []string{"nosuid", "nodev", "noexec", "relatime", "pids"}},
-	{"cgroup", "cgroup", "/sys/fs/cgroup/net_cls,net_prio", []string{"nosuid", "nodev", "noexec", "relatime", "net_prio", "net_cls"}},
-	{"cgroup", "cgroup", "/sys/fs/cgroup/blkio", []string{"nosuid", "nodev", "noexec", "relatime", "blkio"}},
-	{"cgroup", "cgroup", "/sys/fs/cgroup/freezer", []string{"nosuid", "nodev", "noexec", "relatime", "freezer"}},
-	{"cgroup", "cgroup", "/sys/fs/cgroup/cpuset", []string{"nosuid", "nodev", "noexec", "relatime", "cpuset"}},
-	{"cgroup", "cgroup", "/sys/fs/cgroup/memory", []string{"nosuid", "nodev", "noexec", "relatime", "memory"}},
-	{"cgroup", "cgroup", "/sys/fs/cgroup/perf_event", []string{"nosuid", "nodev", "noexec", "relatime", "perf_event"}},
-	//{"cgroup", "cgroup", "/sys/fs/cgroup/hugetlb", []string{"nosuid", "nodev", "noexec", "relatime", "hugetlb"}},
-	{"bind", "/sys/fs/cgroup/cpu,cpuacct", "/sys/fs/cgroup/cpu", []string{"bind"}},
-	{"bind", "/sys/fs/cgroup/cpu,cpuacct", "/sys/fs/cgroup/cpuacct", []string{"bind"}},
-	{"bind", "/sys/fs/cgroup/net_cls,net_prio", "/sys/fs/cgroup/net_cls", []string{"bind"}},
-	{"bind", "/sys/fs/cgroup/net_cls,net_prio", "/sys/fs/cgroup/net_prio", []string{"bind"}},
-	{"tmpfs", "tmpfs", "/sys/fs/cgroup", []string{"remount", "ro", "nosuid", "nodev", "noexec", "mode=755"}},
+func getCgroupMounts(cgPath string) ([]initMount, error) {
+	f, err := os.Open(cgPath)
+	if err != nil {
+		return []initMount{}, err
+	}
+	defer f.Close()
+
+	hasDevicesCgroup := false
+
+	cgroupMounts := []initMount{{"tmpfs", "tmpfs", cgroupPath, []string{"nosuid", "nodev", "noexec", "mode=755"}}}
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		text := scanner.Text()
+		fields := strings.Split(text, "\t")
+
+		// #subsys_name    hierarchy       num_cgroups     enabled
+		// fields[0]       fields[1]       fields[2]       fields[3]
+		cgroup := fields[0]
+		if cgroup == "" || cgroup[0] == '#' || (len(fields) > 3 && fields[3] == "0") {
+			continue
+		}
+		if cgroup == "devices" {
+			hasDevicesCgroup = true
+		}
+		cgroupMounts = append(cgroupMounts, initMount{"cgroup", "cgroup",
+			filepath.Join(cgroupPath, cgroup), []string{"nosuid", "nodev", "noexec", "relatime", cgroup}})
+	}
+
+	if err = scanner.Err(); err != nil {
+		return []initMount{}, err
+	}
+
+	// refer to https://github.com/opencontainers/runc/blob/v1.0.0-rc5/libcontainer/cgroups/fs/apply_raw.go#L132
+	if !hasDevicesCgroup {
+		return []initMount{}, err
+	}
+
+	cgroupMounts = append(cgroupMounts, initMount{"tmpfs", "tmpfs",
+		cgroupPath, []string{"remount", "ro", "nosuid", "nodev", "noexec", "mode=755"}})
+	return cgroupMounts, nil
+}
+
+func mountToRootfs(m initMount) error {
+	if err := os.MkdirAll(m.dest, os.FileMode(0755)); err != nil {
+		return err
+	}
+
+	if flags, options, err := parseMountFlagsAndOptions(m.options); err != nil {
+		return grpcStatus.Errorf(codes.Internal, "Could not parseMountFlagsAndOptions(%v)", m.options)
+	} else if err := syscall.Mount(m.src, m.dest, m.fstype, uintptr(flags), options); err != nil {
+		return grpcStatus.Errorf(codes.Internal, "Could not mount %v to %v: %v", m.src, m.dest, err)
+	}
+	return nil
+}
+
+func generalMount() error {
+	for _, m := range initRootfsMounts {
+		if err := os.MkdirAll(m.dest, os.FileMode(0755)); err != nil {
+			return err
+		}
+		if err := mountToRootfs(m); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func cgroupsMount() error {
+	cgroups, err := getCgroupMounts(procCgroups)
+	if err != nil {
+		return nil
+	}
+	for _, m := range cgroups {
+		if err := mountToRootfs(m); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // initAgentAsInit will do the initializations such as setting up the rootfs
 // when this agent has been run as the init process.
 func initAgentAsInit() error {
-	for _, m := range initRootfsMounts {
-		if err := os.MkdirAll(m.dest, os.FileMode(0755)); err != nil {
-			return err
-		}
-		if flags, options, err := parseMountFlagsAndOptions(m.options); err != nil {
-			return grpcStatus.Errorf(codes.Internal, "Could parseMountFlagsAndOptions(%v)", m.options)
-		} else if err = syscall.Mount(m.src, m.dest, m.fstype, uintptr(flags), options); err != nil {
-			return grpcStatus.Errorf(codes.Internal, "Could not mount %v to %v: %v", m.src, m.dest, err)
-		}
+	if err := generalMount(); err != nil {
+		return err
+	}
+	if err := cgroupsMount(); err != nil {
+		return err
 	}
 	if err := syscall.Unlink("/dev/ptmx"); err != nil {
 		return err
