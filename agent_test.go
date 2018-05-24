@@ -7,8 +7,11 @@
 package main
 
 import (
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"reflect"
+	"syscall"
 	"testing"
 
 	"google.golang.org/grpc"
@@ -296,4 +299,62 @@ func TestGrpcTracer(t *testing.T) {
 	}
 	_, err := grpcTracer(context.Background(), &pb.CheckRequest{}, &grpc.UnaryServerInfo{}, handler)
 	assert.Nil(t, err, "failed to trace grpc request: %v", err)
+}
+
+func TestMountToRootfs(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("mount need cap_sys_admin")
+	}
+
+	cgprocDir, err := ioutil.TempDir("", "proc-cgroup")
+	assert.Nil(t, err, "%v", err)
+	defer os.RemoveAll(cgprocDir)
+
+	mounts := []initMount{
+		{"proc", "proc", filepath.Join(cgprocDir, "proc"), []string{"nosuid", "nodev", "noexec"}},
+		{"sysfs", "sysfs", filepath.Join(cgprocDir, "sysfs"), []string{"nosuid", "nodev", "noexec"}},
+		{"devtmpfs", "dev", filepath.Join(cgprocDir, "dev"), []string{"nosuid"}},
+		{"tmpfs", "tmpfs", filepath.Join(cgprocDir, "tmpfs"), []string{"nosuid", "nodev"}},
+		{"devpts", "devpts", filepath.Join(cgprocDir, "devpts"), []string{"nosuid", "noexec"}},
+	}
+
+	for _, m := range mounts {
+		err = mountToRootfs(m)
+		assert.Nil(t, err, "%v", err)
+	}
+
+	for _, m := range mounts {
+		err = syscall.Unmount(m.dest, 0)
+		assert.Nil(t, err, "%v", err)
+	}
+}
+
+func TestGetCgroupMountsFailed(t *testing.T) {
+	cgprocDir, err := ioutil.TempDir("", "proc-cgroup")
+	assert.Nil(t, err, "%v", err)
+	defer os.RemoveAll(cgprocDir)
+
+	_, err = getCgroupMounts(filepath.Join(cgprocDir, "cgroups"))
+	assert.NotNil(t, err, "proc/cgroups is not exist: but got nil")
+}
+
+func TestGetCgroupMountsSuccessful(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("mount need cap_sys_admin")
+	}
+
+	cgprocDir, err := ioutil.TempDir("", "proc-cgroup")
+	assert.Nil(t, err, "%v", err)
+	defer os.RemoveAll(cgprocDir)
+
+	testMounts := initMount{"proc", "proc", cgprocDir, []string{"nosuid", "nodev", "noexec"}}
+	err = mountToRootfs(testMounts)
+	assert.Nil(t, err, "%v", err)
+	defer os.RemoveAll(cgprocDir)
+
+	_, err = getCgroupMounts(filepath.Join(cgprocDir, "cgroups"))
+	assert.Nil(t, err, "%v", err)
+
+	err = syscall.Unmount(cgprocDir, 0)
+	assert.Nil(t, err, "%v", err)
 }
