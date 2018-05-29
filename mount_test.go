@@ -30,6 +30,22 @@ func createSafeAndFakeStorage() (pb.Storage, error) {
 	}, nil
 }
 
+func TestEphemeralStorageHandlerSuccessful(t *testing.T) {
+	skipUnlessRoot(t)
+
+	storage, err := createSafeAndFakeStorage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Unmount(storage.MountPoint, 0)
+	defer os.RemoveAll(storage.MountPoint)
+
+	storage.Fstype = typeTmpFs
+	storage.Source = typeTmpFs
+	_, err = ephemeralStorageHandler(storage, &sandbox{})
+	assert.Nil(t, err, "ephemeralStorageHandler() failed: %v", err)
+}
+
 func TestVirtio9pStorageHandlerSuccessful(t *testing.T) {
 	skipUnlessRoot(t)
 
