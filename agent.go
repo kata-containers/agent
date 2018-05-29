@@ -66,21 +66,19 @@ type process struct {
 type container struct {
 	sync.RWMutex
 
-	id          string
-	initProcess *process
-	container   libcontainer.Container
-	config      configs.Config
-	processes   map[string]*process
-	mounts      []string
+	id              string
+	initProcess     *process
+	container       libcontainer.Container
+	config          configs.Config
+	processes       map[string]*process
+	mounts          []string
+	useSandboxPidNs bool
 }
 
 type sandbox struct {
 	sync.RWMutex
 
 	id              string
-	running         bool
-	noPivotRoot     bool
-	enableGrpcTrace bool
 	containers      map[string]*container
 	channel         channel
 	network         network
@@ -93,6 +91,10 @@ type sandbox struct {
 	deviceWatchers  map[string](chan string)
 	sharedUTSNs     namespace
 	sharedIPCNs     namespace
+	running         bool
+	noPivotRoot     bool
+	enableGrpcTrace bool
+	sandboxPidNs    bool
 }
 
 var agentFields = logrus.Fields{
@@ -330,9 +332,10 @@ func (s *sandbox) setupSharedPidNs() error {
 }
 
 func (s *sandbox) teardownSharedPidNs() error {
-	if s.sharedPidNs.path == "" {
-		// Nothing needs to be done because we are not in a case
-		// where a PID namespace is shared across containers.
+	if !s.sandboxPidNs {
+		// We are not in a case where we have created a pause process.
+		// Simply clear out the sharedPidNs path.
+		s.sharedPidNs.path = ""
 		return nil
 	}
 
