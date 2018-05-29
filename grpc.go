@@ -685,7 +685,8 @@ func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequ
 	// processes inside the container.
 	// If the process is the container process, let's use the container
 	// API for that.
-	if req.ExecId == "" {
+	// Frozen processes are thawed when `all` is true, allowing them to receive and process signals.
+	if req.ExecId == "" || status == libcontainer.Paused {
 		return emptyResp, ctr.container.Signal(signal, true)
 	} else if ctr.initProcess.id == req.ExecId {
 		return emptyResp, ctr.container.Signal(signal, false)
