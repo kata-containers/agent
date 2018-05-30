@@ -166,10 +166,14 @@ func (c *container) setProcess(process *process) {
 	c.Unlock()
 }
 
-func (c *container) deleteProcess(execID string) {
+func (c *container) deleteProcess(process *process) bool {
 	c.Lock()
-	delete(c.processes, execID)
-	c.Unlock()
+	defer c.Unlock()
+	if p, ok := c.processes[process.id]; ok && p == process {
+		delete(c.processes, process.id)
+		return true
+	}
+	return false
 }
 
 func (c *container) removeContainer() error {

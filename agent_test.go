@@ -136,7 +136,7 @@ func TestDeleteProcess(t *testing.T) {
 
 	c.processes[testExecID] = p
 
-	c.deleteProcess(testExecID)
+	c.deleteProcess(p)
 
 	_, exist := c.processes[testExecID]
 	assert.False(t, exist, "Process entry should not exist")

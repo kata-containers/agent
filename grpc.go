@@ -730,21 +730,25 @@ func (a *agentGRPC) WaitProcess(ctx context.Context, req *pb.WaitProcessRequest)
 		return &pb.WaitProcessResponse{}, err
 	}
 
-	defer func() {
-		proc.closePostExitFDs()
-		ctr.deleteProcess(proc.id)
-	}()
-
-	// Using helper function wait() to deal with the subreaper.
-	libContProcess := (*reaperLibcontainerProcess)(&(proc.process))
-	exitCode, err := a.sandbox.subreaper.wait(proc.exitCodeCh, libContProcess)
-	if err != nil {
-		return &pb.WaitProcessResponse{}, err
+	select {
+	case exitCode := <-proc.exitCodeCh:
+		// proc.process.Wait() & proc.closePostExitFDs()
+		// should be called only once.
+		if ctr.deleteProcess(proc) {
+			proc.process.Wait()
+			proc.closePostExitFDs()
+		}
+		// There might be multiple WaitProcess() requested before
+		// the process exits. All of them should be able to get the
+		// exitCode. So send the exitCode back to proc.exitCodeCh
+		// for them.
+		proc.exitCodeCh <- exitCode
+		return &pb.WaitProcessResponse{
+			Status: int32(exitCode),
+		}, nil
+	case <-ctx.Done():
+		return &pb.WaitProcessResponse{}, ctx.Err()
 	}
-
-	return &pb.WaitProcessResponse{
-		Status: int32(exitCode),
-	}, nil
 }
 
 func getPIDIndex(title string) int {
