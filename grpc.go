@@ -848,43 +848,53 @@ func (a *agentGRPC) UpdateContainer(ctx context.Context, req *pb.UpdateContainer
 		return emptyResp, err
 	}
 
-	config := c.container.Config()
-
-	if config.Cgroups == nil {
-		config.Cgroups = &configs.Cgroup{
-			Resources: &configs.Resources{},
-		}
-	} else if config.Cgroups.Resources == nil {
-		config.Cgroups.Resources = &configs.Resources{}
+	// c.container.Config returns a copy of non-pointer members
+	// in configs.Config, configs.Config.Cgroup is a pointer hence
+	// if it is modified, the container cgroup is modifed too and
+	// c.container.Set won't be able to rollback in case of failure.
+	contConfig := c.container.Config()
+	var resources configs.Resources
+	if contConfig.Cgroups != nil && contConfig.Cgroups.Resources != nil {
+		resources = *contConfig.Cgroups.Resources
 	}
 
 	// Update the value
 	if req.Resources.BlockIO != nil {
-		config.Cgroups.Resources.BlkioWeight = uint16(req.Resources.BlockIO.Weight)
+		resources.BlkioWeight = uint16(req.Resources.BlockIO.Weight)
 	}
 
 	if req.Resources.CPU != nil {
-		config.Cgroups.Resources.CpuPeriod = req.Resources.CPU.Period
-		config.Cgroups.Resources.CpuQuota = req.Resources.CPU.Quota
-		config.Cgroups.Resources.CpuShares = req.Resources.CPU.Shares
-		config.Cgroups.Resources.CpuRtPeriod = req.Resources.CPU.RealtimePeriod
-		config.Cgroups.Resources.CpuRtRuntime = req.Resources.CPU.RealtimeRuntime
-		config.Cgroups.Resources.CpusetCpus = req.Resources.CPU.Cpus
-		config.Cgroups.Resources.CpusetMems = req.Resources.CPU.Mems
+		resources.CpuPeriod = req.Resources.CPU.Period
+		resources.CpuQuota = req.Resources.CPU.Quota
+		resources.CpuShares = req.Resources.CPU.Shares
+		resources.CpuRtPeriod = req.Resources.CPU.RealtimePeriod
+		resources.CpuRtRuntime = req.Resources.CPU.RealtimeRuntime
+		resources.CpusetCpus = req.Resources.CPU.Cpus
+		resources.CpusetMems = req.Resources.CPU.Mems
 	}
 
 	if req.Resources.Memory != nil {
-		config.Cgroups.Resources.KernelMemory = req.Resources.Memory.Kernel
-		config.Cgroups.Resources.KernelMemoryTCP = req.Resources.Memory.KernelTCP
-		config.Cgroups.Resources.Memory = req.Resources.Memory.Limit
-		config.Cgroups.Resources.MemoryReservation = req.Resources.Memory.Reservation
-		config.Cgroups.Resources.MemorySwap = req.Resources.Memory.Swap
+		resources.KernelMemory = req.Resources.Memory.Kernel
+		resources.KernelMemoryTCP = req.Resources.Memory.KernelTCP
+		resources.Memory = req.Resources.Memory.Limit
+		resources.MemoryReservation = req.Resources.Memory.Reservation
+		resources.MemorySwap = req.Resources.Memory.Swap
 	}
 
 	if req.Resources.Pids != nil {
-		config.Cgroups.Resources.PidsLimit = req.Resources.Pids.Limit
+		resources.PidsLimit = req.Resources.Pids.Limit
 	}
 
+	// Create a copy of container's cgroup, if c.container.Set fails,
+	// configuration won't be modified and it will be able to rollback
+	// to the original container cgroup configuration.
+	config := contConfig
+	var cgroupsCopy configs.Cgroup
+	if contConfig.Cgroups != nil {
+		cgroupsCopy = *contConfig.Cgroups
+	}
+	cgroupsCopy.Resources = &resources
+	config.Cgroups = &cgroupsCopy
 	return emptyResp, c.container.Set(config)
 }
 
