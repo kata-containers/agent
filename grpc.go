@@ -64,6 +64,8 @@ type onlineResource struct {
 	regexpPattern   string
 }
 
+type cookie map[string]bool
+
 var emptyResp = &gpb.Empty{}
 
 const onlineCPUMemWaitTime = 100 * time.Millisecond
@@ -155,6 +157,42 @@ func onlineMemResources() error {
 	return err
 }
 
+// updates container's cpuset cgroups visiting each sub-directory in cgroupPath and writing
+// newCpuset in the cpuset.cpus file, cookies are used for performance reasons in order to
+// don't update a cgroup twice.
+func updateContainerCpuset(cgroupPath string, newCpuset string, cookies cookie) error {
+	// Each cpuset cgroup MUST BE updated with the actual number of vCPUs.
+	cpusetPath := sysfsCpusetPath
+	cgroupsPaths := strings.Split(cgroupPath, "/")
+	for _, path := range cgroupsPaths {
+		// Skip if empty.
+		if path == "" {
+			continue
+		}
+
+		cpusetPath = filepath.Join(cpusetPath, path)
+
+		// check if the cgroup was already updated.
+		if cookies[cpusetPath] == true {
+			agentLog.WithField("path", cpusetPath).Debug("cpuset cgroup already updated")
+			continue
+		}
+
+		// Don't use c.container.Set because of it will modify container's config.
+		// c.container.Set MUST BE used only on update.
+		cpusetCpusPath := filepath.Join(cpusetPath, "cpuset.cpus")
+		agentLog.WithField("path", cpusetPath).Debug("updating cpuset cgroup")
+		if err := ioutil.WriteFile(cpusetCpusPath, []byte(newCpuset), cpusetMode); err != nil {
+			return fmt.Errorf("Could not update cpuset cgroup '%s': %v", newCpuset, err)
+		}
+
+		// add cgroup path to the cookies.
+		cookies[cpusetPath] = true
+	}
+
+	return nil
+}
+
 func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
 	if req.NbCpus <= 0 {
 		return handleError(req.Wait, fmt.Errorf("requested number of CPUs '%d' must be greater than 0", req.NbCpus))
@@ -182,7 +220,7 @@ func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
 	connectedCpus := strings.Trim(string(cpus), "\t\n ")
 	agentLog.WithField("range-of-vcpus", connectedCpus).Debug("connecting vCPUs")
 
-	mapCgroupPaths := make(map[string]bool)
+	cookies := make(cookie)
 
 	// Now that we know the actual range of connected CPUs, we need to iterate over
 	// all containers an update each cpuset cgroup. This is not required in docker
@@ -197,33 +235,8 @@ func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
 			continue
 		}
 
-		// Each cpuset cgroup MUST BE updated with the actual number of vCPUs.
-		cpusetPath := sysfsCpusetPath
-		cgroupsPaths := strings.Split(contConfig.Cgroups.Path, "/")
-		for _, path := range cgroupsPaths {
-			// Skip if empty.
-			if path == "" {
-				continue
-			}
-
-			cpusetPath = filepath.Join(cpusetPath, path)
-
-			// check if the cgroup was already updated.
-			if mapCgroupPaths[cpusetPath] == true {
-				agentLog.WithField("path", cpusetPath).Debug("cpuset cgroup already updated")
-				continue
-			}
-
-			// Don't use c.container.Set because of it will modify container's config.
-			// c.container.Set MUST BE used only on update.
-			cpusetCpusPath := filepath.Join(cpusetPath, "cpuset.cpus")
-			agentLog.WithField("path", cpusetPath).Debug("updating cpuset cgroup")
-			if err := ioutil.WriteFile(cpusetCpusPath, []byte(connectedCpus), cpusetMode); err != nil {
-				return handleError(req.Wait, fmt.Errorf("Could not update cpuset cgroup '%s': %v", connectedCpus, err))
-			}
-
-			// add cgroup path to the map.
-			mapCgroupPaths[cpusetPath] = true
+		if err := updateContainerCpuset(contConfig.Cgroups.Path, connectedCpus, cookies); err != nil {
+			return handleError(req.Wait, err)
 		}
 	}
 
@@ -883,6 +896,14 @@ func (a *agentGRPC) UpdateContainer(ctx context.Context, req *pb.UpdateContainer
 
 	if req.Resources.Pids != nil {
 		resources.PidsLimit = req.Resources.Pids.Limit
+	}
+
+	// cpuset is a special case where container's cpuset cgroup MUST BE updated
+	if resources.CpusetCpus != "" {
+		cookies := make(cookie)
+		if err = updateContainerCpuset(contConfig.Cgroups.Path, resources.CpusetCpus, cookies); err != nil {
+			agentLog.WithError(err).Warn("Could not update container cpuset cgroup")
+		}
 	}
 
 	// Create a copy of container's cgroup, if c.container.Set fails,
