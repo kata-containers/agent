@@ -493,3 +493,26 @@ func TestHandleError(t *testing.T) {
 	e = handleError(false, nil)
 	assert.NoError(e)
 }
+
+func TestUpdateContainerCpuset(t *testing.T) {
+	var err error
+	assert := assert.New(t)
+
+	sysfsCpusetPath, err = ioutil.TempDir("", "cgroup")
+	assert.NoError(err)
+	defer os.Remove(sysfsCpusetPath)
+
+	cgroupPath := "kata"
+	err = os.MkdirAll(filepath.Join(sysfsCpusetPath, cgroupPath), 0777)
+	assert.NoError(err)
+
+	cookies := make(cookie)
+	cgroupPath += "///"
+
+	err = updateContainerCpuset(cgroupPath, "0-7", cookies)
+	assert.NoError(err)
+
+	// run again to ensure cookies are used
+	err = updateContainerCpuset(cgroupPath, "0-7", cookies)
+	assert.NoError(err)
+}

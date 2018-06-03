@@ -64,6 +64,8 @@ type onlineResource struct {
 	regexpPattern   string
 }
 
+type cookie map[string]bool
+
 var emptyResp = &gpb.Empty{}
 
 const onlineCPUMemWaitTime = 100 * time.Millisecond
@@ -155,6 +157,42 @@ func onlineMemResources() error {
 	return err
 }
 
+// updates container's cpuset cgroups visiting each sub-directory in cgroupPath and writing
+// newCpuset in the cpuset.cpus file, cookies are used for performance reasons in order to
+// don't update a cgroup twice.
+func updateContainerCpuset(cgroupPath string, newCpuset string, cookies cookie) error {
+	// Each cpuset cgroup MUST BE updated with the actual number of vCPUs.
+	cpusetPath := sysfsCpusetPath
+	cgroupsPaths := strings.Split(cgroupPath, "/")
+	for _, path := range cgroupsPaths {
+		// Skip if empty.
+		if path == "" {
+			continue
+		}
+
+		cpusetPath = filepath.Join(cpusetPath, path)
+
+		// check if the cgroup was already updated.
+		if cookies[cpusetPath] == true {
+			agentLog.WithField("path", cpusetPath).Debug("cpuset cgroup already updated")
+			continue
+		}
+
+		// Don't use c.container.Set because of it will modify container's config.
+		// c.container.Set MUST BE used only on update.
+		cpusetCpusPath := filepath.Join(cpusetPath, "cpuset.cpus")
+		agentLog.WithField("path", cpusetPath).Debug("updating cpuset cgroup")
+		if err := ioutil.WriteFile(cpusetCpusPath, []byte(newCpuset), cpusetMode); err != nil {
+			return fmt.Errorf("Could not update cpuset cgroup '%s': %v", newCpuset, err)
+		}
+
+		// add cgroup path to the cookies.
+		cookies[cpusetPath] = true
+	}
+
+	return nil
+}
+
 func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
 	if req.NbCpus <= 0 {
 		return handleError(req.Wait, fmt.Errorf("requested number of CPUs '%d' must be greater than 0", req.NbCpus))
@@ -182,7 +220,7 @@ func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
 	connectedCpus := strings.Trim(string(cpus), "\t\n ")
 	agentLog.WithField("range-of-vcpus", connectedCpus).Debug("connecting vCPUs")
 
-	mapCgroupPaths := make(map[string]bool)
+	cookies := make(cookie)
 
 	// Now that we know the actual range of connected CPUs, we need to iterate over
 	// all containers an update each cpuset cgroup. This is not required in docker
@@ -197,33 +235,8 @@ func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
 			continue
 		}
 
-		// Each cpuset cgroup MUST BE updated with the actual number of vCPUs.
-		cpusetPath := sysfsCpusetPath
-		cgroupsPaths := strings.Split(contConfig.Cgroups.Path, "/")
-		for _, path := range cgroupsPaths {
-			// Skip if empty.
-			if path == "" {
-				continue
-			}
-
-			cpusetPath = filepath.Join(cpusetPath, path)
-
-			// check if the cgroup was already updated.
-			if mapCgroupPaths[cpusetPath] == true {
-				agentLog.WithField("path", cpusetPath).Debug("cpuset cgroup already updated")
-				continue
-			}
-
-			// Don't use c.container.Set because of it will modify container's config.
-			// c.container.Set MUST BE used only on update.
-			cpusetCpusPath := filepath.Join(cpusetPath, "cpuset.cpus")
-			agentLog.WithField("path", cpusetPath).Debug("updating cpuset cgroup")
-			if err := ioutil.WriteFile(cpusetCpusPath, []byte(connectedCpus), cpusetMode); err != nil {
-				return handleError(req.Wait, fmt.Errorf("Could not update cpuset cgroup '%s': %v", connectedCpus, err))
-			}
-
-			// add cgroup path to the map.
-			mapCgroupPaths[cpusetPath] = true
+		if err := updateContainerCpuset(contConfig.Cgroups.Path, connectedCpus, cookies); err != nil {
+			return handleError(req.Wait, err)
 		}
 	}
 
@@ -848,43 +861,61 @@ func (a *agentGRPC) UpdateContainer(ctx context.Context, req *pb.UpdateContainer
 		return emptyResp, err
 	}
 
-	config := c.container.Config()
-
-	if config.Cgroups == nil {
-		config.Cgroups = &configs.Cgroup{
-			Resources: &configs.Resources{},
-		}
-	} else if config.Cgroups.Resources == nil {
-		config.Cgroups.Resources = &configs.Resources{}
+	// c.container.Config returns a copy of non-pointer members
+	// in configs.Config, configs.Config.Cgroup is a pointer hence
+	// if it is modified, the container cgroup is modifed too and
+	// c.container.Set won't be able to rollback in case of failure.
+	contConfig := c.container.Config()
+	var resources configs.Resources
+	if contConfig.Cgroups != nil && contConfig.Cgroups.Resources != nil {
+		resources = *contConfig.Cgroups.Resources
 	}
 
 	// Update the value
 	if req.Resources.BlockIO != nil {
-		config.Cgroups.Resources.BlkioWeight = uint16(req.Resources.BlockIO.Weight)
+		resources.BlkioWeight = uint16(req.Resources.BlockIO.Weight)
 	}
 
 	if req.Resources.CPU != nil {
-		config.Cgroups.Resources.CpuPeriod = req.Resources.CPU.Period
-		config.Cgroups.Resources.CpuQuota = req.Resources.CPU.Quota
-		config.Cgroups.Resources.CpuShares = req.Resources.CPU.Shares
-		config.Cgroups.Resources.CpuRtPeriod = req.Resources.CPU.RealtimePeriod
-		config.Cgroups.Resources.CpuRtRuntime = req.Resources.CPU.RealtimeRuntime
-		config.Cgroups.Resources.CpusetCpus = req.Resources.CPU.Cpus
-		config.Cgroups.Resources.CpusetMems = req.Resources.CPU.Mems
+		resources.CpuPeriod = req.Resources.CPU.Period
+		resources.CpuQuota = req.Resources.CPU.Quota
+		resources.CpuShares = req.Resources.CPU.Shares
+		resources.CpuRtPeriod = req.Resources.CPU.RealtimePeriod
+		resources.CpuRtRuntime = req.Resources.CPU.RealtimeRuntime
+		resources.CpusetCpus = req.Resources.CPU.Cpus
+		resources.CpusetMems = req.Resources.CPU.Mems
 	}
 
 	if req.Resources.Memory != nil {
-		config.Cgroups.Resources.KernelMemory = req.Resources.Memory.Kernel
-		config.Cgroups.Resources.KernelMemoryTCP = req.Resources.Memory.KernelTCP
-		config.Cgroups.Resources.Memory = req.Resources.Memory.Limit
-		config.Cgroups.Resources.MemoryReservation = req.Resources.Memory.Reservation
-		config.Cgroups.Resources.MemorySwap = req.Resources.Memory.Swap
+		resources.KernelMemory = req.Resources.Memory.Kernel
+		resources.KernelMemoryTCP = req.Resources.Memory.KernelTCP
+		resources.Memory = req.Resources.Memory.Limit
+		resources.MemoryReservation = req.Resources.Memory.Reservation
+		resources.MemorySwap = req.Resources.Memory.Swap
 	}
 
 	if req.Resources.Pids != nil {
-		config.Cgroups.Resources.PidsLimit = req.Resources.Pids.Limit
+		resources.PidsLimit = req.Resources.Pids.Limit
 	}
 
+	// cpuset is a special case where container's cpuset cgroup MUST BE updated
+	if resources.CpusetCpus != "" {
+		cookies := make(cookie)
+		if err = updateContainerCpuset(contConfig.Cgroups.Path, resources.CpusetCpus, cookies); err != nil {
+			agentLog.WithError(err).Warn("Could not update container cpuset cgroup")
+		}
+	}
+
+	// Create a copy of container's cgroup, if c.container.Set fails,
+	// configuration won't be modified and it will be able to rollback
+	// to the original container cgroup configuration.
+	config := contConfig
+	var cgroupsCopy configs.Cgroup
+	if contConfig.Cgroups != nil {
+		cgroupsCopy = *contConfig.Cgroups
+	}
+	cgroupsCopy.Resources = &resources
+	config.Cgroups = &cgroupsCopy
 	return emptyResp, c.container.Set(config)
 }
 
