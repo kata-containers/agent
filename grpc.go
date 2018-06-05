@@ -228,14 +228,21 @@ func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
 	for _, c := range a.sandbox.containers {
 		agentLog.WithField("container", c.container.ID()).Debug("updating cpuset cgroup")
 		contConfig := c.container.Config()
+		cgroupPath := contConfig.Cgroups.Path
 
-		// Don't update cpuset cgroup if one was already defined.
+		// In order to avoid issues updating the container cpuset cgroup, its cpuset cgroup *parents*
+		// MUST BE updated, otherwise we'll get next errors:
+		// - write /sys/fs/cgroup/cpuset/XXXXX/cpuset.cpus: permission denied
+		// - write /sys/fs/cgroup/cpuset/XXXXX/cpuset.cpus: device or resource busy
+		// NOTE: updating container cpuset cgroup *parents* won't affect container cpuset cgroup, for example if container cpuset cgroup has "0"
+		// and its cpuset cgroup *parents* have "0-5", the container will be able to use only the CPU 0.
 		if contConfig.Cgroups.Resources.CpusetCpus != "" {
-			agentLog.WithField("cpuset", contConfig.Cgroups.Resources.CpusetCpus).Debug("cpuset value is not empty")
-			continue
+			agentLog.WithField("cpuset", contConfig.Cgroups.Resources.CpusetCpus).Debug("updating container cpuset cgroup parents")
+			// remove container cgroup directory
+			cgroupPath = filepath.Dir(cgroupPath)
 		}
 
-		if err := updateContainerCpuset(contConfig.Cgroups.Path, connectedCpus, cookies); err != nil {
+		if err := updateContainerCpuset(cgroupPath, connectedCpus, cookies); err != nil {
 			return handleError(req.Wait, err)
 		}
 	}
