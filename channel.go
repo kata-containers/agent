@@ -162,7 +162,12 @@ func (yw yamuxWriter) Write(bytes []byte) (int, error) {
 
 func (c *serialChannel) listen() (net.Listener, error) {
 	config := yamux.DefaultConfig()
-
+	// yamux client runs on the proxy side, sometimes the client is
+	// handling other requests and it's not able to response to the
+	// ping sent by the server and the communication is closed. To
+	// avoid any IO timeouts in the communication between agent and
+	// proxy, keep alive should be disabled.
+	config.EnableKeepAlive = false
 	config.LogOutput = yamuxWriter{}
 
 	// Initialize Yamux server.
