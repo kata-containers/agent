@@ -60,8 +60,16 @@ func linkByHwAddr(netHandle *netlink.Handle, hwAddr string) (netlink.Link, error
 	}
 
 	for _, link := range links {
+		if link == nil {
+			continue
+		}
+
 		lAttrs := link.Attrs()
 		if lAttrs == nil {
+			continue
+		}
+
+		if lAttrs.HardwareAddr == nil {
 			continue
 		}
 
