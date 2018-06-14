@@ -828,6 +828,11 @@ func realMain() {
 		os.Exit(1)
 	}
 
+	if err = s.handleLocalhost(); err != nil {
+		agentLog.WithError(err).Error("failed to handle localhost")
+		os.Exit(1)
+	}
+
 	// Check for vsock vs serial. This will fill the sandbox structure with
 	// information about the channel.
 	if err = s.initChannel(); err != nil {

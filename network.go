@@ -9,6 +9,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"os"
 	"reflect"
 	"sync"
 
@@ -564,4 +565,20 @@ func (s *sandbox) removeNetwork() error {
 	}
 
 	return nil
+}
+
+// Bring up localhost network interface.
+func (s *sandbox) handleLocalhost() error {
+	// If not running as the init daemon, there is nothing to do as the
+	// localhost interface will already exist.
+	if os.Getpid() != 1 {
+		return nil
+	}
+
+	lo, err := netlink.LinkByName("lo")
+	if err != nil {
+		return err
+	}
+
+	return netlink.LinkSetUp(lo)
 }
