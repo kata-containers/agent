@@ -293,11 +293,7 @@ func (s *sandbox) unmountSharedNamespaces() error {
 		return err
 	}
 
-	if err := unix.Unmount(s.sharedUTSNs.path, unix.MNT_DETACH); err != nil {
-		return err
-	}
-
-	return nil
+	return unix.Unmount(s.sharedUTSNs.path, unix.MNT_DETACH)
 }
 
 // setupSharedPidNs will reexec this binary in order to execute the C routine
