@@ -21,6 +21,14 @@ import (
 	grpcStatus "google.golang.org/grpc/status"
 )
 
+var (
+	errNoHandle = grpcStatus.Errorf(codes.InvalidArgument, "Need network handle")
+	errNoIF     = grpcStatus.Errorf(codes.InvalidArgument, "Need network interface")
+	errNoLink   = grpcStatus.Errorf(codes.InvalidArgument, "Need network link")
+	errNoMAC    = grpcStatus.Errorf(codes.InvalidArgument, "Need hardware address")
+	errNoRoutes = grpcStatus.Errorf(codes.InvalidArgument, "Need network routes")
+)
+
 // Network fully describes a sandbox network with its interfaces, routes and dns
 // related information.
 type network struct {
@@ -38,6 +46,14 @@ type network struct {
 ////////////////
 
 func linkByHwAddr(netHandle *netlink.Handle, hwAddr string) (netlink.Link, error) {
+	if netHandle == nil {
+		return nil, errNoHandle
+	}
+
+	if hwAddr == "" {
+		return nil, errNoMAC
+	}
+
 	links, err := netHandle.LinkList()
 	if err != nil {
 		return nil, err
@@ -58,6 +74,17 @@ func linkByHwAddr(netHandle *netlink.Handle, hwAddr string) (netlink.Link, error
 }
 
 func updateLink(netHandle *netlink.Handle, link netlink.Link, iface *pb.Interface) error {
+	if netHandle == nil {
+		return errNoHandle
+	}
+
+	if link == nil {
+		return errNoLink
+	}
+
+	if iface == nil {
+		return errNoIF
+	}
 
 	// As a first step, clear out any existing addresses associated with the link:
 	linkIPs, err := netlink.AddrList(link, netlink.FAMILY_V4)
@@ -99,6 +126,10 @@ func updateLink(netHandle *netlink.Handle, link netlink.Link, iface *pb.Interfac
 }
 
 func (s *sandbox) addInterface(netHandle *netlink.Handle, iface *pb.Interface) (resultingIfc *pb.Interface, err error) {
+	if iface == nil {
+		return nil, errNoIF
+	}
+
 	s.network.ifacesLock.Lock()
 	defer s.network.ifacesLock.Unlock()
 
@@ -108,10 +139,6 @@ func (s *sandbox) addInterface(netHandle *netlink.Handle, iface *pb.Interface) (
 			return nil, err
 		}
 		defer netHandle.Delete()
-	}
-
-	if iface == nil {
-		return nil, grpcStatus.Errorf(codes.InvalidArgument, "Provided interface is nil")
 	}
 
 	hwAddr, err := net.ParseMAC(iface.HwAddr)
@@ -144,6 +171,10 @@ func (s *sandbox) addInterface(netHandle *netlink.Handle, iface *pb.Interface) (
 	return iface, nil
 }
 func (s *sandbox) removeInterface(netHandle *netlink.Handle, iface *pb.Interface) (resultingIfc *pb.Interface, err error) {
+	if iface == nil {
+		return nil, errNoIF
+	}
+
 	s.network.ifacesLock.Lock()
 	defer s.network.ifacesLock.Unlock()
 
@@ -181,12 +212,12 @@ func (s *sandbox) removeInterface(netHandle *netlink.Handle, iface *pb.Interface
 // existing interface via MAC address and will return the state of the interface once the function completes as well an any
 // errors observed.
 func (s *sandbox) updateInterface(netHandle *netlink.Handle, iface *pb.Interface) (resultingIfc *pb.Interface, err error) {
+	if iface == nil {
+		return nil, errNoIF
+	}
+
 	s.network.ifacesLock.Lock()
 	defer s.network.ifacesLock.Unlock()
-
-	if iface == nil {
-		return nil, grpcStatus.Errorf(codes.InvalidArgument, "Provided interface is nil")
-	}
 
 	if netHandle == nil {
 		netHandle, err = netlink.NewHandle(unix.NETLINK_ROUTE)
@@ -251,6 +282,14 @@ func (s *sandbox) updateInterface(netHandle *netlink.Handle, iface *pb.Interface
 
 // getInterface will retrieve interface details from the provided link
 func getInterface(netHandle *netlink.Handle, link netlink.Link) (*pb.Interface, error) {
+	if netHandle == nil {
+		return nil, errNoHandle
+	}
+
+	if link == nil {
+		return nil, errNoLink
+	}
+
 	var ifc pb.Interface
 	linkAttrs := link.Attrs()
 	ifc.Name = linkAttrs.Name
@@ -311,6 +350,9 @@ func (s *sandbox) deleteRoutes(netHandle *netlink.Handle) error {
 // removed from the network.  If an error occurs, this function returns the list of routes in
 // gRPC-route format at the time of failure
 func (s *sandbox) updateRoutes(netHandle *netlink.Handle, requestedRoutes *pb.Routes) (resultingRoutes *pb.Routes, err error) {
+	if requestedRoutes == nil {
+		return nil, errNoRoutes
+	}
 
 	if netHandle == nil {
 		netHandle, err = netlink.NewHandle(unix.NETLINK_ROUTE)
