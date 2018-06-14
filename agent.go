@@ -820,19 +820,19 @@ func realMain() {
 
 	if err = s.initLogger(); err != nil {
 		agentLog.WithError(err).Error("failed to setup logger")
-		return
+		os.Exit(1)
 	}
 
 	if err = s.setupSignalHandler(); err != nil {
 		agentLog.WithError(err).Error("failed to setup signal handler")
-		return
+		os.Exit(1)
 	}
 
 	// Check for vsock vs serial. This will fill the sandbox structure with
 	// information about the channel.
 	if err = s.initChannel(); err != nil {
 		agentLog.WithError(err).Error("failed to setup channels")
-		return
+		os.Exit(1)
 	}
 
 	// Start gRPC server.
