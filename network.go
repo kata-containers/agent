@@ -9,6 +9,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"os"
 	"reflect"
 	"sync"
 
@@ -19,6 +20,14 @@ import (
 	"github.com/vishvananda/netlink"
 	"google.golang.org/grpc/codes"
 	grpcStatus "google.golang.org/grpc/status"
+)
+
+var (
+	errNoHandle = grpcStatus.Errorf(codes.InvalidArgument, "Need network handle")
+	errNoIF     = grpcStatus.Errorf(codes.InvalidArgument, "Need network interface")
+	errNoLink   = grpcStatus.Errorf(codes.InvalidArgument, "Need network link")
+	errNoMAC    = grpcStatus.Errorf(codes.InvalidArgument, "Need hardware address")
+	errNoRoutes = grpcStatus.Errorf(codes.InvalidArgument, "Need network routes")
 )
 
 // Network fully describes a sandbox network with its interfaces, routes and dns
@@ -38,14 +47,30 @@ type network struct {
 ////////////////
 
 func linkByHwAddr(netHandle *netlink.Handle, hwAddr string) (netlink.Link, error) {
+	if netHandle == nil {
+		return nil, errNoHandle
+	}
+
+	if hwAddr == "" {
+		return nil, errNoMAC
+	}
+
 	links, err := netHandle.LinkList()
 	if err != nil {
 		return nil, err
 	}
 
 	for _, link := range links {
+		if link == nil {
+			continue
+		}
+
 		lAttrs := link.Attrs()
 		if lAttrs == nil {
+			continue
+		}
+
+		if lAttrs.HardwareAddr == nil {
 			continue
 		}
 
@@ -58,6 +83,17 @@ func linkByHwAddr(netHandle *netlink.Handle, hwAddr string) (netlink.Link, error
 }
 
 func updateLink(netHandle *netlink.Handle, link netlink.Link, iface *pb.Interface) error {
+	if netHandle == nil {
+		return errNoHandle
+	}
+
+	if link == nil {
+		return errNoLink
+	}
+
+	if iface == nil {
+		return errNoIF
+	}
 
 	// As a first step, clear out any existing addresses associated with the link:
 	linkIPs, err := netlink.AddrList(link, netlink.FAMILY_V4)
@@ -99,6 +135,10 @@ func updateLink(netHandle *netlink.Handle, link netlink.Link, iface *pb.Interfac
 }
 
 func (s *sandbox) addInterface(netHandle *netlink.Handle, iface *pb.Interface) (resultingIfc *pb.Interface, err error) {
+	if iface == nil {
+		return nil, errNoIF
+	}
+
 	s.network.ifacesLock.Lock()
 	defer s.network.ifacesLock.Unlock()
 
@@ -108,10 +148,6 @@ func (s *sandbox) addInterface(netHandle *netlink.Handle, iface *pb.Interface) (
 			return nil, err
 		}
 		defer netHandle.Delete()
-	}
-
-	if iface == nil {
-		return nil, grpcStatus.Errorf(codes.InvalidArgument, "Provided interface is nil")
 	}
 
 	hwAddr, err := net.ParseMAC(iface.HwAddr)
@@ -144,6 +180,10 @@ func (s *sandbox) addInterface(netHandle *netlink.Handle, iface *pb.Interface) (
 	return iface, nil
 }
 func (s *sandbox) removeInterface(netHandle *netlink.Handle, iface *pb.Interface) (resultingIfc *pb.Interface, err error) {
+	if iface == nil {
+		return nil, errNoIF
+	}
+
 	s.network.ifacesLock.Lock()
 	defer s.network.ifacesLock.Unlock()
 
@@ -181,12 +221,12 @@ func (s *sandbox) removeInterface(netHandle *netlink.Handle, iface *pb.Interface
 // existing interface via MAC address and will return the state of the interface once the function completes as well an any
 // errors observed.
 func (s *sandbox) updateInterface(netHandle *netlink.Handle, iface *pb.Interface) (resultingIfc *pb.Interface, err error) {
+	if iface == nil {
+		return nil, errNoIF
+	}
+
 	s.network.ifacesLock.Lock()
 	defer s.network.ifacesLock.Unlock()
-
-	if iface == nil {
-		return nil, grpcStatus.Errorf(codes.InvalidArgument, "Provided interface is nil")
-	}
 
 	if netHandle == nil {
 		netHandle, err = netlink.NewHandle(unix.NETLINK_ROUTE)
@@ -251,6 +291,14 @@ func (s *sandbox) updateInterface(netHandle *netlink.Handle, iface *pb.Interface
 
 // getInterface will retrieve interface details from the provided link
 func getInterface(netHandle *netlink.Handle, link netlink.Link) (*pb.Interface, error) {
+	if netHandle == nil {
+		return nil, errNoHandle
+	}
+
+	if link == nil {
+		return nil, errNoLink
+	}
+
 	var ifc pb.Interface
 	linkAttrs := link.Attrs()
 	ifc.Name = linkAttrs.Name
@@ -278,11 +326,42 @@ func getInterface(netHandle *netlink.Handle, link netlink.Link) (*pb.Interface, 
 // Routes //
 ////////////
 
+func (s *sandbox) deleteRoutes(netHandle *netlink.Handle) error {
+	if netHandle == nil {
+		return errNoHandle
+	}
+
+	initRouteList, err := netHandle.RouteList(nil, netlink.FAMILY_ALL)
+	if err != nil {
+		return err
+	}
+	for _, initRoute := range initRouteList {
+		// don't delete routes associated with lo:
+		link, _ := netHandle.LinkByIndex(initRoute.LinkIndex)
+		if link.Attrs().Name == "lo" || link.Attrs().Name == "::1" {
+			continue
+		}
+
+		err = netHandle.RouteDel(&initRoute)
+		if err != nil {
+			//If there was an error deleting some of the initial routes,
+			//return the error and the current routes on the system via
+			//the defer function
+			return err
+		}
+	}
+
+	return nil
+}
+
 //updateRoutes will take requestedRoutes and create netlink routes, with a goal of creating a final
 // state which matches the requested routes.  In doing this, preesxisting non-loopback routes will be
 // removed from the network.  If an error occurs, this function returns the list of routes in
 // gRPC-route format at the time of failure
 func (s *sandbox) updateRoutes(netHandle *netlink.Handle, requestedRoutes *pb.Routes) (resultingRoutes *pb.Routes, err error) {
+	if requestedRoutes == nil {
+		return nil, errNoRoutes
+	}
 
 	if netHandle == nil {
 		netHandle, err = netlink.NewHandle(unix.NETLINK_ROUTE)
@@ -304,25 +383,8 @@ func (s *sandbox) updateRoutes(netHandle *netlink.Handle, requestedRoutes *pb.Ro
 	// is designed to be declarative, so we will attempt to create state matching what is
 	// requested, and in the event that we fail to do so, will return the error and final state.
 	//
-
-	initRouteList, err := netHandle.RouteList(nil, netlink.FAMILY_ALL)
-	if err != nil {
+	if err = s.deleteRoutes(netHandle); err != nil {
 		return nil, err
-	}
-	for _, initRoute := range initRouteList {
-		// don't delete routes associated with lo:
-		link, _ := netHandle.LinkByIndex(initRoute.LinkIndex)
-		if link.Attrs().Name == "lo" || link.Attrs().Name == "::1" {
-			continue
-		}
-
-		err = netHandle.RouteDel(&initRoute)
-		if err != nil {
-			//If there was an error deleting some of the initial routes,
-			//return the error and the current routes on the system via
-			//the defer function
-			return
-		}
 	}
 
 	//
@@ -503,4 +565,20 @@ func (s *sandbox) removeNetwork() error {
 	}
 
 	return nil
+}
+
+// Bring up localhost network interface.
+func (s *sandbox) handleLocalhost() error {
+	// If not running as the init daemon, there is nothing to do as the
+	// localhost interface will already exist.
+	if os.Getpid() != 1 {
+		return nil
+	}
+
+	lo, err := netlink.LinkByName("lo")
+	if err != nil {
+		return err
+	}
+
+	return netlink.LinkSetUp(lo)
 }

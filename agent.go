@@ -293,11 +293,7 @@ func (s *sandbox) unmountSharedNamespaces() error {
 		return err
 	}
 
-	if err := unix.Unmount(s.sharedUTSNs.path, unix.MNT_DETACH); err != nil {
-		return err
-	}
-
-	return nil
+	return unix.Unmount(s.sharedUTSNs.path, unix.MNT_DETACH)
 }
 
 // setupSharedPidNs will reexec this binary in order to execute the C routine
@@ -824,19 +820,24 @@ func realMain() {
 
 	if err = s.initLogger(); err != nil {
 		agentLog.WithError(err).Error("failed to setup logger")
-		return
+		os.Exit(1)
 	}
 
 	if err = s.setupSignalHandler(); err != nil {
 		agentLog.WithError(err).Error("failed to setup signal handler")
-		return
+		os.Exit(1)
+	}
+
+	if err = s.handleLocalhost(); err != nil {
+		agentLog.WithError(err).Error("failed to handle localhost")
+		os.Exit(1)
 	}
 
 	// Check for vsock vs serial. This will fill the sandbox structure with
 	// information about the channel.
 	if err = s.initChannel(); err != nil {
 		agentLog.WithError(err).Error("failed to setup channels")
-		return
+		os.Exit(1)
 	}
 
 	// Start gRPC server.
