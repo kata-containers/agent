@@ -717,9 +717,6 @@ func mountToRootfs(m initMount) error {
 
 func generalMount() error {
 	for _, m := range initRootfsMounts {
-		if err := os.MkdirAll(m.dest, os.FileMode(0755)); err != nil {
-			return err
-		}
 		if err := mountToRootfs(m); err != nil {
 			return err
 		}
