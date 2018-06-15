@@ -56,7 +56,6 @@ var (
 	sysfsCPUOnlinePath     = "/sys/devices/system/cpu"
 	sysfsMemOnlinePath     = "/sys/devices/system/memory"
 	sysfsConnectedCPUsPath = filepath.Join(sysfsCPUOnlinePath, "online")
-	sysfsCpusetPath        = "/sys/fs/cgroup/cpuset"
 )
 
 type onlineResource struct {
