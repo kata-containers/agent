@@ -40,8 +40,13 @@ import (
 
 const (
 	procCgroups = "/proc/cgroups"
-	cgroupPath  = "/sys/fs/cgroup"
 	meminfo     = "/proc/meminfo"
+)
+
+var (
+	// cgroup fs is mounted at /sys/fs when systemd is the init process
+	cgroupPath      = "/sys/fs/cgroup"
+	sysfsCpusetPath = cgroupPath + "/cpuset"
 )
 
 var initRootfsMounts = []initMount{
@@ -755,6 +760,10 @@ func initAgentAsInit() error {
 	syscall.Setsid()
 	syscall.Syscall(syscall.SYS_IOCTL, os.Stdin.Fd(), syscall.TIOCSCTTY, 1)
 	os.Setenv("PATH", "/bin:/sbin/:/usr/bin/:/usr/sbin/")
+
+	// when agent runs as init process, cgroup fs is mounted at /proc
+	cgroupPath = "/proc/cgroup"
+	sysfsCpusetPath = cgroupPath + "/cpuset"
 
 	return announce()
 }
