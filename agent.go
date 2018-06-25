@@ -521,6 +521,23 @@ func getAnnounceFields() (logrus.Fields, error) {
 	}, nil
 }
 
+// formatFields converts logrus Fields (containing arbitrary types) into a string slice.
+func formatFields(fields logrus.Fields) []string {
+	var results []string
+
+	for k, v := range fields {
+		value, ok := v.(string)
+		if !ok {
+			// convert non-string value into a string
+			value = fmt.Sprint(v)
+		}
+
+		results = append(results, fmt.Sprintf("%s=%q", k, value))
+	}
+
+	return results
+}
+
 // announce logs details of the agents version and capabilities.
 func announce() error {
 	announceFields, err := getAnnounceFields()
@@ -529,17 +546,12 @@ func announce() error {
 	}
 
 	if os.Getpid() == 1 {
-		var values []string
+		fields := formatFields(agentFields)
+		extraFields := formatFields(announceFields)
 
-		for k, v := range agentFields {
-			values = append(values, fmt.Sprintf("%s=%q", k, v))
-		}
+		fields = append(fields, extraFields...)
 
-		for k, v := range announceFields {
-			values = append(values, fmt.Sprintf("%s=%q", k, v))
-		}
-
-		fmt.Printf("announce: %s\n", strings.Join(values, ","))
+		fmt.Printf("announce: %s\n", strings.Join(fields, ","))
 	} else {
 		agentLog.WithFields(announceFields).Info("announce")
 	}
