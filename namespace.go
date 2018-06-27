@@ -7,7 +7,6 @@
 package main
 
 import (
-	"crypto/rand"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,7 +16,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var persistentNsDir = "/var/run"
+var persistentNsDir = "/var/run/sandbox-ns"
 
 // nsType defines a namespace type.
 type nsType string
@@ -48,19 +47,15 @@ func getCurrentThreadNSPath(nType nsType) string {
 // setupPersistentNs creates persistent namespace without switchin to it.
 // Note, pid namespaces cannot be persisted.
 func setupPersistentNs(namespaceType nsType) (*namespace, error) {
-	b := make([]byte, 8)
-	_, err := rand.Reader.Read(b)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate random netns name: %v", err)
-	}
 
-	err = os.MkdirAll(persistentNsDir, 0755)
+	err := os.MkdirAll(persistentNsDir, 0755)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create an empty file at the mount point.
-	nsPath := filepath.Join(persistentNsDir, fmt.Sprintf("%x", b))
+	nsPath := filepath.Join(persistentNsDir, string(namespaceType))
+
 	mountFd, err := os.Create(nsPath)
 	if err != nil {
 		return nil, err
