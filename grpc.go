@@ -1089,14 +1089,13 @@ func (a *agentGRPC) CloseStdin(ctx context.Context, req *pb.CloseStdinRequest) (
 		return emptyResp, err
 	}
 
-	var file *os.File
-	if proc.termMaster != nil {
-		file = proc.termMaster
-	} else {
-		file = proc.stdin
+	// If stdin is nil, which can be the case when using a terminal,
+	// there is nothing to do.
+	if proc.stdin == nil {
+		return emptyResp, nil
 	}
 
-	if err := file.Close(); err != nil {
+	if err := proc.stdin.Close(); err != nil {
 		return emptyResp, err
 	}
 
