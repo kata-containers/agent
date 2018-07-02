@@ -1044,6 +1044,16 @@ func (a *agentGRPC) WriteStdin(ctx context.Context, req *pb.WriteStreamRequest) 
 		return &pb.WriteStreamResponse{}, err
 	}
 
+	proc.RLock()
+	defer proc.RUnlock()
+	stdinClosed := proc.stdinClosed
+
+	// Ignore this call to WriteStdin() if STDIN has already been closed
+	// earlier.
+	if stdinClosed {
+		return &pb.WriteStreamResponse{}, nil
+	}
+
 	var file *os.File
 	if proc.termMaster != nil {
 		file = proc.termMaster
@@ -1095,9 +1105,14 @@ func (a *agentGRPC) CloseStdin(ctx context.Context, req *pb.CloseStdinRequest) (
 		return emptyResp, nil
 	}
 
+	proc.Lock()
+	defer proc.Unlock()
+
 	if err := proc.stdin.Close(); err != nil {
 		return emptyResp, err
 	}
+
+	proc.stdinClosed = true
 
 	return emptyResp, nil
 }
