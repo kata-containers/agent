@@ -58,6 +58,8 @@ var initRootfsMounts = []initMount{
 }
 
 type process struct {
+	sync.RWMutex
+
 	id          string
 	process     libcontainer.Process
 	stdin       *os.File
@@ -66,6 +68,7 @@ type process struct {
 	consoleSock *os.File
 	termMaster  *os.File
 	exitCodeCh  chan int
+	stdinClosed bool
 }
 
 type container struct {
