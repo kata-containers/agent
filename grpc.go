@@ -521,16 +521,8 @@ func (a *agentGRPC) rollbackFailingContainerCreation(ctr *container) {
 }
 
 func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainerRequest) (resp *gpb.Empty, err error) {
-	if a.sandbox.running == false {
-		return emptyResp, grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started, impossible to run a new container")
-	}
-
-	if _, err = a.sandbox.getContainer(req.ContainerId); err == nil {
-		return emptyResp, grpcStatus.Errorf(codes.AlreadyExists, "Container %s already exists, impossible to create", req.ContainerId)
-	}
-
-	if a.pidNsExists(req.OCI) {
-		return emptyResp, grpcStatus.Errorf(codes.FailedPrecondition, "Unexpected PID namespace received, should have been cleared out", req.ContainerId)
+	if err := a.createContainerChecks(req); err != nil {
+		return emptyResp, err
 	}
 
 	// re-scan PCI bus
@@ -626,6 +618,22 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 	}
 
 	return emptyResp, a.postExecProcess(ctr, ctr.initProcess)
+}
+
+func (a *agentGRPC) createContainerChecks(req *pb.CreateContainerRequest) (err error) {
+	if a.sandbox.running == false {
+		return grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started, impossible to run a new container")
+	}
+
+	if _, err = a.sandbox.getContainer(req.ContainerId); err == nil {
+		return grpcStatus.Errorf(codes.AlreadyExists, "Container %s already exists, impossible to create", req.ContainerId)
+	}
+
+	if a.pidNsExists(req.OCI) {
+		return grpcStatus.Errorf(codes.FailedPrecondition, "Unexpected PID namespace received for container %s, should have been cleared out", req.ContainerId)
+	}
+
+	return nil
 }
 
 func (a *agentGRPC) pidNsExists(grpcSpec *pb.Spec) bool {
