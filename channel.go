@@ -143,9 +143,30 @@ func (c *serialChannel) wait() error {
 	// Never reach here
 }
 
+// yamuxWriter is a type responsible for logging yamux messages to the agent
+// log.
+type yamuxWriter struct {
+}
+
+// Write implements the Writer interface for the yamuxWriter.
+func (yw yamuxWriter) Write(bytes []byte) (int, error) {
+	message := string(bytes)
+
+	l := len(message)
+
+	// yamux messages are all warnings and errors
+	agentLog.WithField("component", "yamux").Warn(message)
+
+	return l, nil
+}
+
 func (c *serialChannel) listen() (net.Listener, error) {
+	config := yamux.DefaultConfig()
+
+	config.LogOutput = yamuxWriter{}
+
 	// Initialize Yamux server.
-	session, err := yamux.Server(c.serialConn, nil)
+	session, err := yamux.Server(c.serialConn, config)
 	if err != nil {
 		return nil, err
 	}
