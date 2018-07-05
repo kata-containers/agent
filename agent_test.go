@@ -170,6 +170,94 @@ func TestGetProcessNoEntry(t *testing.T) {
 	assert.Error(t, err, "Should fail because no entry has been created")
 }
 
+func TestSetSandboxStorage(t *testing.T) {
+	s := &sandbox{
+		containers: make(map[string]*container),
+	}
+
+	s.storages = make(map[string]*sandboxStorage)
+
+	storagePath := "/tmp/testEphe/"
+
+	// Add a new sandbox storage
+	newStorage := s.setSandboxStorage(storagePath)
+
+	// Check the reference counter
+	refCount := s.storages[storagePath].refCount
+	assert.Equal(t, 1, refCount, "Invalid refcount, got %d expected 1", refCount)
+	assert.True(t, newStorage, "expected value was true")
+
+	// Use the existing sandbox storage
+	newStorage = s.setSandboxStorage(storagePath)
+
+	assert.False(t, newStorage, "expected value was false")
+
+	// Since we are using existing storage, the reference counter
+	// should read 2 by now
+	refCount = s.storages[storagePath].refCount
+	assert.Equal(t, 2, refCount, "Invalid refcount, got %d expected 2", refCount)
+}
+
+func TestRemoveSandboxStorage(t *testing.T) {
+	s := &sandbox{
+		containers: make(map[string]*container),
+	}
+
+	s.storages = make(map[string]*sandboxStorage)
+	err := s.removeSandboxStorage("/tmp/testEphePath/")
+
+	assert.Error(t, err, "Should fail because sandbox storage doesn't exist")
+}
+func TestUnsetAndRemoveSandboxStorage(t *testing.T) {
+	s := &sandbox{
+		containers: make(map[string]*container),
+	}
+
+	s.storages = make(map[string]*sandboxStorage)
+	err := s.unsetAndRemoveSandboxStorage("/tmp/testEphePath/")
+
+	assert.Error(t, err, "Should fail because sandbox storage doesn't exist")
+}
+
+func TestUnSetSandboxStorage(t *testing.T) {
+	s := &sandbox{
+		containers: make(map[string]*container),
+	}
+
+	s.storages = make(map[string]*sandboxStorage)
+
+	storagePath := "/tmp/testEphe/"
+
+	// Add a new sandbox storage
+	s.setSandboxStorage(storagePath)
+	// Use the existing sandbox storage
+	s.setSandboxStorage(storagePath)
+
+	removeSandboxStorage, _ := s.unSetSandboxStorage(storagePath)
+	assert.False(t, removeSandboxStorage, "Expected value was false")
+
+	// Reference counter should decrement to 1
+	refCount := s.storages[storagePath].refCount
+	assert.Equal(t, 1, refCount, "Invalid refcount, got %d expected 1", refCount)
+
+	removeSandboxStorage, _ = s.unSetSandboxStorage(storagePath)
+	assert.True(t, removeSandboxStorage, "Expected value was true")
+
+	// Since no container is using this sandbox storage anymore
+	// there should not be any reference in sandbox struct
+	// for the given storage
+	_, ok := s.storages[storagePath]
+	assert.False(t, ok, "expected value was false")
+
+	// If no container is using the sandbox storage, the reference
+	// counter for it should not exist
+	_, err := s.unSetSandboxStorage(storagePath)
+	assert.Error(t, err, "Should fail because sandbox storage doesn't exist")
+
+	_, err = s.unSetSandboxStorage("/tmp/nosbs/")
+	assert.Error(t, err, "Should fail because sandbox storage doesn't exist")
+}
+
 func TestGetContainerEntryExist(t *testing.T) {
 	s := &sandbox{
 		containers: make(map[string]*container),

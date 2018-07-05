@@ -82,6 +82,10 @@ type container struct {
 	useSandboxPidNs bool
 }
 
+type sandboxStorage struct {
+	refCount int
+}
+
 type sandbox struct {
 	sync.RWMutex
 
@@ -102,6 +106,7 @@ type sandbox struct {
 	noPivotRoot     bool
 	enableGrpcTrace bool
 	sandboxPidNs    bool
+	storages        map[string]*sandboxStorage
 }
 
 var agentFields = logrus.Fields{
@@ -202,6 +207,89 @@ func (c *container) getProcess(execID string) (*process, error) {
 	return proc, nil
 }
 
+// setSandboxStorage sets the sandbox level reference
+// counter for the sandbox storage.
+// This method also returns a boolean to let
+// callers know if the storage already existed or not.
+// It will return true if storage is new.
+//
+// It's assumed that caller is calling this method after
+// acquiring a lock on sandbox.
+func (s *sandbox) setSandboxStorage(path string) bool {
+	if _, ok := s.storages[path]; !ok {
+		sbs := &sandboxStorage{refCount: 1}
+		s.storages[path] = sbs
+		return true
+	}
+	sbs := s.storages[path]
+	sbs.refCount++
+	return false
+}
+
+// unSetSandboxStorage will decrement the sandbox storage
+// reference counter. If there aren't any containers using
+// that sandbox storage, this method will remove the
+// storage reference from the sandbox and return 'true, nil' to
+// let the caller know that they can clean up the storage
+// related directories by calling removeSandboxStorage
+//
+// It's assumed that caller is calling this method after
+// acquiring a lock on sandbox.
+func (s *sandbox) unSetSandboxStorage(path string) (bool, error) {
+	if sbs, ok := s.storages[path]; ok {
+		sbs.refCount--
+		// If this sandbox storage is not used by any container
+		// then remove it's reference
+		if sbs.refCount < 1 {
+			delete(s.storages, path)
+			return true, nil
+		}
+		return false, nil
+	}
+	return false, grpcStatus.Errorf(codes.NotFound, "Sandbox storage with path %s not found", path)
+}
+
+// removeSandboxStorage removes the sandbox storage if no
+// containers are using that storage.
+//
+// It's assumed that caller is calling this method after
+// acquiring a lock on sandbox.
+func (s *sandbox) removeSandboxStorage(path string) error {
+	err := removeMounts([]string{path})
+	if err != nil {
+		return grpcStatus.Errorf(codes.Unknown, "Unable to unmount sandbox storage path %s", path)
+	}
+	err = os.RemoveAll(path)
+	if err != nil {
+		return grpcStatus.Errorf(codes.Unknown, "Unable to delete sandbox storage path %s", path)
+	}
+	return nil
+}
+
+// unsetAndRemoveSandboxStorage unsets the storage from sandbox
+// and if there are no containers using this storage it will
+// remove it from the sandbox.
+//
+// It's assumed that caller is calling this method after
+// acquiring a lock on sandbox.
+func (s *sandbox) unsetAndRemoveSandboxStorage(path string) error {
+	if _, ok := s.storages[path]; ok {
+		removeSbs, err := s.unSetSandboxStorage(path)
+		if err != nil {
+			return err
+		}
+
+		if removeSbs {
+			if err := s.removeSandboxStorage(path); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+	return grpcStatus.Errorf(codes.NotFound, "Sandbox storage with path %s not found", path)
+}
+
 func (s *sandbox) getContainer(id string) (*container, error) {
 	s.RLock()
 	defer s.RUnlock()
@@ -222,6 +310,23 @@ func (s *sandbox) setContainer(id string, ctr *container) {
 
 func (s *sandbox) deleteContainer(id string) {
 	s.Lock()
+
+	// Find the sandbox storage used by this container
+	ctr, exist := s.containers[id]
+	if !exist {
+		agentLog.WithField("container-id", id).Debug("Container doesn't exist")
+	} else {
+		// Let's go over the mounts used by this container
+		for _, k := range ctr.mounts {
+			// Check if this mount is used from sandbox storage
+			if _, ok := s.storages[k]; ok {
+				if err := s.unsetAndRemoveSandboxStorage(k); err != nil {
+					agentLog.WithError(err).Error()
+				}
+			}
+		}
+	}
+
 	delete(s.containers, id)
 	s.Unlock()
 }
@@ -832,6 +937,7 @@ func realMain() {
 		subreaper:      r,
 		pciDeviceMap:   make(map[string]string),
 		deviceWatchers: make(map[string](chan string)),
+		storages:       make(map[string]*sandboxStorage),
 	}
 
 	if err = s.initLogger(); err != nil {

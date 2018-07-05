@@ -197,7 +197,12 @@ var storageHandlerList = map[string]storageHandler{
 }
 
 func ephemeralStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
-	if _, err := os.Stat(storage.MountPoint); os.IsNotExist(err) {
+	s.Lock()
+	defer s.Unlock()
+	newStorage := s.setSandboxStorage(storage.MountPoint)
+
+	if newStorage {
+		var err error
 		if err = os.MkdirAll(storage.MountPoint, os.ModePerm); err == nil {
 			_, err = commonStorageHandler(storage)
 		}

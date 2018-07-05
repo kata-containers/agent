@@ -1013,13 +1013,34 @@ func (a *agentGRPC) RemoveContainer(ctx context.Context, req *pb.RemoveContainer
 		if err := ctr.removeContainer(); err != nil {
 			return emptyResp, err
 		}
+
+		// Find the sandbox storage used by this container
+		for _, path := range ctr.mounts {
+			if _, ok := a.sandbox.storages[path]; ok {
+				if err := a.sandbox.unsetAndRemoveSandboxStorage(path); err != nil {
+					return emptyResp, err
+				}
+			}
+		}
 	} else {
 		done := make(chan error)
 		go func() {
 			if err := ctr.removeContainer(); err != nil {
 				done <- err
+				close(done)
+				return
 			}
 
+			//Find the sandbox storage used by this container
+			for _, path := range ctr.mounts {
+				if _, ok := a.sandbox.storages[path]; ok {
+					if err := a.sandbox.unsetAndRemoveSandboxStorage(path); err != nil {
+						done <- err
+						close(done)
+						return
+					}
+				}
+			}
 			close(done)
 		}()
 
@@ -1151,6 +1172,7 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 	a.sandbox.network.dns = req.Dns
 	a.sandbox.running = true
 	a.sandbox.sandboxPidNs = req.SandboxPidns
+	a.sandbox.storages = make(map[string]*sandboxStorage)
 
 	// Set up shared UTS and IPC namespaces
 	if err := a.sandbox.setupSharedNamespaces(); err != nil {
@@ -1184,11 +1206,20 @@ func (a *agentGRPC) DestroySandbox(ctx context.Context, req *pb.DestroySandboxRe
 	}
 
 	a.sandbox.Lock()
+
 	for key, c := range a.sandbox.containers {
 		if err := c.removeContainer(); err != nil {
 			return emptyResp, err
 		}
 
+		// Find the sandbox storage used by this container
+		for _, path := range c.mounts {
+			if _, ok := a.sandbox.storages[path]; ok {
+				if err := a.sandbox.unsetAndRemoveSandboxStorage(path); err != nil {
+					return emptyResp, err
+				}
+			}
+		}
 		delete(a.sandbox.containers, key)
 	}
 	a.sandbox.Unlock()
@@ -1214,6 +1245,7 @@ func (a *agentGRPC) DestroySandbox(ctx context.Context, req *pb.DestroySandboxRe
 	a.sandbox.running = false
 	a.sandbox.network = network{}
 	a.sandbox.mounts = []string{}
+	a.sandbox.storages = make(map[string]*sandboxStorage)
 
 	// Synchronize the caches on the system. This is needed to ensure
 	// there is no pending transactions left before the VM is shut down.
