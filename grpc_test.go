@@ -261,13 +261,13 @@ func TestOnlineCPUMem(t *testing.T) {
 	_, err = a.OnlineCPUMem(context.TODO(), req)
 	assert.Error(err, "docker cgroup path does not exist")
 
-	sysfsCpusetPath, err = ioutil.TempDir("", "cgroup")
+	cgroupCpusetPath, err = ioutil.TempDir("", "cgroup")
 	assert.NoError(err)
 	cfg := container.container.Config()
-	cgroupPath := filepath.Join(sysfsCpusetPath, cfg.Cgroups.Path)
+	cgroupPath := filepath.Join(cgroupCpusetPath, cfg.Cgroups.Path)
 	err = os.MkdirAll(cgroupPath, 0777)
 	assert.NoError(err)
-	defer os.RemoveAll(sysfsCpusetPath)
+	defer os.RemoveAll(cgroupCpusetPath)
 
 	err = ioutil.WriteFile(memory0Online, []byte("0"), 0755)
 	assert.NoError(err)
@@ -498,12 +498,12 @@ func TestUpdateContainerCpuset(t *testing.T) {
 	var err error
 	assert := assert.New(t)
 
-	sysfsCpusetPath, err = ioutil.TempDir("", "cgroup")
+	cgroupCpusetPath, err = ioutil.TempDir("", "cgroup")
 	assert.NoError(err)
-	defer os.Remove(sysfsCpusetPath)
+	defer os.Remove(cgroupCpusetPath)
 
 	cgroupPath := "kata"
-	err = os.MkdirAll(filepath.Join(sysfsCpusetPath, cgroupPath), 0777)
+	err = os.MkdirAll(filepath.Join(cgroupCpusetPath, cgroupPath), 0777)
 	assert.NoError(err)
 
 	cookies := make(cookie)
