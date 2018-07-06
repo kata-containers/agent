@@ -161,7 +161,7 @@ func onlineMemResources() error {
 // don't update a cgroup twice.
 func updateContainerCpuset(cgroupPath string, newCpuset string, cookies cookie) error {
 	// Each cpuset cgroup MUST BE updated with the actual number of vCPUs.
-	cpusetPath := sysfsCpusetPath
+	cpusetPath := cgroupCpusetPath
 	cgroupsPaths := strings.Split(cgroupPath, "/")
 	for _, path := range cgroupsPaths {
 		// Skip if empty.
