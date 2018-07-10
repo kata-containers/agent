@@ -22,6 +22,7 @@ import (
 
 const (
 	type9pFs       = "9p"
+	typeVirtioFS   = "virtio_fs"
 	typeTmpFs      = "tmpfs"
 	devPrefix      = "/dev/"
 	timeoutHotplug = 3
@@ -98,7 +99,7 @@ func mount(source, destination, fsType string, flags int, options string) error 
 
 	var err error
 	switch fsType {
-	case type9pFs:
+	case type9pFs, typeVirtioFS:
 		if err = createDestinationDir(destination); err != nil {
 			return err
 		}
@@ -191,6 +192,7 @@ type storageHandler func(storage pb.Storage, s *sandbox) (string, error)
 // storageHandlerList lists the supported drivers.
 var storageHandlerList = map[string]storageHandler{
 	driver9pType:        virtio9pStorageHandler,
+	driverVirtioFSType:  virtioFSStorageHandler,
 	driverBlkType:       virtioBlkStorageHandler,
 	driverMmioBlkType:   virtioMmioBlkStorageHandler,
 	driverSCSIType:      virtioSCSIStorageHandler,
@@ -220,6 +222,11 @@ func virtio9pStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
 // virtioMmioBlkStorageHandler handles the storage for mmio blk driver.
 func virtioMmioBlkStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
 	//The source path is VmPath
+	return commonStorageHandler(storage)
+}
+
+// virtioFSStorageHandler handles the storage for virtio-fs.
+func virtioFSStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
 	return commonStorageHandler(storage)
 }
 
