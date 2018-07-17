@@ -11,7 +11,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net"
 	"os"
@@ -632,7 +631,7 @@ func (s *sandbox) startGRPC() {
 		defer s.wg.Done()
 
 		var err error
-		for err == nil || err == io.EOF {
+		for {
 			agentLog.Info("agent grpc server starts")
 
 			err = s.channel.setup()
@@ -660,9 +659,9 @@ func (s *sandbox) startGRPC() {
 				agentLog.WithError(err).Warn("agent grpc server quits")
 			}
 
-			errT := s.channel.teardown()
-			if errT != nil {
-				agentLog.WithError(errT).Warn("agent grpc channel teardown failed")
+			err = s.channel.teardown()
+			if err != nil {
+				agentLog.WithError(err).Warn("agent grpc channel teardown failed")
 			}
 		}
 	}()
