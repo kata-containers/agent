@@ -516,3 +516,20 @@ func TestUpdateContainerCpuset(t *testing.T) {
 	err = updateContainerCpuset(cgroupPath, "0-7", cookies)
 	assert.NoError(err)
 }
+
+func TestReseedRandomDev(t *testing.T) {
+	assert := assert.New(t)
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	req := &pb.ReseedRandomDevRequest{
+		Data: []byte{'f'},
+	}
+
+	r, err := a.ReseedRandomDev(context.TODO(), req)
+	assert.NoError(err)
+	assert.Equal(r, emptyResp)
+}
