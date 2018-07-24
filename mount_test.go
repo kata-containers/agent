@@ -42,7 +42,8 @@ func TestEphemeralStorageHandlerSuccessful(t *testing.T) {
 
 	storage.Fstype = typeTmpFs
 	storage.Source = typeTmpFs
-	_, err = ephemeralStorageHandler(storage, &sandbox{})
+	sbs := make(map[string]*sandboxStorage)
+	_, err = ephemeralStorageHandler(storage, &sandbox{storages: sbs})
 	assert.Nil(t, err, "ephemeralStorageHandler() failed: %v", err)
 }
 
