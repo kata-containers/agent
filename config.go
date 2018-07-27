@@ -19,7 +19,6 @@ const (
 	optionPrefix      = "agent."
 	logLevelFlag      = optionPrefix + "log"
 	devModeFlag       = optionPrefix + "devmode"
-	sandboxFlag       = optionPrefix + "sandbox"
 	kernelCmdlineFile = "/proc/cmdline"
 )
 
@@ -95,8 +94,6 @@ func (c *agentConfig) parseCmdlineOption(option string) error {
 		if level == logrus.DebugLevel {
 			debug = true
 		}
-	case sandboxFlag:
-		agentLog = agentLog.WithField("sandbox", split[valuePosition])
 	default:
 		if strings.HasPrefix(split[optionPosition], optionPrefix) {
 			return grpcStatus.Errorf(codes.NotFound, "Unknown option %s", split[optionPosition])

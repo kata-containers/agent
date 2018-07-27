@@ -251,12 +251,16 @@ message CreateSandboxRequest {
 	string hostname = 1;
 	repeated string dns = 2;
 	repeated Storage storages = 3;
-	
+
 	// This field means that a pause process needs to be created by the
-	// agent. This pid namespace of the pause process will be treated as 
+	// agent. This pid namespace of the pause process will be treated as
 	// a shared pid namespace. All containers created will join this shared
 	// pid namespace.
 	bool sandbox_pidns = 4;
+	// SandboxId identifies which sandbox is using the agent. We allow only
+	// one sandbox per agent and implicitly require that CreateSandbox is
+	// called before other sandbox/network calls.
+	string sandbox_id = 5;
 }
 
 message DestroySandboxRequest {

@@ -87,6 +87,7 @@ type sandbox struct {
 	sync.RWMutex
 
 	id              string
+	hostname        string
 	containers      map[string]*container
 	channel         channel
 	network         network
