@@ -734,7 +734,6 @@ func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequ
 	if status == libcontainer.Stopped {
 		agentLog.WithFields(logrus.Fields{
 			"containerID": req.ContainerId,
-			"sandbox":     a.sandbox.id,
 			"signal":      signal.String(),
 		}).Info("discarding signal as container stopped")
 		return emptyResp, nil
@@ -1166,13 +1165,18 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 		return emptyResp, grpcStatus.Error(codes.AlreadyExists, "Sandbox already started, impossible to start again")
 	}
 
-	a.sandbox.id = req.Hostname
+	a.sandbox.hostname = req.Hostname
 	a.sandbox.containers = make(map[string]*container)
 	a.sandbox.network.ifaces = make(map[string]*pb.Interface)
 	a.sandbox.network.dns = req.Dns
 	a.sandbox.running = true
 	a.sandbox.sandboxPidNs = req.SandboxPidns
 	a.sandbox.storages = make(map[string]*sandboxStorage)
+
+	if req.SandboxId != "" {
+		a.sandbox.id = req.SandboxId
+		agentLog = agentLog.WithField("sandbox", a.sandbox.id)
+	}
 
 	// Set up shared UTS and IPC namespaces
 	if err := a.sandbox.setupSharedNamespaces(); err != nil {
@@ -1201,7 +1205,7 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 
 func (a *agentGRPC) DestroySandbox(ctx context.Context, req *pb.DestroySandboxRequest) (*gpb.Empty, error) {
 	if a.sandbox.running == false {
-		agentLog.WithField("sandbox", a.sandbox.id).Info("Sandbox not started, this is a no-op")
+		agentLog.Info("Sandbox not started, this is a no-op")
 		return emptyResp, nil
 	}
 
@@ -1240,6 +1244,7 @@ func (a *agentGRPC) DestroySandbox(ctx context.Context, req *pb.DestroySandboxRe
 		return emptyResp, err
 	}
 
+	a.sandbox.hostname = ""
 	a.sandbox.id = ""
 	a.sandbox.containers = make(map[string]*container)
 	a.sandbox.running = false
