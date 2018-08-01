@@ -50,6 +50,7 @@ service AgentService {
 	rpc CreateSandbox(CreateSandboxRequest) returns (google.protobuf.Empty);
 	rpc DestroySandbox(DestroySandboxRequest) returns (google.protobuf.Empty);
 	rpc OnlineCPUMem(OnlineCPUMemRequest) returns (google.protobuf.Empty);
+	rpc ReseedRandomDev(ReseedRandomDevRequest) returns (google.protobuf.Empty);
 }
 
 message CreateContainerRequest {
@@ -321,6 +322,11 @@ message OnlineCPUMemRequest {
 
 	// NbCpus specifies the number of CPUs that were added and the agent has to online.
 	uint32 nb_cpus = 2;
+}
+
+message ReseedRandomDevRequest {
+	// Data specifies the random data used to reseed the guest crng.
+	bytes data = 2;
 }
 
 // Storage represents both the rootfs of the container, and any volume that

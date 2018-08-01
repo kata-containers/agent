@@ -1283,3 +1283,7 @@ func (a *agentGRPC) OnlineCPUMem(ctx context.Context, req *pb.OnlineCPUMemReques
 
 	return emptyResp, a.onlineCPUMem(req)
 }
+
+func (a *agentGRPC) ReseedRandomDev(ctx context.Context, req *pb.ReseedRandomDevRequest) (*gpb.Empty, error) {
+	return emptyResp, reseedRNG(req.Data)
+}

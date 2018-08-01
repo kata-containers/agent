@@ -385,3 +385,7 @@ func (m *mockServer) ResumeContainer(ctx context.Context, req *pb.ResumeContaine
 
 	return &types.Empty{}, nil
 }
+
+func (m *mockServer) ReseedRandomDev(ctx context.Context, req *pb.ReseedRandomDevRequest) (*types.Empty, error) {
+	return &types.Empty{}, nil
+}
