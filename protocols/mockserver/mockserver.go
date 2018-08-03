@@ -389,3 +389,23 @@ func (m *mockServer) ResumeContainer(ctx context.Context, req *pb.ResumeContaine
 func (m *mockServer) ReseedRandomDev(ctx context.Context, req *pb.ReseedRandomDevRequest) (*types.Empty, error) {
 	return &types.Empty{}, nil
 }
+
+func (m *mockServer) ListInterfaces(ctx context.Context, req *pb.ListInterfacesRequest) (*pb.Interfaces, error) {
+	mockLock.RLock()
+	defer mockLock.RUnlock()
+	if err := m.podExist(); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+func (m *mockServer) ListRoutes(ctx context.Context, req *pb.ListRoutesRequest) (*pb.Routes, error) {
+	mockLock.RLock()
+	defer mockLock.RUnlock()
+	if err := m.podExist(); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}

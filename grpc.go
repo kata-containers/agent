@@ -1275,6 +1275,14 @@ func (a *agentGRPC) UpdateRoutes(ctx context.Context, req *pb.UpdateRoutesReques
 	return a.sandbox.updateRoutes(nil, req.Routes)
 }
 
+func (a *agentGRPC) ListInterfaces(ctx context.Context, req *pb.ListInterfacesRequest) (*pb.Interfaces, error) {
+	return a.sandbox.listInterfaces(nil)
+}
+
+func (a *agentGRPC) ListRoutes(ctx context.Context, req *pb.ListRoutesRequest) (*pb.Routes, error) {
+	return a.sandbox.listRoutes(nil)
+}
+
 func (a *agentGRPC) OnlineCPUMem(ctx context.Context, req *pb.OnlineCPUMemRequest) (*gpb.Empty, error) {
 	if !req.Wait {
 		go a.onlineCPUMem(req)

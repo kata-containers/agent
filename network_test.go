@@ -185,3 +185,92 @@ func TestUpdateRoutes(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(results.Routes[0], testRoutes.Routes[1]),
 		"Interface created didn't match: got %+v, expecting %+v", results.Routes[0], testRoutes.Routes[1])
 }
+
+func TestListInterfaces(t *testing.T) {
+	tearDown := setupNetworkTest(t)
+	defer tearDown()
+
+	assert := assert.New(t)
+
+	s := sandbox{}
+	ifc := pb.Interface{
+		Name:   "enoNumber",
+		Mtu:    1500,
+		HwAddr: "02:00:ca:fe:00:48",
+	}
+	ip := pb.IPAddress{
+		Family:  0,
+		Address: "192.168.0.101",
+		Mask:    "24",
+	}
+	ifc.IPAddresses = append(ifc.IPAddresses, &ip)
+	netHandle, _ := netlink.NewHandle()
+	defer netHandle.Delete()
+	// create a dummy link that we can test update on
+	macAddr := net.HardwareAddr{0x02, 0x00, 0xCA, 0xFE, 0x00, 0x48}
+	link := &netlink.Dummy{
+		LinkAttrs: netlink.LinkAttrs{
+			MTU:          1500,
+			TxQLen:       -1,
+			Name:         "ifc-name",
+			HardwareAddr: macAddr,
+		},
+	}
+	netHandle.LinkAdd(link)
+	netHandle.LinkSetUp(link)
+	s.updateInterface(netHandle, &ifc)
+	//
+	// With a link populated, check to see if we can successfully list:
+	//
+	results, err := s.listInterfaces(nil)
+	assert.Nil(err, "Expected to list all interfaces")
+	assert.True(reflect.DeepEqual(results.Interfaces[1], &ifc),
+		"Interface listed didn't match: got %+v, expecting %+v", results.Interfaces[1], &ifc)
+}
+
+func TestListRoutes(t *testing.T) {
+	tearDown := setupNetworkTest(t)
+	defer tearDown()
+
+	assert := assert.New(t)
+
+	s := sandbox{}
+
+	// create a dummy link which we'll play with
+	macAddr := net.HardwareAddr{0x02, 0x00, 0xCA, 0xFE, 0x00, 0x48}
+	link := &netlink.Dummy{
+		LinkAttrs: netlink.LinkAttrs{
+			MTU:          1500,
+			TxQLen:       -1,
+			Name:         "ifc-name",
+			HardwareAddr: macAddr,
+		},
+	}
+	netHandle, _ := netlink.NewHandle()
+	defer netHandle.Delete()
+
+	netHandle.LinkAdd(link)
+	if err := netHandle.LinkSetUp(link); err != nil {
+		t.Fatal(err)
+	}
+	netlinkAddr, _ := netlink.ParseAddr("192.168.0.2/16")
+	netHandle.AddrAdd(link, netlinkAddr)
+
+	//Test a simple route setup:
+	inputRoutesSimple := []*pb.Route{
+		{Dest: "", Gateway: "192.168.0.1", Source: "", Scope: 0, Device: "ifc-name"},
+		{Dest: "192.168.0.0/16", Gateway: "", Source: "192.168.0.2", Scope: 253, Device: "ifc-name"},
+	}
+
+	testRoutes := &pb.Routes{
+		Routes: inputRoutesSimple,
+	}
+
+	s.updateRoutes(netHandle, testRoutes)
+	results, err := s.listRoutes(nil)
+	assert.Nil(err, "Expected to list all routes")
+	assert.True(reflect.DeepEqual(results.Routes[0], inputRoutesSimple[0]),
+		"Route listed didn't match: got %+v, expecting %+v", results.Routes[0], inputRoutesSimple[0])
+	assert.True(reflect.DeepEqual(results.Routes[1], inputRoutesSimple[1]),
+		"Route listed didn't match: got %+v, expecting %+v", results.Routes[1], inputRoutesSimple[1])
+}
