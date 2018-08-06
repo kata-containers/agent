@@ -322,6 +322,33 @@ func getInterface(netHandle *netlink.Handle, link netlink.Link) (*pb.Interface, 
 	return &ifc, nil
 }
 
+func (s *sandbox) listInterfaces(netHandle *netlink.Handle) (*pb.Interfaces, error) {
+	var err error
+	if netHandle == nil {
+		netHandle, err = netlink.NewHandle(unix.NETLINK_ROUTE)
+		if err != nil {
+			return nil, err
+		}
+		defer netHandle.Delete()
+	}
+
+	links, err := netHandle.LinkList()
+	if err != nil {
+		return nil, err
+	}
+
+	var interfaces pb.Interfaces
+	for _, link := range links {
+		ifc, err := getInterface(netHandle, link)
+		if err != nil {
+			agentLog.WithField("link", link).WithError(err).Error("listInterfaces() failed")
+			return &interfaces, err
+		}
+		interfaces.Interfaces = append(interfaces.Interfaces, ifc)
+	}
+	return &interfaces, nil
+}
+
 ////////////
 // Routes //
 ////////////
@@ -420,11 +447,15 @@ func (s *sandbox) updateRoutes(netHandle *netlink.Handle, requestedRoutes *pb.Ro
 	return requestedRoutes, err
 }
 
+func (s *sandbox) listRoutes(netHandle *netlink.Handle) (*pb.Routes, error) {
+	return getCurrentRoutes(netHandle)
+}
+
 //getCurrentRoutes is a helper to gather existing routes in gRPC protocol format
 func getCurrentRoutes(netHandle *netlink.Handle) (*pb.Routes, error) {
-
+	var err error
 	if netHandle == nil {
-		netHandle, err := netlink.NewHandle(unix.NETLINK_ROUTE)
+		netHandle, err = netlink.NewHandle(unix.NETLINK_ROUTE)
 		if err != nil {
 			return nil, err
 		}
