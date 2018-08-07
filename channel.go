@@ -227,18 +227,6 @@ func isAFVSockSupported() (bool, error) {
 	return true, nil
 }
 
-func vSockPathExist() (bool, error) {
-	if _, err := os.Stat(vSockDevPath); err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-
-		return false, err
-	}
-
-	return true, nil
-}
-
 func findVirtualSerialPath(serialName string) (string, error) {
 	dir, err := os.Open(virtIOPath)
 	if err != nil {
@@ -269,18 +257,4 @@ func findVirtualSerialPath(serialName string) (string, error) {
 	}
 
 	return "", grpcStatus.Errorf(codes.NotFound, "Could not find virtio port %s", serialName)
-}
-
-func openSerialChannel() (*os.File, error) {
-	serialPath, err := findVirtualSerialPath(serialChannelName)
-	if err != nil {
-		return nil, err
-	}
-
-	file, err := os.OpenFile(serialPath, os.O_RDWR, os.ModeDevice)
-	if err != nil {
-		return nil, err
-	}
-
-	return file, nil
 }
