@@ -44,8 +44,11 @@ const (
 
 var (
 	// cgroup fs is mounted at /sys/fs when systemd is the init process
-	cgroupPath       = "/sys/fs/cgroup"
-	cgroupCpusetPath = cgroupPath + "/cpuset"
+	cgroupPath                   = "/sys/fs/cgroup"
+	cgroupCpusetPath             = cgroupPath + "/cpuset"
+	cgroupMemoryPath             = cgroupPath + "/memory"
+	cgroupMemoryUseHierarchyPath = cgroupMemoryPath + "/memory.use_hierarchy"
+	cgroupMemoryUseHierarchyMode = os.FileMode(0400)
 )
 
 var initRootfsMounts = []initMount{
@@ -859,7 +862,10 @@ func cgroupsMount() error {
 			return err
 		}
 	}
-	return nil
+
+	// Enable memory hierarchical account.
+	// For more information see https://www.kernel.org/doc/Documentation/cgroup-v1/memory.txt
+	return ioutil.WriteFile(cgroupMemoryUseHierarchyPath, []byte{'1'}, cgroupMemoryUseHierarchyMode)
 }
 
 // initAgentAsInit will do the initializations such as setting up the rootfs
