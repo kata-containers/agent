@@ -11,7 +11,7 @@ import (
 )
 
 // Serial channel
-const (
+var (
 	serialChannelName = "agent.channel.0"
 	virtIOPath        = "/sys/class/virtio-ports"
 	devRootPath       = "/dev"
