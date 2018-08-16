@@ -28,7 +28,7 @@ const (
 	vsockSocketScheme = "vsock"
 )
 
-var defaultDialTimeout = 5 * time.Second
+var defaultDialTimeout = 15 * time.Second
 
 // AgentClient is an agent gRPC client connection wrapper for agentgrpc.AgentServiceClient
 type AgentClient struct {
