@@ -93,7 +93,7 @@ func agentClientTest(t *testing.T, sock string, success, enableYamux bool, expec
 	defer func() {
 		defaultDialTimeout = dialTimeout
 	}()
-	cli, err := NewAgentClient(sock, enableYamux)
+	cli, err := NewAgentClient(context.Background(), sock, enableYamux)
 	if success {
 		assert.Nil(t, err, "Failed to create new agent client: %s", err)
 	} else if !success {

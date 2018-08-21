@@ -10,7 +10,7 @@
   revision = "84eeaae905fa414d03e07bcd6c8d3f19e7cf180e"
 
 [[projects]]
-  digest = "1:998aa7312fc20dff58d0894b85a87618401be5e02ec610a48fed33a146c22d93"
+  digest = "1:5745ae844cff2e5063ff983e8a39f12200d97a41a23d5e94169bc776c24a6580"
   name = "github.com/coreos/go-systemd"
   packages = [
     "dbus",
@@ -61,7 +61,7 @@
   version = "v4.1.0"
 
 [[projects]]
-  digest = "1:6fb326814b2c00537e05c1c6aceb8d2ecb686fdcd41cf4b226cc41058664226f"
+  digest = "1:b41b8ae04e4fb929a0b20df6fb72a735458c68d58eab6e93e3411410578d9b66"
   name = "github.com/gogo/protobuf"
   packages = [
     "gogoproto",
@@ -75,7 +75,7 @@
   revision = "342cbe0a04158f6dcb03ca0079991a51a4248c02"
 
 [[projects]]
-  digest = "1:62c39e48b3af4ccc5f20819b3fc4b7aee88cf4b7e296c4be0168113e755adfaa"
+  digest = "1:0d390d7037c2aecc37e78c2cfbe43d020d6f1fa83fd22266b7ec621189447d57"
   name = "github.com/golang/protobuf"
   packages = [
     "proto",
@@ -86,6 +86,14 @@
   ]
   pruneopts = "NUT"
   revision = "1e59b77b52bf8e4b449a57e6f79f21226d571845"
+
+[[projects]]
+  branch = "master"
+  digest = "1:7b760aa6dbe426378f54934270dde1b176fda379111da2154748f030fffe4d3f"
+  name = "github.com/grpc-ecosystem/grpc-opentracing"
+  packages = ["go/otgrpc"]
+  pruneopts = "NUT"
+  revision = "8e809c8a86450a29b90dcc9efbf062d0fe6d9746"
 
 [[projects]]
   digest = "1:73d3d2f8f2bcf510db08576eca6c1d2b87bcea348de26bf1386b291ad1b52296"
@@ -110,7 +118,7 @@
   revision = "7d4729fb36185a7c1719923406c9d40e54fb93c7"
 
 [[projects]]
-  digest = "1:4ab9c2f8b2099727d73baf1ddb375c7a99c44e7a9ba3857673b214c60a4851a4"
+  digest = "1:e9efda6418044c653a9d6051719196214dbdbe4fa50ebcc7975dde8932b6d2f5"
   name = "github.com/opencontainers/runc"
   packages = [
     "libcontainer",
@@ -143,7 +151,7 @@
   revision = "4e3b9264a330d094b0386c3703c5f379119711e8"
 
 [[projects]]
-  digest = "1:bf581d0c4c0545f7d2e46d9d0df4dafc92c24ed6b1e2fb66ab4bc91acd072e64"
+  digest = "1:5c65c485fa22fdfd6937db07aaf879904a4745770ee416d8d1f2a1434dc2d8ce"
   name = "github.com/opencontainers/selinux"
   packages = [
     "go-selinux",
@@ -152,6 +160,18 @@
   pruneopts = "NUT"
   revision = "ba1aefe8057f1d0cfb8e88d0ec1dc85925ef987d"
   version = "v1.0.0-rc1"
+
+[[projects]]
+  digest = "1:7da29c22bcc5c2ffb308324377dc00b5084650348c2799e573ed226d8cc9faf0"
+  name = "github.com/opentracing/opentracing-go"
+  packages = [
+    ".",
+    "ext",
+    "log",
+  ]
+  pruneopts = "NUT"
+  revision = "1949ddbfd147afd4d964a9f00b24eb291e0e7c38"
+  version = "v1.0.2"
 
 [[projects]]
   digest = "1:5cf3f025cbee5951a4ee961de067c8a89fc95a5adabead774f82822efabab121"
@@ -200,7 +220,7 @@
   revision = "db04d3cc01c8b54962a58ec7e491717d06cfcc16"
 
 [[projects]]
-  digest = "1:b097acf40a3ea6c97a1670f19c39d8756aac94e70219f0d8838222aba3a02aad"
+  digest = "1:2102a6328eb29d39c528696fe92fb347d5bc5a10b181ced1f80ffaabec45d538"
   name = "github.com/vishvananda/netlink"
   packages = [
     ".",
@@ -226,7 +246,7 @@
   revision = "94eea52f7b742c7cbe0b03b22f0c4c8631ece122"
 
 [[projects]]
-  digest = "1:5985d67e107c875e2584b5a65f1590adee7677a4e44eb7e62cd54c7709abba4a"
+  digest = "1:b20c63a56900e442d5f435613fefc9392cbe8849467510fcc3869dbdad9441bb"
   name = "golang.org/x/net"
   packages = [
     "context",
@@ -241,7 +261,7 @@
   revision = "a8b9294777976932365dabb6640cf1468d95c70f"
 
 [[projects]]
-  digest = "1:64107e3c8f52f341891a565d117bf263ed396fe0c16bad19634b25be25debfaa"
+  digest = "1:5420733d35e5e562fffc7c5b99660f3587af042b5420f19b17fe0426e6a5259d"
   name = "golang.org/x/sys"
   packages = [
     "unix",
@@ -252,7 +272,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:c3b44d72b3c13bed2937c314210b758bc292859a6bf6c80f073d46354c1d5168"
+  digest = "1:b2d78fc58a30271a4c1b8b1daf5f4db2a09e9fb57b2c8b7a90f632951ee3699b"
   name = "golang.org/x/text"
   packages = [
     "collate",
@@ -282,7 +302,7 @@
   revision = "7f0da29060c682909f650ad8ed4e515bd74fa12a"
 
 [[projects]]
-  digest = "1:7ac7635ce6308d286edb1998a8832d79a4f0ddb1e6139284042464840ed17d21"
+  digest = "1:abbcaa84ed484e328cef0cd0bc0130641edc52b4bc6bfb0090dadfd2c1033b6f"
   name = "google.golang.org/grpc"
   packages = [
     ".",
@@ -318,6 +338,7 @@
     "github.com/gogo/protobuf/jsonpb",
     "github.com/gogo/protobuf/proto",
     "github.com/gogo/protobuf/types",
+    "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc",
     "github.com/hashicorp/yamux",
     "github.com/mdlayher/vsock",
     "github.com/opencontainers/runc/libcontainer",
@@ -327,6 +348,7 @@
     "github.com/opencontainers/runc/libcontainer/specconv",
     "github.com/opencontainers/runc/libcontainer/utils",
     "github.com/opencontainers/runtime-spec/specs-go",
+    "github.com/opentracing/opentracing-go",
     "github.com/sirupsen/logrus",
     "github.com/stretchr/testify/assert",
     "github.com/vishvananda/netlink",
