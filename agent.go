@@ -188,11 +188,35 @@ func (c *container) deleteProcess(execID string) {
 	c.Unlock()
 }
 
+func (c *container) waitContainer() error {
+	for i := 0; i < 100; i++ {
+		if err := c.container.Signal(syscall.Signal(0), false); err != nil {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return fmt.Errorf("container is still running")
+}
+
 func (c *container) removeContainer() error {
+	s, err := c.container.Status()
+	if err != nil {
+		return err
+	}
+
+	// Wait a bit to see if container stops. This might happen if
+	// RemoveContainer is called right after SignalProcess.
+	if s != libcontainer.Stopped {
+		if err = c.waitContainer(); err != nil {
+			return err
+		}
+	}
+
 	// This will terminates all processes related to this container, and
 	// destroy the container right after. But this will error in case the
 	// container in not in the right state.
-	if err := c.container.Destroy(); err != nil {
+	if err = c.container.Destroy(); err != nil {
 		return err
 	}
 
