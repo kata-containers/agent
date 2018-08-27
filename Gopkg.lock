@@ -96,11 +96,11 @@
   revision = "8e809c8a86450a29b90dcc9efbf062d0fe6d9746"
 
 [[projects]]
-  digest = "1:73d3d2f8f2bcf510db08576eca6c1d2b87bcea348de26bf1386b291ad1b52296"
+  digest = "1:63e0b20cfa3fe456480edf93a7995f776afb610e49da8e3da04d8904472a44cc"
   name = "github.com/hashicorp/yamux"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "f5742cb6b85602e7fa834e9d5d91a7d7fa850824"
+  revision = "cc6d2ea263b2471faabce371255777a365bf8306"
 
 [[projects]]
   digest = "1:0159dcdabe50788e5dcfb469521f8f8dcd362db3ab6b465b99a3d33a90726fc0"

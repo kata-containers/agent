@@ -4,7 +4,7 @@
 
 [[constraint]]
   name = "github.com/hashicorp/yamux"
-  revision = "f5742cb6b85602e7fa834e9d5d91a7d7fa850824"
+  revision = "cc6d2ea263b2471faabce371255777a365bf8306"
 
 [[constraint]]
   name = "github.com/mdlayher/vsock"
