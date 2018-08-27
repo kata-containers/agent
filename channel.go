@@ -103,6 +103,7 @@ func (c *vSockChannel) teardown() error {
 type serialChannel struct {
 	serialPath string
 	serialConn *os.File
+	waitCh     <-chan struct{}
 }
 
 func (c *serialChannel) setup() error {
@@ -200,11 +201,16 @@ func (c *serialChannel) listen() (net.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
+	c.waitCh = session.CloseChan()
 
 	return session, nil
 }
 
 func (c *serialChannel) teardown() error {
+	// wait for the session to be fully shutdown first
+	if c.waitCh != nil {
+		<-c.waitCh
+	}
 	return c.serialConn.Close()
 }
 
