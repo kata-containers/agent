@@ -23,7 +23,7 @@ RUN yum makecache && yum install -y \
 
 # install GO development environment
 ENV GO_VERSION 1.9.2
-RUN curl -fkL https://storage.googleapis.com/golang/go${GO_VERSION}.linux-$(arch).tar.gz \
+RUN curl -fkL https://storage.googleapis.com/golang/go${GO_VERSION}.linux-${arch}.tar.gz \
 	| tar -zxC /usr/local/
 ENV GOPATH /go
 ENV PATH $PATH:/go/bin:/usr/local/go/bin
@@ -41,9 +41,9 @@ RUN go get -d github.com/golang/protobuf/protoc-gen-go \
 
 # install gogo/protobuf
 ENV GOGO_COMMIT 41168f6614b7bb144818ec8967b8c702705df564
-RUN go get -d -v github.com/gogo/protobuf/{proto,jsonpb,protoc-gen-gogo,gogoproto}
+RUN go get -d -v github.com/gogo/protobuf/{proto,jsonpb,protoc-gen-gogo,gogoproto,protoc-gen-gogofast}
 RUN cd $GOPATH/src/github.com/gogo/protobuf && git checkout -q ${GOGO_COMMIT} \
-	&& go install github.com/gogo/protobuf/{proto,jsonpb,protoc-gen-gogo,gogoproto}
+	&& go install github.com/gogo/protobuf/{proto,jsonpb,protoc-gen-gogo,gogoproto,protoc-gen-gogofast}
 
 # add agent repository
 ADD . ${GOPATH}/src/github.com/kata-containers/agent
