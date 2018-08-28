@@ -335,6 +335,9 @@ message OnlineCPUMemRequest {
 
 	// NbCpus specifies the number of CPUs that were added and the agent has to online.
 	uint32 nb_cpus = 2;
+
+	// CpuOnly specifies whether only online CPU or not.
+	bool cpu_only = 3;
 }
 
 message ReseedRandomDevRequest {

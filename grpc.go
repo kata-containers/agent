@@ -193,7 +193,7 @@ func updateContainerCpuset(cgroupPath string, newCpuset string, cookies cookie) 
 }
 
 func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
-	if req.NbCpus <= 0 {
+	if req.NbCpus == 0 && req.CpuOnly {
 		return handleError(req.Wait, fmt.Errorf("requested number of CPUs '%d' must be greater than 0", req.NbCpus))
 	}
 
@@ -201,13 +201,17 @@ func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
 	a.sandbox.Lock()
 	defer a.sandbox.Unlock()
 
-	agentLog.WithField("vcpus-to-connect", req.NbCpus).Debug("connecting vCPUs")
-	if err := onlineCPUResources(req.NbCpus); err != nil {
-		return handleError(req.Wait, err)
+	if req.NbCpus > 0 {
+		agentLog.WithField("vcpus-to-connect", req.NbCpus).Debug("connecting vCPUs")
+		if err := onlineCPUResources(req.NbCpus); err != nil {
+			return handleError(req.Wait, err)
+		}
 	}
 
-	if err := onlineMemResources(); err != nil {
-		return handleError(req.Wait, err)
+	if !req.CpuOnly {
+		if err := onlineMemResources(); err != nil {
+			return handleError(req.Wait, err)
+		}
 	}
 
 	// At this point all CPUs have been connected, we need to know
