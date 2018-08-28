@@ -220,7 +220,7 @@ func virtio9pStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
 func virtioBlkStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
 	// Get the device node path based on the PCI address provided
 	// in Storage Source
-	devPath, err := getBlockDeviceNodeName(s, storage.Source)
+	devPath, err := getPCIDeviceName(s, storage.Source)
 	if err != nil {
 		return "", err
 	}

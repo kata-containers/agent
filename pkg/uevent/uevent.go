@@ -22,6 +22,7 @@ const (
 	uEventSubSystem = "SUBSYSTEM"
 	uEventSeqNum    = "SEQNUM"
 	uEventDevName   = "DEVNAME"
+	uEventInterface = "INTERFACE"
 
 	paramDelim = 0x00
 )
@@ -132,6 +133,10 @@ func (h *Handler) Read() (*Uevent, error) {
 		case uEventSubSystem:
 			uEv.SubSystem = val
 		case uEventDevName:
+			uEv.DevName = val
+		case uEventInterface:
+			// In case of network interfaces, DevName will be empty since a device node
+			// is not created. Instead store the "INTERFACE" field as devName
 			uEv.DevName = val
 		case uEventSeqNum:
 			uEv.SeqNum = val

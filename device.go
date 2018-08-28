@@ -101,7 +101,7 @@ func getDevicePCIAddress(pciID string) (string, error) {
 	return bridgeDevicePCIAddr, nil
 }
 
-func getBlockDeviceNodeName(s *sandbox, pciID string) (string, error) {
+func getPCIDeviceName(s *sandbox, pciID string) (string, error) {
 	pciAddr, err := getDevicePCIAddress(pciID)
 	if err != nil {
 		return "", err
@@ -157,7 +157,7 @@ func getBlockDeviceNodeName(s *sandbox, pciID string) (string, error) {
 // while deviceAddr is the address at which the device is attached on the bridge.
 func virtioBlkDeviceHandler(device pb.Device, spec *pb.Spec, s *sandbox) error {
 	// Get the device node path based on the PCI device address
-	devPath, err := getBlockDeviceNodeName(s, device.Id)
+	devPath, err := getPCIDeviceName(s, device.Id)
 	if err != nil {
 		return err
 	}

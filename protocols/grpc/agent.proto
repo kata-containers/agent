@@ -287,6 +287,11 @@ message Interface {
 	repeated IPAddress IPAddresses = 3;
 	uint64 mtu = 4;
 	string hwAddr = 5;
+
+	// pciAddr is the PCI address in the format  "bridgeAddr/deviceAddr".
+	// Here, bridgeAddr is the address at which the bridge is attached on the root bus,
+	// while deviceAddr is the address at which the network device is attached on the bridge.
+	string pciAddr = 6;
 }
 
 message Interfaces {
