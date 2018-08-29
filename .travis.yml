@@ -15,7 +15,7 @@ language: go
 go_import_path: github.com/kata-containers/agent
 
 go:
-  - 1.8
+  - "1.10.x"
 
 before_script:
   - ".ci/static-checks.sh"
