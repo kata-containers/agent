@@ -49,13 +49,20 @@ func TestWaitSerialChannel(t *testing.T) {
 }
 
 func TestListenSerialChannel(t *testing.T) {
-	_, f, err := os.Pipe()
+	f, _, err := os.Pipe()
 	assert.Nil(t, err, "%v", err)
 
 	c := &serialChannel{serialConn: f}
 
-	_, err = c.listen()
+	l, err := c.listen()
 	assert.Nil(t, err, "%v", err)
+	assert.NotNil(t, l, "listen should not return nil listener")
+
+	err = l.Close()
+	assert.Nil(t, err, "%v", err)
+
+	err = c.teardown()
+	assert.Error(t, err, "connection should be already closed")
 }
 
 func TestTeardownSerialChannel(t *testing.T) {
