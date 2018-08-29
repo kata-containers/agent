@@ -11,7 +11,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net"
 	"os"
@@ -45,8 +44,11 @@ const (
 
 var (
 	// cgroup fs is mounted at /sys/fs when systemd is the init process
-	cgroupPath      = "/sys/fs/cgroup"
-	sysfsCpusetPath = cgroupPath + "/cpuset"
+	cgroupPath                   = "/sys/fs/cgroup"
+	cgroupCpusetPath             = cgroupPath + "/cpuset"
+	cgroupMemoryPath             = cgroupPath + "/memory"
+	cgroupMemoryUseHierarchyPath = cgroupMemoryPath + "/memory.use_hierarchy"
+	cgroupMemoryUseHierarchyMode = os.FileMode(0400)
 )
 
 var initRootfsMounts = []initMount{
@@ -58,6 +60,8 @@ var initRootfsMounts = []initMount{
 }
 
 type process struct {
+	sync.RWMutex
+
 	id          string
 	process     libcontainer.Process
 	stdin       *os.File
@@ -66,6 +70,7 @@ type process struct {
 	consoleSock *os.File
 	termMaster  *os.File
 	exitCodeCh  chan int
+	stdinClosed bool
 }
 
 type container struct {
@@ -629,7 +634,7 @@ func (s *sandbox) startGRPC() {
 		defer s.wg.Done()
 
 		var err error
-		for err == nil || err == io.EOF {
+		for {
 			agentLog.Info("agent grpc server starts")
 
 			err = s.channel.setup()
@@ -657,9 +662,9 @@ func (s *sandbox) startGRPC() {
 				agentLog.WithError(err).Warn("agent grpc server quits")
 			}
 
-			errT := s.channel.teardown()
-			if errT != nil {
-				agentLog.WithError(errT).Warn("agent grpc channel teardown failed")
+			err = s.channel.teardown()
+			if err != nil {
+				agentLog.WithError(err).Warn("agent grpc channel teardown failed")
 			}
 		}
 	}()
@@ -751,7 +756,10 @@ func cgroupsMount() error {
 			return err
 		}
 	}
-	return nil
+
+	// Enable memory hierarchical account.
+	// For more information see https://www.kernel.org/doc/Documentation/cgroup-v1/memory.txt
+	return ioutil.WriteFile(cgroupMemoryUseHierarchyPath, []byte{'1'}, cgroupMemoryUseHierarchyMode)
 }
 
 // initAgentAsInit will do the initializations such as setting up the rootfs
@@ -772,10 +780,6 @@ func initAgentAsInit() error {
 	syscall.Setsid()
 	syscall.Syscall(syscall.SYS_IOCTL, os.Stdin.Fd(), syscall.TIOCSCTTY, 1)
 	os.Setenv("PATH", "/bin:/sbin/:/usr/bin/:/usr/sbin/")
-
-	// when agent runs as init process, cgroup fs is mounted at /proc
-	cgroupPath = "/proc/cgroup"
-	sysfsCpusetPath = cgroupPath + "/cpuset"
 
 	return announce()
 }

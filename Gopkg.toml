@@ -28,7 +28,7 @@
 
 [[constraint]]
   name = "github.com/vishvananda/netlink"
-  revision = "f67b75edbf5e3bb7dfe70bb788610693a71be3d1"
+  revision = "2cbcf73e3dcdaa63941d0ec4008e69c089434756"
 
 [[constraint]]
   name = "golang.org/x/net"
@@ -36,7 +36,7 @@
 
 [[constraint]]
   name = "golang.org/x/sys"
-  revision = "8b4580aae2a0dd0c231a45d3ccb8434ff533b840"
+  revision = "ac767d655b305d4e9612f5f6e33120b9176c4ad4"
 
 [[constraint]]
   name = "google.golang.org/grpc"

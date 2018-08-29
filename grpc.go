@@ -161,7 +161,7 @@ func onlineMemResources() error {
 // don't update a cgroup twice.
 func updateContainerCpuset(cgroupPath string, newCpuset string, cookies cookie) error {
 	// Each cpuset cgroup MUST BE updated with the actual number of vCPUs.
-	cpusetPath := sysfsCpusetPath
+	cpusetPath := cgroupCpusetPath
 	cgroupsPaths := strings.Split(cgroupPath, "/")
 	for _, path := range cgroupsPaths {
 		// Skip if empty.
@@ -438,9 +438,6 @@ func (a *agentGRPC) updateContainerConfigNamespaces(config *configs.Config, ctr 
 	var ipcNs, utsNs bool
 
 	for idx, ns := range config.Namespaces {
-		// TODO: NEW_PID should be cleared out by the runtime. Add a strict check
-		// for this to return an error if NEWPID is found once the runtime PR lands.
-
 		if ns.Type == configs.NEWIPC {
 			config.Namespaces[idx].Path = a.sandbox.sharedIPCNs.path
 			ipcNs = true
@@ -524,12 +521,8 @@ func (a *agentGRPC) rollbackFailingContainerCreation(ctr *container) {
 }
 
 func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainerRequest) (resp *gpb.Empty, err error) {
-	if a.sandbox.running == false {
-		return emptyResp, grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started, impossible to run a new container")
-	}
-
-	if _, err = a.sandbox.getContainer(req.ContainerId); err == nil {
-		return emptyResp, grpcStatus.Errorf(codes.AlreadyExists, "Container %s already exists, impossible to create", req.ContainerId)
+	if err := a.createContainerChecks(req); err != nil {
+		return emptyResp, err
 	}
 
 	// re-scan PCI bus
@@ -625,6 +618,33 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 	}
 
 	return emptyResp, a.postExecProcess(ctr, ctr.initProcess)
+}
+
+func (a *agentGRPC) createContainerChecks(req *pb.CreateContainerRequest) (err error) {
+	if a.sandbox.running == false {
+		return grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started, impossible to run a new container")
+	}
+
+	if _, err = a.sandbox.getContainer(req.ContainerId); err == nil {
+		return grpcStatus.Errorf(codes.AlreadyExists, "Container %s already exists, impossible to create", req.ContainerId)
+	}
+
+	if a.pidNsExists(req.OCI) {
+		return grpcStatus.Errorf(codes.FailedPrecondition, "Unexpected PID namespace received for container %s, should have been cleared out", req.ContainerId)
+	}
+
+	return nil
+}
+
+func (a *agentGRPC) pidNsExists(grpcSpec *pb.Spec) bool {
+	if grpcSpec.Linux != nil {
+		for _, n := range grpcSpec.Linux.Namespaces {
+			if n.Type == string(configs.NEWPID) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (a *agentGRPC) updateSharedPidNs(ctr *container) error {
@@ -1024,6 +1044,16 @@ func (a *agentGRPC) WriteStdin(ctx context.Context, req *pb.WriteStreamRequest) 
 		return &pb.WriteStreamResponse{}, err
 	}
 
+	proc.RLock()
+	defer proc.RUnlock()
+	stdinClosed := proc.stdinClosed
+
+	// Ignore this call to WriteStdin() if STDIN has already been closed
+	// earlier.
+	if stdinClosed {
+		return &pb.WriteStreamResponse{}, nil
+	}
+
 	var file *os.File
 	if proc.termMaster != nil {
 		file = proc.termMaster
@@ -1069,16 +1099,20 @@ func (a *agentGRPC) CloseStdin(ctx context.Context, req *pb.CloseStdinRequest) (
 		return emptyResp, err
 	}
 
-	var file *os.File
-	if proc.termMaster != nil {
-		file = proc.termMaster
-	} else {
-		file = proc.stdin
+	// If stdin is nil, which can be the case when using a terminal,
+	// there is nothing to do.
+	if proc.stdin == nil {
+		return emptyResp, nil
 	}
 
-	if err := file.Close(); err != nil {
+	proc.Lock()
+	defer proc.Unlock()
+
+	if err := proc.stdin.Close(); err != nil {
 		return emptyResp, err
 	}
+
+	proc.stdinClosed = true
 
 	return emptyResp, nil
 }
