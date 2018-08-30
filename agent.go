@@ -70,6 +70,7 @@ type process struct {
 	consoleSock *os.File
 	termMaster  *os.File
 	exitCodeCh  chan int
+	sync.Once
 	stdinClosed bool
 }
 
