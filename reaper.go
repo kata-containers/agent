@@ -140,8 +140,6 @@ func (r *agentReaper) reap() error {
 		// of the process and return the exit code to the
 		// caller of WaitProcess().
 		exitCodeCh <- status
-
-		close(exitCodeCh)
 	}
 }
 
