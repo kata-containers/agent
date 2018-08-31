@@ -7,12 +7,23 @@
 package grpc
 
 import (
+	"encoding/json"
+	"errors"
+	"os"
+	"path"
+	"path/filepath"
 	"reflect"
 
 	"google.golang.org/grpc/codes"
 	grpcStatus "google.golang.org/grpc/status"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
+)
+
+// OCI config file
+const (
+	OCIConfigFile     string      = "config.json"
+	ociConfigFileMode os.FileMode = 0444
 )
 
 func copyValue(to, from reflect.Value) error {
@@ -286,4 +297,45 @@ func ResourcesGRPCtoOCI(grpcResources *LinuxResources) (*specs.LinuxResources, e
 	err := copyStruct(s, grpcResources)
 
 	return s, err
+}
+
+// ChangeToBundlePath changes the cwd to the bundle path defined in the OCI spec
+func ChangeToBundlePath(spec *specs.Spec) (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return cwd, err
+	}
+
+	if spec == nil || spec.Root == nil || spec.Root.Path == "" {
+		return cwd, errors.New("Invalid OCI spec")
+	}
+
+	rootfsPath := spec.Root.Path
+	if !filepath.IsAbs(rootfsPath) {
+		rootfsPath = filepath.Join(cwd, rootfsPath)
+	}
+
+	bundlePath := filepath.Dir(rootfsPath)
+
+	err = os.Chdir(bundlePath)
+	return cwd, err
+}
+
+// WriteSpecToFile writes the container's OCI spec to 'config.json'
+// in the bundle path as expected by the OCI specification.
+func WriteSpecToFile(spec *specs.Spec) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	configPath := path.Join(cwd, OCIConfigFile)
+	f, err := os.OpenFile(configPath, os.O_RDWR|os.O_CREATE, ociConfigFileMode)
+	if err != nil {
+		return err
+	}
+
+	defer f.Close()
+	err = json.NewEncoder(f).Encode(&spec)
+	return err
 }

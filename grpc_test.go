@@ -11,6 +11,7 @@ import (
 	"errors"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -532,4 +533,70 @@ func TestReseedRandomDev(t *testing.T) {
 	r, err := a.ReseedRandomDev(context.TODO(), req)
 	assert.NoError(err)
 	assert.Equal(r, emptyResp)
+}
+
+func TestChangeToBundlePath(t *testing.T) {
+	assert := assert.New(t)
+
+	originalCwd, err := os.Getwd()
+	assert.NoError(err)
+	defer os.Chdir(originalCwd)
+
+	bundlePath, err := ioutil.TempDir("", "bundle")
+	assert.NoError(err)
+	defer os.RemoveAll(bundlePath)
+
+	rootFsPath := path.Join(bundlePath, "rootfs")
+	err = os.Mkdir(rootFsPath, 0666)
+	assert.NoError(err)
+
+	spec := &specs.Spec{}
+	spec.Root = &specs.Root{
+		Path:     "",
+		Readonly: false,
+	}
+
+	_, err = pb.ChangeToBundlePath(spec)
+	assert.Error(err)
+
+	spec.Root.Path = rootFsPath
+	cwd, err := pb.ChangeToBundlePath(spec)
+	assert.NoError(err)
+	assert.Equal(cwd, originalCwd)
+
+	cwd, err = os.Getwd()
+	assert.NoError(err)
+	assert.Equal(bundlePath, cwd)
+}
+
+func TestWriteSpecToFile(t *testing.T) {
+	assert := assert.New(t)
+
+	bundlePath, err := ioutil.TempDir("", "bundle")
+	assert.NoError(err)
+	defer os.RemoveAll(bundlePath)
+
+	originalCwd, err := os.Getwd()
+	assert.NoError(err)
+	defer os.Chdir(originalCwd)
+
+	err = os.Chdir(bundlePath)
+	assert.NoError(err)
+
+	spec := &specs.Spec{}
+	spec.Root = &specs.Root{
+		Path:     "/this/is/a/path/",
+		Readonly: false,
+	}
+	err = pb.WriteSpecToFile(spec)
+	assert.NoError(err)
+
+	file, err := os.Open(path.Join(bundlePath, pb.OCIConfigFile))
+	assert.NoError(err)
+	defer file.Close()
+
+	stat, err := file.Stat()
+	assert.NoError(err)
+
+	assert.True(stat.Size() > 0)
 }
