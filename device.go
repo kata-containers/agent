@@ -216,15 +216,32 @@ func updateSpecDeviceList(device pb.Device, spec *pb.Spec) error {
 	// Update the spec
 	for idx, d := range spec.Linux.Devices {
 		if d.Path == device.ContainerPath {
+			hostMajor := spec.Linux.Devices[idx].Major
+			hostMinor := spec.Linux.Devices[idx].Minor
 			agentLog.WithFields(logrus.Fields{
 				"device-path":        device.VmPath,
-				"host-device-major":  spec.Linux.Devices[idx].Major,
-				"host-device-minor":  spec.Linux.Devices[idx].Minor,
+				"host-device-major":  hostMajor,
+				"host-device-minor":  hostMinor,
 				"guest-device-major": major,
 				"guest-device-minor": minor,
 			}).Info("updating block device major/minor into the spec")
+
 			spec.Linux.Devices[idx].Major = major
 			spec.Linux.Devices[idx].Minor = minor
+
+			// there is no resource to update
+			if spec.Linux == nil || spec.Linux.Resources == nil {
+				return nil
+			}
+
+			// Resources must be updated since they are used to identify the
+			// device in the devices cgroup.
+			for idxRsrc, dRsrc := range spec.Linux.Resources.Devices {
+				if dRsrc.Major == hostMajor && dRsrc.Minor == hostMinor {
+					spec.Linux.Resources.Devices[idxRsrc].Major = major
+					spec.Linux.Resources.Devices[idxRsrc].Minor = minor
+				}
+			}
 
 			return nil
 		}
