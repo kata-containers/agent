@@ -409,3 +409,13 @@ func (m *mockServer) ListRoutes(ctx context.Context, req *pb.ListRoutesRequest) 
 
 	return nil, nil
 }
+
+func (m *mockServer) ReadSandboxFile(ctx context.Context, req *pb.ReadSandboxFileRequest) (*pb.FileData, error) {
+	mockLock.RLock()
+	defer mockLock.RUnlock()
+	if err := m.podExist(); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}

@@ -54,6 +54,7 @@ service AgentService {
 	rpc DestroySandbox(DestroySandboxRequest) returns (google.protobuf.Empty);
 	rpc OnlineCPUMem(OnlineCPUMemRequest) returns (google.protobuf.Empty);
 	rpc ReseedRandomDev(ReseedRandomDevRequest) returns (google.protobuf.Empty);
+	rpc ReadSandboxFile(ReadSandboxFileRequest) returns (FileData);
 }
 
 message CreateContainerRequest {
@@ -343,6 +344,16 @@ message OnlineCPUMemRequest {
 
 	// CpuOnly specifies whether only online CPU or not.
 	bool cpu_only = 3;
+}
+
+message ReadSandboxFileRequest {
+    // The path of file in sandbox
+    string file_path = 1;
+}
+
+message FileData {
+    // Data specifies the data of file in sandbox
+    bytes data = 1;
 }
 
 message ReseedRandomDevRequest {
