@@ -112,14 +112,23 @@ func getPCIDeviceName(s *sandbox, pciID string) (string, error) {
 
 	fieldLogger := agentLog.WithField("pciID", pciID)
 
-	// Check if the PCI identifier is in PCI device map.
 	s.Lock()
+	// Check if the PCI identifier is in PCI device map.
 	for key, value := range s.pciDeviceMap {
 		if strings.Contains(key, pciAddr) {
 			devName = value
 			fieldLogger.Info("Device found in pci device map")
 			break
 		}
+	}
+
+	// Check if the PCI path is present before we setup the pci device map.
+	_, err = os.Stat(filepath.Join(rootBusPath, pciAddr))
+	if err == nil {
+		// Found pci path. It's there before we wait for the device map.
+		// We cannot find the name for it.
+		fieldLogger.Info("Device found on pci device path")
+		return "", nil
 	}
 
 	// If device is not found in the device map, hotplug event has not
@@ -159,6 +168,9 @@ func virtioBlkDeviceHandler(device pb.Device, spec *pb.Spec, s *sandbox) error {
 	devPath, err := getPCIDeviceName(s, device.Id)
 	if err != nil {
 		return err
+	}
+	if devPath == "" {
+		return fmt.Errorf("cannot find device name for virtio block device")
 	}
 	device.VmPath = devPath
 
