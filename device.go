@@ -140,7 +140,6 @@ func getBlockDeviceNodeName(s *sandbox, pciID string) (string, error) {
 		case <-time.After(time.Duration(timeoutHotplug) * time.Second):
 			s.Lock()
 			delete(s.deviceWatchers, pciAddr)
-			close(notifyChan)
 			s.Unlock()
 
 			return "", grpcStatus.Errorf(codes.DeadlineExceeded,
