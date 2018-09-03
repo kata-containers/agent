@@ -14,11 +14,14 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	pb "github.com/kata-containers/agent/protocols/grpc"
+	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
+	"sync"
 )
 
 var testSharedPidNs = "testSharedPidNs"
@@ -532,4 +535,88 @@ func TestReseedRandomDev(t *testing.T) {
 	r, err := a.ReseedRandomDev(context.TODO(), req)
 	assert.NoError(err)
 	assert.Equal(r, emptyResp)
+}
+
+func TestSingleWaitProcess(t *testing.T) {
+	containerID := "1"
+	exitCode := 9
+	assert := assert.New(t)
+	req := &pb.WaitProcessRequest{
+		ContainerId: containerID,
+		ExecId:      containerID,
+	}
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+			running:    true,
+			subreaper:  &agentReaper{},
+		},
+	}
+
+	a.sandbox.containers[containerID] = &container{
+		id:        containerID,
+		processes: make(map[string]*process),
+	}
+
+	a.sandbox.containers[containerID].processes[containerID] = &process{
+		id:         containerID,
+		process:    libcontainer.Process{},
+		exitCodeCh: make(chan int, 1),
+	}
+
+	go func() {
+		time.Sleep(time.Second)
+		a.sandbox.containers[containerID].processes[containerID].exitCodeCh <- exitCode
+	}()
+
+	resp, _ := a.WaitProcess(context.TODO(), req)
+	assert.Equal(resp.Status, int32(exitCode))
+}
+
+func TestMultiWaitProcess(t *testing.T) {
+	containerID := "1"
+	exitCode := 9
+	wg := sync.WaitGroup{}
+
+	assert := assert.New(t)
+	req := &pb.WaitProcessRequest{
+		ContainerId: containerID,
+		ExecId:      containerID,
+	}
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+			running:    true,
+			subreaper:  &agentReaper{},
+		},
+	}
+
+	a.sandbox.containers[containerID] = &container{
+		id:        containerID,
+		processes: make(map[string]*process),
+	}
+
+	a.sandbox.containers[containerID].processes[containerID] = &process{
+		id:         containerID,
+		process:    libcontainer.Process{},
+		exitCodeCh: make(chan int, 1),
+	}
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			resp, _ := a.WaitProcess(context.TODO(), req)
+			assert.Equal(resp.Status, int32(exitCode))
+			wg.Done()
+		}()
+	}
+
+	go func() {
+		time.Sleep(time.Second)
+		a.sandbox.containers[containerID].processes[containerID].exitCodeCh <- exitCode
+	}()
+
+	wg.Wait()
 }

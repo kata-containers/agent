@@ -772,10 +772,10 @@ func (a *agentGRPC) WaitProcess(ctx context.Context, req *pb.WaitProcessRequest)
 		return &pb.WaitProcessResponse{}, err
 	}
 
-	defer func() {
+	defer proc.Do(func() {
 		proc.closePostExitFDs()
 		ctr.deleteProcess(proc.id)
-	}()
+	})
 
 	// Using helper function wait() to deal with the subreaper.
 	libContProcess := (*reaperLibcontainerProcess)(&(proc.process))
@@ -783,6 +783,11 @@ func (a *agentGRPC) WaitProcess(ctx context.Context, req *pb.WaitProcessRequest)
 	if err != nil {
 		return &pb.WaitProcessResponse{}, err
 	}
+	//refill the exitCodeCh with the exitcode which can be read out
+	//by another WaitProcess(). Since this channel isn't be closed,
+	//here the refill will always success and it will be free by GC
+	//once the process exits.
+	proc.exitCodeCh <- exitCode
 
 	return &pb.WaitProcessResponse{
 		Status: int32(exitCode),
