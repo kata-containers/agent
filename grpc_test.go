@@ -620,3 +620,30 @@ func TestMultiWaitProcess(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestReadSandboxFile(t *testing.T) {
+	assert := assert.New(t)
+	a := agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	req := &pb.ReadSandboxFileRequest{}
+
+	const filePath = "/tmp/readsandboxfile"
+
+	r, err := a.ReadSandboxFile(context.TODO(), req)
+	assert.Error(err)
+	assert.Nil(r)
+
+	err = ioutil.WriteFile(filePath, []byte{1, 2, 3}, 0755)
+	assert.NoError(err)
+	defer os.Remove(filePath)
+
+	req.FilePath = filePath
+
+	r, err = a.ReadSandboxFile(context.TODO(), req)
+	assert.NoError(err)
+	assert.Equal(r.Data, []byte{1, 2, 3})
+}

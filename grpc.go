@@ -1304,3 +1304,18 @@ func (a *agentGRPC) OnlineCPUMem(ctx context.Context, req *pb.OnlineCPUMemReques
 func (a *agentGRPC) ReseedRandomDev(ctx context.Context, req *pb.ReseedRandomDevRequest) (*gpb.Empty, error) {
 	return emptyResp, reseedRNG(req.Data)
 }
+
+func (a *agentGRPC) ReadSandboxFile(ctx context.Context, req *pb.ReadSandboxFileRequest) (*pb.FileData, error) {
+	if req.FilePath == "" {
+		return nil, grpcStatus.Error(codes.FailedPrecondition, "File path should not be empty")
+	}
+
+	data, err := ioutil.ReadFile(req.FilePath)
+	if err != nil {
+		return nil, err
+	}
+
+	return &pb.FileData{
+		Data: data,
+	}, nil
+}
