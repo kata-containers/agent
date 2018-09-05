@@ -373,3 +373,73 @@ func TestAddDevice(t *testing.T) {
 		}
 	}
 }
+
+func TestUpdateSpecDeviceList(t *testing.T) {
+	assert := assert.New(t)
+
+	var err error
+	spec := &pb.Spec{}
+	device := pb.Device{}
+	major := int64(7)
+	minor := int64(2)
+
+	//ContainerPath empty
+	err = updateSpecDeviceList(device, spec)
+	assert.Error(err)
+
+	device.ContainerPath = "/dev/null"
+
+	//Linux is nil
+	err = updateSpecDeviceList(device, spec)
+	assert.Error(err)
+
+	spec.Linux = &pb.Linux{}
+
+	/// Linux.Devices empty
+	err = updateSpecDeviceList(device, spec)
+	assert.Error(err)
+
+	spec.Linux.Devices = []pb.LinuxDevice{
+		{
+			Path:  "/dev/null2",
+			Major: major,
+			Minor: minor,
+		},
+	}
+
+	// VmPath empty
+	err = updateSpecDeviceList(device, spec)
+	assert.Error(err)
+
+	device.VmPath = "/dev/null"
+
+	// guest and host path are not the same
+	err = updateSpecDeviceList(device, spec)
+	assert.Error(err)
+
+	spec.Linux.Devices[0].Path = device.ContainerPath
+
+	// spec.Linux.Resources is nil
+	err = updateSpecDeviceList(device, spec)
+	assert.NoError(err)
+
+	// update both devices and cgroup lists
+	spec.Linux.Devices = []pb.LinuxDevice{
+		{
+			Path:  device.ContainerPath,
+			Major: major,
+			Minor: minor,
+		},
+	}
+	spec.Linux.Resources = &pb.LinuxResources{
+		Devices: []pb.LinuxDeviceCgroup{
+			{
+				Major: major,
+				Minor: minor,
+			},
+		},
+	}
+
+	err = updateSpecDeviceList(device, spec)
+	assert.NoError(err)
+}
