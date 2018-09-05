@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -73,6 +74,20 @@ func TestTeardownSerialChannel(t *testing.T) {
 
 	err = c.teardown()
 	assert.Nil(t, err, "%v", err)
+}
+
+func TestTeardownSerialChannelTimeout(t *testing.T) {
+	_, f, err := os.Pipe()
+	assert.Nil(t, err, "%v", err)
+	channelCloseTimeout = 1 * time.Microsecond
+
+	c := &serialChannel{
+		serialConn: f,
+		waitCh:     make(chan struct{}),
+	}
+
+	err = c.teardown()
+	assert.NotNil(t, err, "channel close should timeout")
 }
 
 func TestNewChannel(t *testing.T) {
