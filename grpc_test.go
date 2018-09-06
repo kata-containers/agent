@@ -11,17 +11,20 @@ import (
 	"errors"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
+
+	"sync"
 
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
-	"sync"
 )
 
 var testSharedPidNs = "testSharedPidNs"
@@ -619,4 +622,107 @@ func TestMultiWaitProcess(t *testing.T) {
 	}()
 
 	wg.Wait()
+}
+func TestChangeToBundlePath(t *testing.T) {
+	assert := assert.New(t)
+
+	originalCwd, err := os.Getwd()
+	assert.NoError(err)
+	defer os.Chdir(originalCwd)
+
+	bundlePath, err := ioutil.TempDir("", "bundle")
+	assert.NoError(err)
+	defer os.RemoveAll(bundlePath)
+
+	rootFsPath := path.Join(bundlePath, "rootfs")
+	err = os.Mkdir(rootFsPath, 0666)
+	assert.NoError(err)
+
+	spec := &specs.Spec{}
+	spec.Root = &specs.Root{
+		Path:     "",
+		Readonly: false,
+	}
+
+	_, err = pb.ChangeToBundlePath(spec)
+	assert.Error(err)
+
+	spec.Root.Path = rootFsPath
+	cwd, err := pb.ChangeToBundlePath(spec)
+	assert.NoError(err)
+	assert.Equal(cwd, originalCwd)
+
+	cwd, err = os.Getwd()
+	assert.NoError(err)
+	assert.Equal(bundlePath, cwd)
+}
+
+func TestWriteSpecToFile(t *testing.T) {
+	assert := assert.New(t)
+
+	bundlePath, err := ioutil.TempDir("", "bundle")
+	assert.NoError(err)
+	defer os.RemoveAll(bundlePath)
+
+	originalCwd, err := os.Getwd()
+	assert.NoError(err)
+	defer os.Chdir(originalCwd)
+
+	err = os.Chdir(bundlePath)
+	assert.NoError(err)
+
+	spec := &specs.Spec{}
+	spec.Root = &specs.Root{
+		Path:     "/this/is/a/path/",
+		Readonly: false,
+	}
+	err = pb.WriteSpecToFile(spec)
+	assert.NoError(err)
+
+	file, err := os.Open(path.Join(bundlePath, pb.OCIConfigFile))
+	assert.NoError(err)
+	defer file.Close()
+
+	stat, err := file.Stat()
+	assert.NoError(err)
+
+	assert.True(stat.Size() > 0)
+}
+
+func TestAddGuestHooks(t *testing.T) {
+	assert := assert.New(t)
+
+	hookPath, err := ioutil.TempDir("", "hooks")
+	assert.NoError(err)
+	defer os.RemoveAll(hookPath)
+
+	poststopPath := path.Join(hookPath, "poststop")
+	err = os.Mkdir(poststopPath, 0777)
+	assert.NoError(err)
+
+	dirPath := path.Join(poststopPath, "directory")
+	err = os.Mkdir(dirPath, 0777)
+	assert.NoError(err)
+
+	normalPath := path.Join(poststopPath, "normalfile")
+	f, err := os.OpenFile(normalPath, os.O_RDONLY|os.O_CREATE, 0666)
+	assert.NoError(err)
+	f.Close()
+
+	symlinkPath := path.Join(poststopPath, "symlink")
+	err = os.Link(normalPath, symlinkPath)
+	assert.NoError(err)
+
+	spec := &specs.Spec{}
+	pb.AddGuestHooks(spec, hookPath)
+	assert.True(len(spec.Hooks.Poststop) == 0)
+
+	execPath := path.Join(poststopPath, "executable")
+	f, err = os.OpenFile(execPath, os.O_RDONLY|os.O_CREATE, 0777)
+	assert.NoError(err)
+	f.Close()
+
+	pb.AddGuestHooks(spec, hookPath)
+	assert.True(len(spec.Hooks.Poststop) == 1)
+	assert.True(strings.Contains(spec.Hooks.Poststop[0].Path, "executable"))
 }

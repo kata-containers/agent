@@ -112,6 +112,7 @@ type sandbox struct {
 	enableGrpcTrace bool
 	sandboxPidNs    bool
 	storages        map[string]*sandboxStorage
+	guestHookPath   string
 }
 
 var agentFields = logrus.Fields{

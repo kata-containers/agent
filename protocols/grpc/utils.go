@@ -7,12 +7,24 @@
 package grpc
 
 import (
+	"encoding/json"
+	"errors"
+	"io/ioutil"
+	"os"
+	"path"
+	"path/filepath"
 	"reflect"
 
 	"google.golang.org/grpc/codes"
 	grpcStatus "google.golang.org/grpc/status"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
+)
+
+// OCI config file
+const (
+	OCIConfigFile     string      = "config.json"
+	ociConfigFileMode os.FileMode = 0444
 )
 
 func copyValue(to, from reflect.Value) error {
@@ -286,4 +298,112 @@ func ResourcesGRPCtoOCI(grpcResources *LinuxResources) (*specs.LinuxResources, e
 	err := copyStruct(s, grpcResources)
 
 	return s, err
+}
+
+// ChangeToBundlePath changes the cwd to the bundle path defined in the OCI spec
+func ChangeToBundlePath(spec *specs.Spec) (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return cwd, err
+	}
+
+	if spec == nil || spec.Root == nil || spec.Root.Path == "" {
+		return cwd, errors.New("Invalid OCI spec")
+	}
+
+	rootfsPath := spec.Root.Path
+	if !filepath.IsAbs(rootfsPath) {
+		rootfsPath = filepath.Join(cwd, rootfsPath)
+	}
+
+	bundlePath := filepath.Dir(rootfsPath)
+
+	err = os.Chdir(bundlePath)
+	return cwd, err
+}
+
+// WriteSpecToFile writes the container's OCI spec to 'config.json'
+// in the bundle path as expected by the OCI specification.
+func WriteSpecToFile(spec *specs.Spec) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	configPath := path.Join(cwd, OCIConfigFile)
+	f, err := os.OpenFile(configPath, os.O_RDWR|os.O_CREATE, ociConfigFileMode)
+	if err != nil {
+		return err
+	}
+
+	defer f.Close()
+	err = json.NewEncoder(f).Encode(&spec)
+	return err
+}
+
+func isValidHook(file os.FileInfo) bool {
+	if file.IsDir() {
+		return false
+	}
+
+	mode := file.Mode()
+	if (mode & os.ModeSymlink) != 0 {
+		return false
+	}
+
+	// check that this file is executable
+	perm := mode & os.ModePerm
+	if (perm & 0111) == 0 {
+		return false
+	}
+
+	return true
+}
+
+func findHooks(spec *specs.Spec, guestHookPath, hookType string) {
+	hooksPath := path.Join(guestHookPath, hookType)
+
+	files, err := ioutil.ReadDir(hooksPath)
+	if err != nil {
+		return
+	}
+
+	for _, file := range files {
+		if !isValidHook(file) {
+			continue
+		}
+
+		fullHookPath := path.Join(hooksPath, file.Name())
+		args := []string{fullHookPath}
+		hook := specs.Hook{
+			Path: fullHookPath,
+			Args: append(args, hookType),
+		}
+
+		switch hookType {
+		case "prestart":
+			spec.Hooks.Prestart = append(spec.Hooks.Prestart, hook)
+		case "poststart":
+			spec.Hooks.Poststart = append(spec.Hooks.Poststart, hook)
+		case "poststop":
+			spec.Hooks.Poststop = append(spec.Hooks.Poststop, hook)
+		}
+	}
+}
+
+// AddGuestHooks searches guestHookPath for any OCI hooks and
+// adds them to the OCI spec if found
+func AddGuestHooks(spec *specs.Spec, guestHookPath string) {
+	if spec == nil {
+		return
+	}
+
+	if spec.Hooks == nil {
+		spec.Hooks = &specs.Hooks{}
+	}
+
+	hookTypes := []string{"prestart", "poststart", "poststop"}
+	for _, hookType := range hookTypes {
+		findHooks(spec, guestHookPath, hookType)
+	}
 }

@@ -265,6 +265,8 @@ message CreateSandboxRequest {
 	// one sandbox per agent and implicitly require that CreateSandbox is
 	// called before other sandbox/network calls.
 	string sandbox_id = 5;
+
+	string guest_hook_path = 6;
 }
 
 message DestroySandboxRequest {

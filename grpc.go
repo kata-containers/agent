@@ -523,6 +523,35 @@ func (a *agentGRPC) rollbackFailingContainerCreation(ctr *container) {
 	}
 }
 
+func finishCreateContainer(a *agentGRPC, ctr *container, req *pb.CreateContainerRequest, config *configs.Config) (resp *gpb.Empty, err error) {
+	containerPath := filepath.Join("/tmp/libcontainer", a.sandbox.id)
+	factory, err := libcontainer.New(containerPath, libcontainer.Cgroupfs)
+	if err != nil {
+		return emptyResp, err
+	}
+
+	ctr.container, err = factory.Create(req.ContainerId, config)
+	if err != nil {
+		return emptyResp, err
+	}
+	ctr.config = *config
+
+	ctr.initProcess, err = buildProcess(req.OCI.Process, req.ExecId)
+	if err != nil {
+		return emptyResp, err
+	}
+
+	if err = a.execProcess(ctr, ctr.initProcess, true); err != nil {
+		return emptyResp, err
+	}
+
+	if err := a.updateSharedPidNs(ctr); err != nil {
+		return emptyResp, err
+	}
+
+	return emptyResp, a.postExecProcess(ctr, ctr.initProcess)
+}
+
 func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainerRequest) (resp *gpb.Empty, err error) {
 	if err := a.createContainerChecks(req); err != nil {
 		return emptyResp, err
@@ -578,6 +607,24 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		return emptyResp, err
 	}
 
+	if a.sandbox.guestHookPath != "" {
+		// Add any custom OCI hooks to the spec
+		pb.AddGuestHooks(ociSpec, a.sandbox.guestHookPath)
+
+		// Change cwd because libcontainer sets the bundle path to cwd
+		oldcwd, err := pb.ChangeToBundlePath(ociSpec)
+		if err != nil {
+			return emptyResp, err
+		}
+		defer os.Chdir(oldcwd)
+
+		// write the OCI spec to a file so that any hooks can find it
+		err = pb.WriteSpecToFile(ociSpec)
+		if err != nil {
+			return emptyResp, err
+		}
+	}
+
 	// Convert the OCI specification into a libcontainer configuration.
 	config, err := specconv.CreateLibcontainerConfig(&specconv.CreateOpts{
 		CgroupName:   req.ContainerId,
@@ -595,32 +642,7 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		return emptyResp, err
 	}
 
-	containerPath := filepath.Join("/tmp/libcontainer", a.sandbox.id)
-	factory, err := libcontainer.New(containerPath, libcontainer.Cgroupfs)
-	if err != nil {
-		return emptyResp, err
-	}
-
-	ctr.container, err = factory.Create(req.ContainerId, config)
-	if err != nil {
-		return emptyResp, err
-	}
-	ctr.config = *config
-
-	ctr.initProcess, err = buildProcess(req.OCI.Process, req.ExecId)
-	if err != nil {
-		return emptyResp, err
-	}
-
-	if err = a.execProcess(ctr, ctr.initProcess, true); err != nil {
-		return emptyResp, err
-	}
-
-	if err := a.updateSharedPidNs(ctr); err != nil {
-		return emptyResp, err
-	}
-
-	return emptyResp, a.postExecProcess(ctr, ctr.initProcess)
+	return finishCreateContainer(a, ctr, req, config)
 }
 
 func (a *agentGRPC) createContainerChecks(req *pb.CreateContainerRequest) (err error) {
@@ -1180,6 +1202,7 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 	a.sandbox.running = true
 	a.sandbox.sandboxPidNs = req.SandboxPidns
 	a.sandbox.storages = make(map[string]*sandboxStorage)
+	a.sandbox.guestHookPath = req.GuestHookPath
 
 	if req.SandboxId != "" {
 		a.sandbox.id = req.SandboxId
