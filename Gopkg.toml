@@ -40,7 +40,7 @@
 
 [[constraint]]
   name = "google.golang.org/grpc"
-  revision = "5a9f7b402fe85096d2e1d0383435ee1876e863d0"
+  revision = "d11072e7ca9811b1100b80ca0269ac831f06d024"
 
 [prune]
   non-go = true
