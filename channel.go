@@ -25,6 +25,7 @@ import (
 var (
 	channelExistMaxTries   = 200
 	channelExistWaitTime   = 50 * time.Millisecond
+	channelCloseTimeout    = 5 * time.Second
 	isAFVSockSupportedFunc = isAFVSockSupported
 )
 
@@ -209,7 +210,13 @@ func (c *serialChannel) listen() (net.Listener, error) {
 func (c *serialChannel) teardown() error {
 	// wait for the session to be fully shutdown first
 	if c.waitCh != nil {
-		<-c.waitCh
+		t := time.NewTimer(channelCloseTimeout)
+		select {
+		case <-c.waitCh:
+			t.Stop()
+		case <-t.C:
+			return fmt.Errorf("timeout waiting for yamux channel to close")
+		}
 	}
 	return c.serialConn.Close()
 }
