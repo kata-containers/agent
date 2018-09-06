@@ -486,6 +486,11 @@ func (s *sandbox) listenToUdevEvents() {
 			continue
 		}
 
+		// We only care about add event
+		if uEv.Action != "add" {
+			continue
+		}
+
 		fieldLogger = fieldLogger.WithFields(logrus.Fields{
 			"uevent-action":    uEv.Action,
 			"uevent-devpath":   uEv.DevPath,
@@ -495,7 +500,7 @@ func (s *sandbox) listenToUdevEvents() {
 		})
 
 		// Check if device hotplug event results in a device node being created.
-		if uEv.DevName != "" && uEv.Action == "add" && strings.HasPrefix(uEv.DevPath, rootBusPath) {
+		if uEv.DevName != "" && strings.HasPrefix(uEv.DevPath, rootBusPath) {
 			// Lock is needed to safey read and modify the pciDeviceMap and deviceWatchers.
 			// This makes sure that watchers do not access the map while it is being updated.
 			s.Lock()
@@ -514,6 +519,12 @@ func (s *sandbox) listenToUdevEvents() {
 			}
 
 			s.Unlock()
+		} else if strings.HasPrefix(uEv.DevPath, sysfsMemOnlinePath) {
+			// Check memory hotplug and online if possible
+			onlinePath := filepath.Join("sys", uEv.DevPath, "online")
+			if err := ioutil.WriteFile(onlinePath, []byte("1"), 0600); err != nil {
+				fieldLogger.WithError(err).Error("failed online device")
+			}
 		}
 	}
 }
