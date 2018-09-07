@@ -409,3 +409,13 @@ func (m *mockServer) ListRoutes(ctx context.Context, req *pb.ListRoutesRequest) 
 
 	return nil, nil
 }
+
+func (m *mockServer) GetGuestDetails(ctx context.Context, req *pb.GuestDetailsRequest) (*pb.GuestDetailsResponse, error) {
+	mockLock.RLock()
+	defer mockLock.RUnlock()
+	if err := m.podExist(); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}

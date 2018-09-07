@@ -1303,3 +1303,18 @@ func (a *agentGRPC) OnlineCPUMem(ctx context.Context, req *pb.OnlineCPUMemReques
 func (a *agentGRPC) ReseedRandomDev(ctx context.Context, req *pb.ReseedRandomDevRequest) (*gpb.Empty, error) {
 	return emptyResp, reseedRNG(req.Data)
 }
+
+func (a *agentGRPC) GetGuestDetails(ctx context.Context, req *pb.GuestDetailsRequest) (*pb.GuestDetailsResponse, error) {
+	var details pb.GuestDetailsResponse
+	if req.MemBlockSize {
+		data, err := ioutil.ReadFile("/sys/devices/system/memory/block_size_bytes")
+		if err != nil {
+			return nil, err
+		}
+		details.MemBlockSizeBytes, err = strconv.ParseUint(string(data[:len(data)-1]), 16, 64)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &details, nil
+}
