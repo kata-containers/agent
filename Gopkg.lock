@@ -302,16 +302,18 @@
   revision = "7f0da29060c682909f650ad8ed4e515bd74fa12a"
 
 [[projects]]
-  digest = "1:abbcaa84ed484e328cef0cd0bc0130641edc52b4bc6bfb0090dadfd2c1033b6f"
+  digest = "1:3d43152515ea791363eb0d1d21378fbf70e7df4a3954fd315898532cf5e64a8c"
   name = "google.golang.org/grpc"
   packages = [
     ".",
     "balancer",
+    "balancer/base",
     "balancer/roundrobin",
     "codes",
     "connectivity",
     "credentials",
     "encoding",
+    "encoding/proto",
     "grpclb/grpc_lb_v1/messages",
     "grpclog",
     "internal",
@@ -328,7 +330,7 @@
     "transport",
   ]
   pruneopts = "NUT"
-  revision = "5a9f7b402fe85096d2e1d0383435ee1876e863d0"
+  revision = "d11072e7ca9811b1100b80ca0269ac831f06d024"
 
 [solve-meta]
   analyzer-name = "dep"

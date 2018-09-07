@@ -30,7 +30,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 	"golang.org/x/sys/unix"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	grpcStatus "google.golang.org/grpc/status"
 )
@@ -756,7 +755,7 @@ func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequ
 
 	proc, err := ctr.getProcess(req.ExecId)
 	if err != nil {
-		return emptyResp, grpcStatus.Errorf(grpc.Code(err), "Could not signal process: %v", err)
+		return emptyResp, grpcStatus.Errorf(grpcStatus.Convert(err).Code(), "Could not signal process: %v", err)
 	}
 
 	if err := proc.process.Signal(signal); err != nil {
