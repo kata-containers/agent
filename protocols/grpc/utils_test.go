@@ -9,14 +9,14 @@ package grpc
 import (
 	"encoding/json"
 	"io/ioutil"
+	"os"
+	"path"
 	"reflect"
 	"testing"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
 )
-
-const ociConfigFile = "config.json"
 
 func assertProcessIsEqual(t *testing.T, ociProcess *specs.Process, grpcProcess *Process) {
 	assert := assert.New(t)
@@ -193,4 +193,70 @@ func TestCopyValueMap(t *testing.T) {
 	to := new(map[string]string)
 
 	testCopyValue(t, to, from)
+}
+
+func TestChangeToBundlePath(t *testing.T) {
+	assert := assert.New(t)
+
+	originalCwd, err := os.Getwd()
+	assert.NoError(err)
+	defer os.Chdir(originalCwd)
+
+	bundlePath, err := ioutil.TempDir("", "bundle")
+	assert.NoError(err)
+	defer os.RemoveAll(bundlePath)
+
+	rootFsPath := path.Join(bundlePath, "rootfs")
+	err = os.Mkdir(rootFsPath, 0666)
+	assert.NoError(err)
+
+	spec := &specs.Spec{}
+	spec.Root = &specs.Root{
+		Path:     "",
+		Readonly: false,
+	}
+
+	_, err = ChangeToBundlePath(spec)
+	assert.Error(err)
+
+	spec.Root.Path = rootFsPath
+	cwd, err := ChangeToBundlePath(spec)
+	assert.NoError(err)
+	assert.Equal(cwd, originalCwd)
+
+	cwd, err = os.Getwd()
+	assert.NoError(err)
+	assert.Equal(bundlePath, cwd)
+}
+
+func TestWriteSpecToFile(t *testing.T) {
+	assert := assert.New(t)
+
+	bundlePath, err := ioutil.TempDir("", "bundle")
+	assert.NoError(err)
+	defer os.RemoveAll(bundlePath)
+
+	originalCwd, err := os.Getwd()
+	assert.NoError(err)
+	defer os.Chdir(originalCwd)
+
+	err = os.Chdir(bundlePath)
+	assert.NoError(err)
+
+	spec := &specs.Spec{}
+	spec.Root = &specs.Root{
+		Path:     "/this/is/a/path/",
+		Readonly: false,
+	}
+	err = WriteSpecToFile(spec)
+	assert.NoError(err)
+
+	file, err := os.Open(path.Join(bundlePath, ociConfigFile))
+	assert.NoError(err)
+	defer file.Close()
+
+	stat, err := file.Stat()
+	assert.NoError(err)
+
+	assert.True(stat.Size() > 0)
 }
