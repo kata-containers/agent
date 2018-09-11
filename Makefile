@@ -54,7 +54,7 @@ build-image:
 	docker build ${BUILDARGS} -t ${AGENT_IMAGE}:${AGENT_TAG} .
 
 proto: build-image
-	docker run -ti -v ${PWD}:/go/src/github.com/kata-containers/agent ${AGENT_IMAGE}:${AGENT_TAG} ./hack/update-generated-agent-proto.sh
+	docker run -i -v ${PWD}:/go/src/github.com/kata-containers/agent ${AGENT_IMAGE}:${AGENT_TAG} ./hack/update-generated-agent-proto.sh
 
 .PHONY: clean test
 clean:

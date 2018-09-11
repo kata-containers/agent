@@ -11,4 +11,7 @@ source "${cidir}/lib.sh"
 
 pushd "${tests_repo_dir}"
 .ci/run.sh
+testcidir=$(dirname "$0")
+"${testcidir}/../cmd/container-manager/manage_ctr_mgr.sh" docker configure -r runc -f
 popd
+make proto
