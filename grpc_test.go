@@ -21,6 +21,7 @@ import (
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
+	"strconv"
 	"sync"
 )
 
@@ -619,4 +620,28 @@ func TestMultiWaitProcess(t *testing.T) {
 	}()
 
 	wg.Wait()
+}
+
+func TestGetGuestDetails(t *testing.T) {
+	assert := assert.New(t)
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	req := &pb.GuestDetailsRequest{
+		MemBlockSize: true,
+	}
+
+	resp, err := a.GetGuestDetails(context.TODO(), req)
+	assert.NoError(err)
+
+	data, err := ioutil.ReadFile("/sys/devices/system/memory/block_size_bytes")
+	assert.NoError(err)
+
+	size, err := strconv.ParseUint(string(data[:len(data)-1]), 16, 64)
+	assert.NoError(err)
+
+	assert.Equal(resp.MemBlockSizeBytes, size)
 }

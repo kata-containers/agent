@@ -54,6 +54,7 @@ service AgentService {
 	rpc DestroySandbox(DestroySandboxRequest) returns (google.protobuf.Empty);
 	rpc OnlineCPUMem(OnlineCPUMemRequest) returns (google.protobuf.Empty);
 	rpc ReseedRandomDev(ReseedRandomDevRequest) returns (google.protobuf.Empty);
+	rpc GetGuestDetails(GuestDetailsRequest) returns (GuestDetailsResponse);
 }
 
 message CreateContainerRequest {
@@ -348,6 +349,18 @@ message OnlineCPUMemRequest {
 message ReseedRandomDevRequest {
 	// Data specifies the random data used to reseed the guest crng.
 	bytes data = 2;
+}
+
+message GuestDetailsRequest {
+	// MemBlockSize asks server to return the system memory block size that can be used
+	// for memory hotplug alignment. Typically the server returns what's in
+	// /sys/devices/system/memory/block_size_bytes.
+	bool mem_block_size = 1;
+}
+
+message GuestDetailsResponse {
+	// MemBlockSizeBytes returns the system memory block size in bytes.
+	uint64 mem_block_size_bytes = 1;
 }
 
 // Storage represents both the rootfs of the container, and any volume that
