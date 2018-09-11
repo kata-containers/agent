@@ -15,6 +15,8 @@ INIT := no
 UNIT_DIR := /usr/lib/systemd/system
 
 GENERATED_FILES :=
+# Define if agent will be built by seccomp tag
+SECCOMP := no
 
 ifeq ($(INIT),no)
 # Unit file to start kata agent in systemd systems
@@ -31,6 +33,9 @@ COMMIT_NO_SHORT := $(shell git rev-parse --short HEAD 2> /dev/null || true)
 COMMIT := $(if $(shell git status --porcelain --untracked-files=no),${COMMIT_NO}-dirty,${COMMIT_NO})
 VERSION_COMMIT := $(if $(COMMIT),$(VERSION)-$(COMMIT),$(VERSION))
 ARCH := $(shell go env GOARCH)
+ifeq ($(SECCOMP),yes)
+BUILDTAGS := seccomp
+endif
 
 # args for building agent image
 BUILDARGS := $(if $(http_proxy), --build-arg http_proxy=$(http_proxy))
@@ -40,7 +45,7 @@ AGENT_IMAGE := katacontainers/agent-dev
 AGENT_TAG := $(if $(COMMIT_NO_SHORT),$(COMMIT_NO_SHORT),dev)
 
 $(TARGET): $(GENERATED_FILES) $(SOURCES) $(VERSION_FILE)
-	go build -o $@ -ldflags "-X main.version=$(VERSION_COMMIT)"
+	go build -tags "$(BUILDTAGS)" -o $@ -ldflags "-X main.version=$(VERSION_COMMIT)"
 
 install:
 	install -D $(TARGET) $(DESTDIR)$(BINDIR)/$(TARGET)
