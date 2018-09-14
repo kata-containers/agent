@@ -56,7 +56,11 @@ func NewReaderCloser() (io.ReadCloser, error) {
 
 // Read implements reading function for uevent.
 func (r *ReaderCloser) Read(p []byte) (int, error) {
-	return unix.Read(r.fd, p)
+	count, err := unix.Read(r.fd, p)
+	if count < 0 && err != nil {
+		count = 0
+	}
+	return count, err
 }
 
 // Close implements closing function for uevent.
