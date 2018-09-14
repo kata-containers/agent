@@ -295,6 +295,13 @@ func buildProcess(agentProcess *pb.Process, procID string) (*process, error) {
 		proc.process.ConsoleSocket = childSock
 		proc.consoleSock = parentSock
 
+		epoller, err := newEpoller()
+		if err != nil {
+			return nil, err
+		}
+
+		proc.epoller = epoller
+
 		return proc, nil
 	}
 
@@ -419,6 +426,17 @@ func (a *agentGRPC) postExecProcess(ctr *container, proc *process) error {
 		}
 
 		proc.termMaster = termMaster
+
+		// Get process PID
+		pid, err := proc.process.Pid()
+		if err != nil {
+			return err
+		}
+		a.sandbox.subreaper.setEpoller(pid, proc.epoller)
+
+		if err = proc.epoller.add(proc.termMaster); err != nil {
+			return err
+		}
 	}
 
 	ctr.setProcess(proc)

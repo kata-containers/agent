@@ -19,6 +19,16 @@ type mockreaper struct {
 func (r *mockreaper) init() {
 }
 
+func (r *mockreaper) getEpoller(pid int) (*epoller, error) {
+	return nil, nil
+}
+
+func (r *mockreaper) setEpoller(pid int, epoller *epoller) {
+}
+
+func (r *mockreaper) deleteEpoller(pid int) {
+}
+
 func (r *mockreaper) getExitCodeCh(pid int) (chan<- int, error) {
 	return nil, nil
 }
