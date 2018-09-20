@@ -443,3 +443,12 @@ func TestUpdateSpecDeviceList(t *testing.T) {
 	err = updateSpecDeviceList(device, spec)
 	assert.NoError(err)
 }
+
+func TestRescanPciBus(t *testing.T) {
+	skipUnlessRoot(t)
+
+	assert := assert.New(t)
+
+	err := rescanPciBus()
+	assert.Nil(err)
+}

@@ -30,7 +30,11 @@ const (
 	driverEphemeralType = "ephemeral"
 )
 
-const rootBusPath = "/devices/pci0000:00"
+const (
+	rootBusPath      = "/devices/pci0000:00"
+	pciBusRescanFile = "/sys/bus/pci/rescan"
+	pciBusMode       = 0220
+)
 
 var (
 	sysBusPrefix     = "/sys/bus/pci/devices"
@@ -56,6 +60,10 @@ type deviceHandler func(device pb.Device, spec *pb.Spec, s *sandbox) error
 var deviceHandlerList = map[string]deviceHandler{
 	driverBlkType:  virtioBlkDeviceHandler,
 	driverSCSIType: virtioSCSIDeviceHandler,
+}
+
+func rescanPciBus() error {
+	return ioutil.WriteFile(pciBusRescanFile, []byte{'1'}, pciBusMode)
 }
 
 // getDevicePCIAddress fetches the complete PCI address in sysfs, based on the PCI
@@ -120,6 +128,13 @@ func getPCIDeviceName(s *sandbox, pciID string) (string, error) {
 			fieldLogger.Info("Device found in pci device map")
 			break
 		}
+	}
+
+	// Rescan pci bus if we need to wait for a new pci device
+	if err = rescanPciBus(); err != nil {
+		fieldLogger.WithError(err).Error("Failed to scan pci bus")
+		s.Unlock()
+		return "", err
 	}
 
 	// If device is not found in the device map, hotplug event has not
