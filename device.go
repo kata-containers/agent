@@ -128,7 +128,7 @@ func getPCIDeviceName(s *sandbox, pciID string) (string, error) {
 	// Note this is done inside the lock, not to miss any events from the
 	// global udev listener.
 	if devName == "" {
-		notifyChan := make(chan string, 1)
+		notifyChan = make(chan string, 1)
 		s.deviceWatchers[pciAddr] = notifyChan
 	}
 	s.Unlock()
