@@ -69,6 +69,7 @@ type process struct {
 	stderr      *os.File
 	consoleSock *os.File
 	termMaster  *os.File
+	epoller     *epoller
 	exitCodeCh  chan int
 	sync.Once
 	stdinClosed bool
@@ -174,6 +175,10 @@ func (p *process) closePostExitFDs() {
 
 	if p.stderr != nil {
 		p.stderr.Close()
+	}
+
+	if p.epoller != nil {
+		p.epoller.sockR.Close()
 	}
 }
 
@@ -368,7 +373,17 @@ func (s *sandbox) readStdio(cid, execID string, length int, stdout bool) ([]byte
 
 	var file *os.File
 	if proc.termMaster != nil {
-		file = proc.termMaster
+		// The process's epoller's run() will return a file descriptor of the process's
+		// terminal or one end of its exited pipe. If it returns its terminal, it means
+		// there is data needed to be read out or it has been closed; if it returns the
+		// process's exited pipe, it means the process has exited and there is no data
+		// needed to be read out in its terminal, thus following read on it will read out
+		// "EOF" to terminate this process's io since the other end of this pipe has been
+		// closed in reap().
+		file, err = proc.epoller.run()
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		if stdout {
 			file = proc.stdout

@@ -26,6 +26,9 @@ type reaper interface {
 	getExitCodeCh(pid int) (chan<- int, error)
 	setExitCodeCh(pid int, exitCodeCh chan<- int)
 	deleteExitCodeCh(pid int)
+	getEpoller(pid int) (*epoller, error)
+	setEpoller(pid int, epoller *epoller)
+	deleteEpoller(pid int)
 	reap() error
 	start(c *exec.Cmd) (<-chan int, error)
 	wait(exitCodeCh <-chan int, proc waitProcess) (int, error)
@@ -40,6 +43,7 @@ type agentReaper struct {
 
 	chansLock     sync.RWMutex
 	exitCodeChans map[int]chan<- int
+	epoller       map[int]*epoller
 }
 
 func exitStatus(status unix.WaitStatus) int {
@@ -52,6 +56,7 @@ func exitStatus(status unix.WaitStatus) int {
 
 func (r *agentReaper) init() {
 	r.exitCodeChans = make(map[int]chan<- int)
+	r.epoller = make(map[int]*epoller)
 }
 
 func (r *agentReaper) lock() {
@@ -60,6 +65,32 @@ func (r *agentReaper) lock() {
 
 func (r *agentReaper) unlock() {
 	r.RUnlock()
+}
+
+func (r *agentReaper) getEpoller(pid int) (*epoller, error) {
+	r.chansLock.RLock()
+	defer r.chansLock.RUnlock()
+
+	epoller, exist := r.epoller[pid]
+	if !exist {
+		return nil, fmt.Errorf("epoller doesn't exist for process %d", pid)
+	}
+
+	return epoller, nil
+}
+
+func (r *agentReaper) setEpoller(pid int, ep *epoller) {
+	r.chansLock.Lock()
+	defer r.chansLock.Unlock()
+
+	r.epoller[pid] = ep
+}
+
+func (r *agentReaper) deleteEpoller(pid int) {
+	r.chansLock.Lock()
+	defer r.chansLock.Unlock()
+
+	delete(r.epoller, pid)
 }
 
 func (r *agentReaper) getExitCodeCh(pid int) (chan<- int, error) {
@@ -140,6 +171,14 @@ func (r *agentReaper) reap() error {
 		// of the process and return the exit code to the
 		// caller of WaitProcess().
 		exitCodeCh <- status
+
+		epoller, err := r.getEpoller(pid)
+		if err == nil {
+			//close the socket file to notify readStdio to close terminal specifically
+			//in case this process's terminal has been inherited by its children.
+			epoller.sockW.Close()
+		}
+		r.deleteEpoller(pid)
 	}
 }
 
