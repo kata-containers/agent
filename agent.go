@@ -877,7 +877,11 @@ func mountToRootfs(m initMount) error {
 func generalMount() error {
 	for _, m := range initRootfsMounts {
 		if err := mountToRootfs(m); err != nil {
-			return err
+			// dev is already mounted if the rootfs image is used
+			if m.src != "dev" {
+				return err
+			}
+			agentLog.WithError(err).WithField("src", m.src).Warnf("Could not mount filesystem")
 		}
 	}
 	return nil
