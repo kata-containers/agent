@@ -30,7 +30,11 @@ const (
 	driverEphemeralType = "ephemeral"
 )
 
-const rootBusPath = "/devices/pci0000:00"
+const (
+	rootBusPath      = "/devices/pci0000:00"
+	pciBusRescanFile = "/sys/bus/pci/rescan"
+	pciBusMode       = 0220
+)
 
 var (
 	sysBusPrefix     = "/sys/bus/pci/devices"
@@ -56,6 +60,10 @@ type deviceHandler func(device pb.Device, spec *pb.Spec, s *sandbox) error
 var deviceHandlerList = map[string]deviceHandler{
 	driverBlkType:  virtioBlkDeviceHandler,
 	driverSCSIType: virtioSCSIDeviceHandler,
+}
+
+func rescanPciBus() error {
+	return ioutil.WriteFile(pciBusRescanFile, []byte{'1'}, pciBusMode)
 }
 
 // getDevicePCIAddress fetches the complete PCI address in sysfs, based on the PCI
@@ -112,8 +120,8 @@ func getPCIDeviceName(s *sandbox, pciID string) (string, error) {
 
 	fieldLogger := agentLog.WithField("pciID", pciID)
 
-	s.Lock()
 	// Check if the PCI identifier is in PCI device map.
+	s.Lock()
 	for key, value := range s.pciDeviceMap {
 		if strings.Contains(key, pciAddr) {
 			devName = value
@@ -122,13 +130,11 @@ func getPCIDeviceName(s *sandbox, pciID string) (string, error) {
 		}
 	}
 
-	// Check if the PCI path is present before we setup the pci device map.
-	_, err = os.Stat(filepath.Join(rootBusPath, pciAddr))
-	if err == nil {
-		// Found pci path. It's there before we wait for the device map.
-		// We cannot find the name for it.
-		fieldLogger.Info("Device found on pci device path")
-		return "", nil
+	// Rescan pci bus if we need to wait for a new pci device
+	if err = rescanPciBus(); err != nil {
+		fieldLogger.WithError(err).Error("Failed to scan pci bus")
+		s.Unlock()
+		return "", err
 	}
 
 	// If device is not found in the device map, hotplug event has not
@@ -137,7 +143,7 @@ func getPCIDeviceName(s *sandbox, pciID string) (string, error) {
 	// Note this is done inside the lock, not to miss any events from the
 	// global udev listener.
 	if devName == "" {
-		notifyChan := make(chan string, 1)
+		notifyChan = make(chan string, 1)
 		s.deviceWatchers[pciAddr] = notifyChan
 	}
 	s.Unlock()
@@ -168,9 +174,6 @@ func virtioBlkDeviceHandler(device pb.Device, spec *pb.Spec, s *sandbox) error {
 	devPath, err := getPCIDeviceName(s, device.Id)
 	if err != nil {
 		return err
-	}
-	if devPath == "" {
-		return fmt.Errorf("cannot find device name for virtio block device")
 	}
 	device.VmPath = devPath
 

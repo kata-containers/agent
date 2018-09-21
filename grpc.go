@@ -39,12 +39,6 @@ type agentGRPC struct {
 	version string
 }
 
-// PCI scanning
-const (
-	pciBusRescanFile = "/sys/bus/pci/rescan"
-	pciBusMode       = 0220
-)
-
 // CPU and Memory hotplug
 const (
 	cpuRegexpPattern = "cpu[0-9]*"
@@ -548,7 +542,7 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 
 	// re-scan PCI bus
 	// looking for hidden devices
-	if err = ioutil.WriteFile(pciBusRescanFile, []byte("1"), pciBusMode); err != nil {
+	if err = rescanPciBus(); err != nil {
 		agentLog.WithError(err).Warn("Could not rescan PCI bus")
 	}
 
