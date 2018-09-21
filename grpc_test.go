@@ -16,13 +16,14 @@ import (
 	"testing"
 	"time"
 
+	"strconv"
+	"sync"
+
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
-	"strconv"
-	"sync"
 )
 
 var testSharedPidNs = "testSharedPidNs"
