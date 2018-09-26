@@ -23,6 +23,7 @@ import (
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
+	"github.com/opencontainers/runc/libcontainer/seccomp"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
 )
@@ -624,7 +625,7 @@ func TestMultiWaitProcess(t *testing.T) {
 	wg.Wait()
 }
 
-func testAgentDetails(assert *assert.Assertions, details *pb.AgentDetails) {
+func testAgentDetails(assert *assert.Assertions, details *pb.AgentDetails, haveSeccomp bool) {
 	assert.NotNil(details)
 
 	assert.Equal(details.Version, version)
@@ -649,6 +650,8 @@ func testAgentDetails(assert *assert.Assertions, details *pb.AgentDetails) {
 
 	assert.Equal(details.DeviceHandlers, devices)
 	assert.Equal(details.StorageHandlers, storages)
+
+	assert.Equal(details.SupportsSeccomp, haveSeccomp)
 }
 
 func TestGetGuestDetails(t *testing.T) {
@@ -673,7 +676,9 @@ func TestGetGuestDetails(t *testing.T) {
 	assert.NoError(err)
 
 	assert.Equal(resp.MemBlockSizeBytes, size)
-	testAgentDetails(assert, resp.AgentDetails)
+
+	seccompSupport := a.haveSeccomp()
+	testAgentDetails(assert, resp.AgentDetails, seccompSupport)
 }
 
 func TestGetAgentDetails(t *testing.T) {
@@ -687,5 +692,30 @@ func TestGetAgentDetails(t *testing.T) {
 
 	details := a.getAgentDetails(context.TODO())
 
-	testAgentDetails(assert, details)
+	seccompSupport := a.haveSeccomp()
+	testAgentDetails(assert, details, seccompSupport)
+}
+
+func TestHaveSeccomp(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	savedSeccompSupport := seccompSupport
+
+	defer func() {
+		seccompSupport = savedSeccompSupport
+	}()
+
+	for _, seccompSupport := range []string{"yes", "no"} {
+		if seccompSupport == "yes" {
+			assert.Equal(a.haveSeccomp(), seccomp.IsEnabled())
+		} else {
+			assert.Equal(a.haveSeccomp(), false)
+		}
+	}
 }

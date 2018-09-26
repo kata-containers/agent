@@ -45,7 +45,8 @@ AGENT_IMAGE := katacontainers/agent-dev
 AGENT_TAG := $(if $(COMMIT_NO_SHORT),$(COMMIT_NO_SHORT),dev)
 
 $(TARGET): $(GENERATED_FILES) $(SOURCES) $(VERSION_FILE)
-	go build -tags "$(BUILDTAGS)" -o $@ -ldflags "-X main.version=$(VERSION_COMMIT)"
+	go build -tags "$(BUILDTAGS)" -o $@ \
+		-ldflags "-X main.version=$(VERSION_COMMIT) -X main.seccompSupport=$(SECCOMP)"
 
 install:
 	install -D $(TARGET) $(DESTDIR)$(BINDIR)/$(TARGET)

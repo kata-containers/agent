@@ -24,6 +24,7 @@ import (
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
+	"github.com/opencontainers/runc/libcontainer/seccomp"
 	"github.com/opencontainers/runc/libcontainer/specconv"
 	"github.com/opencontainers/runc/libcontainer/utils"
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -1334,10 +1335,19 @@ func (a *agentGRPC) GetGuestDetails(ctx context.Context, req *pb.GuestDetailsReq
 	return &details, nil
 }
 
+func (a *agentGRPC) haveSeccomp() bool {
+	if seccompSupport == "yes" && seccomp.IsEnabled() {
+		return true
+	}
+
+	return false
+}
+
 func (a *agentGRPC) getAgentDetails(ctx context.Context) *pb.AgentDetails {
 	details := pb.AgentDetails{
-		Version:    version,
-		InitDaemon: os.Getpid() == 1,
+		Version:         version,
+		InitDaemon:      os.Getpid() == 1,
+		SupportsSeccomp: a.haveSeccomp(),
 	}
 
 	for handler := range deviceHandlerList {
