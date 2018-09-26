@@ -1328,5 +1328,25 @@ func (a *agentGRPC) GetGuestDetails(ctx context.Context, req *pb.GuestDetailsReq
 			return nil, err
 		}
 	}
+
+	details.AgentDetails = a.getAgentDetails(ctx)
+
 	return &details, nil
+}
+
+func (a *agentGRPC) getAgentDetails(ctx context.Context) *pb.AgentDetails {
+	details := pb.AgentDetails{
+		Version:    version,
+		InitDaemon: os.Getpid() == 1,
+	}
+
+	for handler := range deviceHandlerList {
+		details.DeviceHandlers = append(details.DeviceHandlers, handler)
+	}
+
+	for handler := range storageHandlerList {
+		details.StorageHandlers = append(details.StorageHandlers, handler)
+	}
+
+	return &details
 }

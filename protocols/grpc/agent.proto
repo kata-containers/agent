@@ -351,6 +351,21 @@ message ReseedRandomDevRequest {
 	bytes data = 2;
 }
 
+// AgentDetails provides information to the client about the running agent.
+message AgentDetails {
+	// Semantic version of agent (see https://semver.org).
+	string version = 1;
+
+	// Set if the agent is running as PID 1.
+	bool init_daemon = 2;
+
+	// List of available device handlers.
+	repeated string device_handlers = 3;
+
+	// List of available storage handlers.
+	repeated string storage_handlers = 4;
+}
+
 message GuestDetailsRequest {
 	// MemBlockSize asks server to return the system memory block size that can be used
 	// for memory hotplug alignment. Typically the server returns what's in
@@ -361,6 +376,8 @@ message GuestDetailsRequest {
 message GuestDetailsResponse {
 	// MemBlockSizeBytes returns the system memory block size in bytes.
 	uint64 mem_block_size_bytes = 1;
+
+	AgentDetails agent_details = 2;
 }
 
 // Storage represents both the rootfs of the container, and any volume that
