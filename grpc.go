@@ -54,6 +54,7 @@ var (
 type onlineResource struct {
 	sysfsOnlinePath string
 	regexpPattern   string
+	movable         bool
 }
 
 type cookie map[string]bool
@@ -93,6 +94,25 @@ func onlineResources(resource onlineResource, nbResources int32) (uint32, error)
 
 		if !matched {
 			continue
+		}
+
+		if resource.movable {
+			statePath := filepath.Join(resource.sysfsOnlinePath, file.Name(), "state")
+			status, err := ioutil.ReadFile(statePath)
+			if err != nil {
+				continue
+			}
+
+			if strings.Trim(string(status), "\n\t ") == "offline" {
+				if err := ioutil.WriteFile(statePath, []byte("online_movable"), 0600); err != nil {
+					agentLog.WithField("state-path", statePath).WithError(err).Errorf("Could not online_movable resource")
+					continue
+				}
+				count++
+				if nbResources > 0 && count == uint32(nbResources) {
+					return count, nil
+				}
+			}
 		}
 
 		onlinePath := filepath.Join(resource.sysfsOnlinePath, file.Name(), "online")
@@ -139,10 +159,11 @@ func onlineCPUResources(nbCpus uint32) error {
 	return fmt.Errorf("only %d of %d were connected", count, nbCpus)
 }
 
-func onlineMemResources() error {
+func onlineMemResources(movable bool) error {
 	resource := onlineResource{
 		sysfsOnlinePath: sysfsMemOnlinePath,
 		regexpPattern:   memRegexpPattern,
+		movable:         movable,
 	}
 
 	_, err := onlineResources(resource, -1)
@@ -202,7 +223,7 @@ func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
 	}
 
 	if !req.CpuOnly {
-		if err := onlineMemResources(); err != nil {
+		if err := onlineMemResources(req.Movable); err != nil {
 			return handleError(req.Wait, err)
 		}
 	}

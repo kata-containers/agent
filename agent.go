@@ -539,6 +539,12 @@ func (s *sandbox) listenToUdevEvents() {
 
 			s.Unlock()
 		} else if strings.HasPrefix(uEv.DevPath, sysfsMemOnlinePath) {
+			// FIXME: uEv.DevPath is "/devices/system/memory/***" but sysfsMemOnlinePath has "/sys" in head
+			// online movable if possible
+			statePath := filepath.Join("sys", uEv.DevPath, "state")
+			if err := ioutil.WriteFile(statePath, []byte("online_movable"), 0600); err != nil {
+				fieldLogger.WithError(err).Error("failed online movable device")
+			}
 			// Check memory hotplug and online if possible
 			onlinePath := filepath.Join("sys", uEv.DevPath, "online")
 			if err := ioutil.WriteFile(onlinePath, []byte("1"), 0600); err != nil {

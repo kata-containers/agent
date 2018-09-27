@@ -344,6 +344,9 @@ message OnlineCPUMemRequest {
 
 	// CpuOnly specifies whether only online CPU or not.
 	bool cpu_only = 3;
+
+	// Movable specifies whether online movable for memory or not.
+	bool movable = 4;
 }
 
 message ReseedRandomDevRequest {
