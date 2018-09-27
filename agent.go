@@ -49,6 +49,9 @@ var (
 	cgroupMemoryPath             = cgroupPath + "/memory"
 	cgroupMemoryUseHierarchyPath = cgroupMemoryPath + "/memory.use_hierarchy"
 	cgroupMemoryUseHierarchyMode = os.FileMode(0400)
+
+	// Set by the build
+	seccompSupport string
 )
 
 var initRootfsMounts = []initMount{

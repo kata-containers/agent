@@ -13,16 +13,19 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"testing"
 	"time"
+
+	"strconv"
+	"sync"
 
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
+	"github.com/opencontainers/runc/libcontainer/seccomp"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
-	"strconv"
-	"sync"
 )
 
 var testSharedPidNs = "testSharedPidNs"
@@ -622,6 +625,35 @@ func TestMultiWaitProcess(t *testing.T) {
 	wg.Wait()
 }
 
+func testAgentDetails(assert *assert.Assertions, details *pb.AgentDetails, haveSeccomp bool) {
+	assert.NotNil(details)
+
+	assert.Equal(details.Version, version)
+	assert.Equal(details.InitDaemon, os.Getpid() == 1)
+
+	var devices []string
+	var storages []string
+
+	for handler := range deviceHandlerList {
+		devices = append(devices, handler)
+	}
+
+	for handler := range storageHandlerList {
+		storages = append(storages, handler)
+	}
+
+	sort.Sort(sort.StringSlice(details.DeviceHandlers))
+	sort.Sort(sort.StringSlice(details.StorageHandlers))
+
+	sort.Sort(sort.StringSlice(devices))
+	sort.Sort(sort.StringSlice(storages))
+
+	assert.Equal(details.DeviceHandlers, devices)
+	assert.Equal(details.StorageHandlers, storages)
+
+	assert.Equal(details.SupportsSeccomp, haveSeccomp)
+}
+
 func TestGetGuestDetails(t *testing.T) {
 	assert := assert.New(t)
 	a := &agentGRPC{
@@ -644,4 +676,46 @@ func TestGetGuestDetails(t *testing.T) {
 	assert.NoError(err)
 
 	assert.Equal(resp.MemBlockSizeBytes, size)
+
+	seccompSupport := a.haveSeccomp()
+	testAgentDetails(assert, resp.AgentDetails, seccompSupport)
+}
+
+func TestGetAgentDetails(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	details := a.getAgentDetails(context.TODO())
+
+	seccompSupport := a.haveSeccomp()
+	testAgentDetails(assert, details, seccompSupport)
+}
+
+func TestHaveSeccomp(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	savedSeccompSupport := seccompSupport
+
+	defer func() {
+		seccompSupport = savedSeccompSupport
+	}()
+
+	for _, seccompSupport := range []string{"yes", "no"} {
+		if seccompSupport == "yes" {
+			assert.Equal(a.haveSeccomp(), seccomp.IsEnabled())
+		} else {
+			assert.Equal(a.haveSeccomp(), false)
+		}
+	}
 }
