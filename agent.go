@@ -44,7 +44,8 @@ const (
 
 var (
 	// cgroup fs is mounted at /sys/fs when systemd is the init process
-	cgroupPath                   = "/sys/fs/cgroup"
+	sysfsDir                     = "/sys"
+	cgroupPath                   = sysfsDir + "/fs/cgroup"
 	cgroupCpusetPath             = cgroupPath + "/cpuset"
 	cgroupMemoryPath             = cgroupPath + "/memory"
 	cgroupMemoryUseHierarchyPath = cgroupMemoryPath + "/memory.use_hierarchy"
@@ -56,7 +57,7 @@ var (
 
 var initRootfsMounts = []initMount{
 	{"proc", "proc", "/proc", []string{"nosuid", "nodev", "noexec"}},
-	{"sysfs", "sysfs", "/sys", []string{"nosuid", "nodev", "noexec"}},
+	{"sysfs", "sysfs", sysfsDir, []string{"nosuid", "nodev", "noexec"}},
 	{"devtmpfs", "dev", "/dev", []string{"nosuid"}},
 	{"tmpfs", "tmpfs", "/dev/shm", []string{"nosuid", "nodev"}},
 	{"devpts", "devpts", "/dev/pts", []string{"nosuid", "noexec"}},
@@ -541,9 +542,8 @@ func (s *sandbox) listenToUdevEvents() {
 			}
 
 			s.Unlock()
-		} else if strings.HasPrefix(uEv.DevPath, sysfsMemOnlinePath) {
+		} else if onlinePath := filepath.Join(sysfsDir, uEv.DevPath, "online"); strings.HasPrefix(onlinePath, sysfsMemOnlinePath) {
 			// Check memory hotplug and online if possible
-			onlinePath := filepath.Join("sys", uEv.DevPath, "online")
 			if err := ioutil.WriteFile(onlinePath, []byte("1"), 0600); err != nil {
 				fieldLogger.WithError(err).Error("failed online device")
 			}
