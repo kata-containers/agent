@@ -478,6 +478,8 @@ func (s *sandbox) listenToUdevEvents() {
 	}
 	defer uEvHandler.Close()
 
+	fieldLogger.Infof("Started listening for uevents")
+
 	for {
 		uEv, err := uEvHandler.Read()
 		if err != nil {
@@ -492,6 +494,8 @@ func (s *sandbox) listenToUdevEvents() {
 			"uevent-seqnum":    uEv.SeqNum,
 			"uevent-devname":   uEv.DevName,
 		})
+
+		fieldLogger.Infof("Received add uevent")
 
 		// Check if device hotplug event results in a device node being created.
 		if uEv.DevName != "" && uEv.Action == "add" && strings.HasPrefix(uEv.DevPath, rootBusPath) {
