@@ -373,3 +373,12 @@ func TestAddDevice(t *testing.T) {
 		}
 	}
 }
+
+func TestRescanPciBus(t *testing.T) {
+	skipUnlessRoot(t)
+
+	assert := assert.New(t)
+
+	err := rescanPciBus()
+	assert.Nil(err)
+}

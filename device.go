@@ -30,7 +30,11 @@ const (
 	driverEphemeralType = "ephemeral"
 )
 
-const rootBusPath = "/devices/pci0000:00"
+const (
+	rootBusPath      = "/devices/pci0000:00"
+	pciBusRescanFile = "/sys/bus/pci/rescan"
+	pciBusMode       = 0220
+)
 
 var (
 	sysBusPrefix     = "/sys/bus/pci/devices"
@@ -56,6 +60,10 @@ type deviceHandler func(device pb.Device, spec *pb.Spec, s *sandbox) error
 var deviceHandlerList = map[string]deviceHandler{
 	driverBlkType:  virtioBlkDeviceHandler,
 	driverSCSIType: virtioSCSIDeviceHandler,
+}
+
+func rescanPciBus() error {
+	return ioutil.WriteFile(pciBusRescanFile, []byte{'1'}, pciBusMode)
 }
 
 // getDevicePCIAddress fetches the complete PCI address in sysfs, based on the PCI
@@ -122,13 +130,20 @@ func getBlockDeviceNodeName(s *sandbox, pciID string) (string, error) {
 		}
 	}
 
+	// Rescan pci bus if we need to wait for a new pci device
+	if err = rescanPciBus(); err != nil {
+		fieldLogger.WithError(err).Error("Failed to scan pci bus")
+		s.Unlock()
+		return "", err
+	}
+
 	// If device is not found in the device map, hotplug event has not
 	// been received yet, create and add channel to the watchers map.
 	// The key of the watchers map is the device we are interested in.
 	// Note this is done inside the lock, not to miss any events from the
 	// global udev listener.
 	if devName == "" {
-		notifyChan := make(chan string, 1)
+		notifyChan = make(chan string, 1)
 		s.deviceWatchers[pciAddr] = notifyChan
 	}
 	s.Unlock()
@@ -140,7 +155,6 @@ func getBlockDeviceNodeName(s *sandbox, pciID string) (string, error) {
 		case <-time.After(time.Duration(timeoutHotplug) * time.Second):
 			s.Lock()
 			delete(s.deviceWatchers, pciAddr)
-			close(notifyChan)
 			s.Unlock()
 
 			return "", grpcStatus.Errorf(codes.DeadlineExceeded,
