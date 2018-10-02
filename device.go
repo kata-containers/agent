@@ -31,13 +31,13 @@ const (
 )
 
 const (
-	rootBusPath      = "/devices/pci0000:00"
-	pciBusRescanFile = "/sys/bus/pci/rescan"
-	pciBusMode       = 0220
+	rootBusPath = "/devices/pci0000:00"
+	pciBusMode  = 0220
 )
 
 var (
-	sysBusPrefix     = "/sys/bus/pci/devices"
+	sysBusPrefix     = sysfsDir + "/bus/pci/devices"
+	pciBusRescanFile = sysfsDir + "/bus/pci/rescan"
 	pciBusPathFormat = "%s/%s/pci_bus/"
 	systemDevPath    = "/dev"
 )
@@ -48,7 +48,7 @@ var (
 	// only one SCSI controller has been plugged, while the second number
 	// is always 0.
 	scsiHostChannel = "0:0:"
-	sysClassPrefix  = "/sys/class"
+	sysClassPrefix  = sysfsDir + "/class"
 	scsiDiskPrefix  = filepath.Join(sysClassPrefix, "scsi_disk", scsiHostChannel)
 	scsiBlockSuffix = "block"
 	scsiDiskSuffix  = filepath.Join("/device", scsiBlockSuffix)
