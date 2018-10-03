@@ -29,6 +29,7 @@ import (
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	_ "github.com/opencontainers/runc/libcontainer/nsenter"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 	"golang.org/x/sys/unix"
@@ -98,25 +99,27 @@ type sandboxStorage struct {
 type sandbox struct {
 	sync.RWMutex
 
-	id              string
-	hostname        string
-	containers      map[string]*container
-	channel         channel
-	network         network
-	wg              sync.WaitGroup
-	sharedPidNs     namespace
-	mounts          []string
-	subreaper       reaper
-	server          *grpc.Server
-	pciDeviceMap    map[string]string
-	deviceWatchers  map[string](chan string)
-	sharedUTSNs     namespace
-	sharedIPCNs     namespace
-	running         bool
-	noPivotRoot     bool
-	enableGrpcTrace bool
-	sandboxPidNs    bool
-	storages        map[string]*sandboxStorage
+	id                string
+	hostname          string
+	containers        map[string]*container
+	channel           channel
+	network           network
+	wg                sync.WaitGroup
+	sharedPidNs       namespace
+	mounts            []string
+	subreaper         reaper
+	server            *grpc.Server
+	pciDeviceMap      map[string]string
+	deviceWatchers    map[string](chan string)
+	sharedUTSNs       namespace
+	sharedIPCNs       namespace
+	guestHooks        *specs.Hooks
+	guestHooksPresent bool
+	running           bool
+	noPivotRoot       bool
+	enableGrpcTrace   bool
+	sandboxPidNs      bool
+	storages          map[string]*sandboxStorage
 }
 
 var agentFields = logrus.Fields{
@@ -238,6 +241,39 @@ func (s *sandbox) setSandboxStorage(path string) bool {
 	sbs := s.storages[path]
 	sbs.refCount++
 	return false
+}
+
+// scanGuestHooks will search the given guestHookPath
+// for any OCI hooks
+func (s *sandbox) scanGuestHooks(guestHookPath string) {
+	fieldLogger := agentLog.WithField("oci-hook-path", guestHookPath)
+	fieldLogger.Info("Scanning guest filesystem for OCI hooks")
+
+	s.guestHooks.Prestart = findHooks(guestHookPath, "prestart")
+	s.guestHooks.Poststart = findHooks(guestHookPath, "poststart")
+	s.guestHooks.Poststop = findHooks(guestHookPath, "poststop")
+
+	if len(s.guestHooks.Prestart) > 0 || len(s.guestHooks.Poststart) > 0 || len(s.guestHooks.Poststop) > 0 {
+		s.guestHooksPresent = true
+	} else {
+		fieldLogger.Warn("Guest hooks were requested but none were found")
+	}
+}
+
+// addGuestHooks will add any guest OCI hooks that were
+// found to the OCI spec
+func (s *sandbox) addGuestHooks(spec *specs.Spec) {
+	if spec == nil {
+		return
+	}
+
+	if spec.Hooks == nil {
+		spec.Hooks = &specs.Hooks{}
+	}
+
+	spec.Hooks.Prestart = append(spec.Hooks.Prestart, s.guestHooks.Prestart...)
+	spec.Hooks.Poststart = append(spec.Hooks.Poststart, s.guestHooks.Poststart...)
+	spec.Hooks.Poststop = append(spec.Hooks.Poststop, s.guestHooks.Poststop...)
 }
 
 // unSetSandboxStorage will decrement the sandbox storage
