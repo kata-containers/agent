@@ -14,10 +14,10 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"testing"
 	"time"
 
-	"strconv"
 	"sync"
 
 	pb "github.com/kata-containers/agent/protocols/grpc"
@@ -666,19 +666,38 @@ func TestGetGuestDetails(t *testing.T) {
 		MemBlockSize: true,
 	}
 
+	// sysfsMemoryBlockSizePath exist with error format
+	file, err := ioutil.TempFile("", "test")
+	assert.NoError(err)
+	sysfsMemoryBlockSizePath = file.Name()
+	// empty
+	_, err = a.GetGuestDetails(context.TODO(), req)
+	assert.Error(err)
+	// random string
+	err = ioutil.WriteFile(sysfsMemoryBlockSizePath, []byte(sysfsMemoryBlockSizePath), 0666)
+	assert.NoError(err)
+	_, err = a.GetGuestDetails(context.TODO(), req)
+	assert.Error(err)
+
+	// sysfsMemoryBlockSizePath exist with correct format
+	err = ioutil.WriteFile(sysfsMemoryBlockSizePath, []byte("123"), 0666)
+	assert.NoError(err)
 	resp, err := a.GetGuestDetails(context.TODO(), req)
 	assert.NoError(err)
-
-	data, err := ioutil.ReadFile("/sys/devices/system/memory/block_size_bytes")
+	data, err := ioutil.ReadFile(sysfsMemoryBlockSizePath)
 	assert.NoError(err)
-
 	size, err := strconv.ParseUint(string(data[:len(data)-1]), 16, 64)
 	assert.NoError(err)
-
 	assert.Equal(resp.MemBlockSizeBytes, size)
 
 	seccompSupport := a.haveSeccomp()
 	testAgentDetails(assert, resp.AgentDetails, seccompSupport)
+
+	// sysfsMemoryBlockSizePath not exist
+	os.Remove(sysfsMemoryBlockSizePath)
+	resp, err = a.GetGuestDetails(context.TODO(), req)
+	assert.NoError(err)
+	assert.Equal(resp.MemBlockSizeBytes, uint64(0))
 }
 
 func TestGetAgentDetails(t *testing.T) {
