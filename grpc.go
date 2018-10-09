@@ -47,9 +47,10 @@ const (
 )
 
 var (
-	sysfsCPUOnlinePath     = "/sys/devices/system/cpu"
-	sysfsMemOnlinePath     = "/sys/devices/system/memory"
-	sysfsConnectedCPUsPath = filepath.Join(sysfsCPUOnlinePath, "online")
+	sysfsCPUOnlinePath       = "/sys/devices/system/cpu"
+	sysfsMemOnlinePath       = "/sys/devices/system/memory"
+	sysfsMemoryBlockSizePath = "/sys/devices/system/memory/block_size_bytes"
+	sysfsConnectedCPUsPath   = filepath.Join(sysfsCPUOnlinePath, "online")
 )
 
 type onlineResource struct {
@@ -1320,13 +1321,21 @@ func (a *agentGRPC) ReseedRandomDev(ctx context.Context, req *pb.ReseedRandomDev
 func (a *agentGRPC) GetGuestDetails(ctx context.Context, req *pb.GuestDetailsRequest) (*pb.GuestDetailsResponse, error) {
 	var details pb.GuestDetailsResponse
 	if req.MemBlockSize {
-		data, err := ioutil.ReadFile("/sys/devices/system/memory/block_size_bytes")
+		data, err := ioutil.ReadFile(sysfsMemoryBlockSizePath)
 		if err != nil {
-			return nil, err
-		}
-		details.MemBlockSizeBytes, err = strconv.ParseUint(string(data[:len(data)-1]), 16, 64)
-		if err != nil {
-			return nil, err
+			if os.IsNotExist(err) {
+				agentLog.WithField("sysfsMemoryBlockSizePath", sysfsMemoryBlockSizePath).Info("Guest kernel config doesn't support memory hotplug")
+			} else {
+				return nil, err
+			}
+		} else {
+			if len(data) == 0 {
+				return nil, fmt.Errorf("%v is empty", sysfsMemoryBlockSizePath)
+			}
+			details.MemBlockSizeBytes, err = strconv.ParseUint(string(data[:len(data)-1]), 16, 64)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
