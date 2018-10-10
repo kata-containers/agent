@@ -9,8 +9,10 @@ package main
 import (
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -18,6 +20,7 @@ import (
 
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/opencontainers/runc/libcontainer"
+	specs "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
 )
@@ -445,4 +448,53 @@ func TestGetCgroupMountsSuccessful(t *testing.T) {
 
 	err = syscall.Unmount(cgprocDir, 0)
 	assert.Nil(t, err, "%v", err)
+}
+
+func TestAddGuestHooks(t *testing.T) {
+	assert := assert.New(t)
+
+	hookPath, err := ioutil.TempDir("", "hooks")
+	assert.NoError(err)
+	defer os.RemoveAll(hookPath)
+
+	poststopPath := path.Join(hookPath, "poststop")
+	err = os.Mkdir(poststopPath, 0750)
+	assert.NoError(err)
+
+	dirPath := path.Join(poststopPath, "directory")
+	err = os.Mkdir(dirPath, 0750)
+	assert.NoError(err)
+
+	normalPath := path.Join(poststopPath, "normalfile")
+	f, err := os.OpenFile(normalPath, os.O_RDONLY|os.O_CREATE, 0640)
+	assert.NoError(err)
+	f.Close()
+
+	symlinkPath := path.Join(poststopPath, "symlink")
+	err = os.Link(normalPath, symlinkPath)
+	assert.NoError(err)
+
+	s := &sandbox{
+		guestHooks:        &specs.Hooks{},
+		guestHooksPresent: false,
+	}
+
+	s.scanGuestHooks(hookPath)
+	assert.False(s.guestHooksPresent)
+
+	spec := &specs.Spec{}
+	s.addGuestHooks(spec)
+	assert.True(len(spec.Hooks.Poststop) == 0)
+
+	execPath := path.Join(poststopPath, "executable")
+	f, err = os.OpenFile(execPath, os.O_RDONLY|os.O_CREATE, 0750)
+	assert.NoError(err)
+	f.Close()
+
+	s.scanGuestHooks(hookPath)
+	assert.True(s.guestHooksPresent)
+
+	s.addGuestHooks(spec)
+	assert.True(len(spec.Hooks.Poststop) == 1)
+	assert.True(strings.Contains(spec.Hooks.Poststop[0].Path, "executable"))
 }

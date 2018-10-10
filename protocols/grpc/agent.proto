@@ -266,6 +266,9 @@ message CreateSandboxRequest {
 	// one sandbox per agent and implicitly require that CreateSandbox is
 	// called before other sandbox/network calls.
 	string sandbox_id = 5;
+	// This field, if non-empty, designates an absolute path to a directory
+	// that the agent will search for OCI hooks to run within the guest.
+	string guest_hook_path = 6;
 }
 
 message DestroySandboxRequest {
