@@ -9,8 +9,8 @@ syntax = "proto3";
 package grpc;
 
 import "oci.proto";
+import "github.com/kata-containers/agent/pkg/types/types.proto";
 import "google/protobuf/empty.proto";
-
 
 // unstable
 service AgentService {
@@ -42,9 +42,9 @@ service AgentService {
 	rpc TtyWinResize(TtyWinResizeRequest) returns (google.protobuf.Empty);
 
 	// networking
-	rpc AddInterface(AddInterfaceRequest) returns(Interface);
-	rpc UpdateInterface(UpdateInterfaceRequest) returns (Interface);
-	rpc RemoveInterface(RemoveInterfaceRequest) returns (Interface);
+	rpc AddInterface(AddInterfaceRequest) returns(types.Interface);
+	rpc UpdateInterface(UpdateInterfaceRequest) returns (types.Interface);
+	rpc RemoveInterface(RemoveInterfaceRequest) returns (types.Interface);
 	rpc UpdateRoutes(UpdateRoutesRequest) returns (Routes);
 	rpc ListInterfaces(ListInterfacesRequest) returns(Interfaces);
 	rpc ListRoutes(ListRoutesRequest) returns (Routes);
@@ -274,56 +274,24 @@ message CreateSandboxRequest {
 message DestroySandboxRequest {
 }
 
-enum IPFamily {
-	v4 = 0;
-	v6 = 1;
-}
-
-message IPAddress {
-	IPFamily family = 1;
-	string address = 2;
-	string mask = 3;
-}
-
-message Interface {
-	string device = 1;
-	string name = 2;
-	repeated IPAddress IPAddresses = 3;
-	uint64 mtu = 4;
-	string hwAddr = 5;
-
-	// pciAddr is the PCI address in the format  "bridgeAddr/deviceAddr".
-	// Here, bridgeAddr is the address at which the bridge is attached on the root bus,
-	// while deviceAddr is the address at which the network device is attached on the bridge.
-	string pciAddr = 6;
-}
-
 message Interfaces {
-	repeated Interface Interfaces = 1;
-}
-
-message Route {
-	string dest = 1;
-	string gateway = 2;
-	string device = 3;
-	string source = 4;
-	uint32 scope = 5;
+	repeated types.Interface Interfaces = 1;
 }
 
 message Routes {
-	repeated Route Routes = 1;
+	repeated types.Route Routes = 1;
 }
 
 message UpdateInterfaceRequest {
-	Interface interface = 1;
+	types.Interface interface = 1;
 }
 
 message AddInterfaceRequest {
-	Interface interface = 1;
+	types.Interface interface = 1;
 }
 
 message RemoveInterfaceRequest {
-	Interface interface = 1;
+	types.Interface interface = 1;
 }
 
 message UpdateRoutesRequest {

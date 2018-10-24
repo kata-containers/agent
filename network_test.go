@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/kata-containers/agent/pkg/types"
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/vishvananda/netlink"
@@ -23,12 +24,12 @@ func TestUpdateRemoveInterface(t *testing.T) {
 
 	s := sandbox{}
 
-	ifc := pb.Interface{
+	ifc := types.Interface{
 		Name:   "enoNumber",
 		Mtu:    1500,
 		HwAddr: "02:00:ca:fe:00:48",
 	}
-	ip := pb.IPAddress{
+	ip := types.IPAddress{
 		Family:  0,
 		Address: "192.168.0.101",
 		Mask:    "24",
@@ -68,7 +69,7 @@ func TestUpdateRemoveInterface(t *testing.T) {
 	// Try with a different valid MTU.  Make sure we can assign a new set of IP addresses
 	ifc.Mtu = 500
 	ifc.IPAddresses[0].Address = "192.168.0.102"
-	ip2 := pb.IPAddress{
+	ip2 := types.IPAddress{
 		Family:  0,
 		Address: "182.168.0.103",
 		Mask:    "24",
@@ -146,7 +147,7 @@ func TestUpdateRoutes(t *testing.T) {
 	netHandle.AddrAdd(link, netlinkAddr)
 
 	//Test a simple route setup:
-	inputRoutesSimple := []*pb.Route{
+	inputRoutesSimple := []*types.Route{
 		{Dest: "", Gateway: "192.168.0.1", Source: "", Scope: 0, Device: "ifc-name"},
 		{Dest: "192.168.0.0/16", Gateway: "", Source: "192.168.0.2", Scope: 253, Device: "ifc-name"},
 	}
@@ -161,7 +162,7 @@ func TestUpdateRoutes(t *testing.T) {
 		"Interface created didn't match: got %+v, expecting %+v", results, testRoutes)
 
 	//Test a route setup mimicking what could be provided by PTP CNI plugin:
-	inputRoutesPTPExample := []*pb.Route{
+	inputRoutesPTPExample := []*types.Route{
 		{Dest: "", Gateway: "192.168.0.1", Source: "", Scope: 0, Device: "ifc-name"},
 		{Dest: "192.168.0.144/16", Gateway: "192.168.0.1", Source: "192.168.0.2", Scope: 0, Device: "ifc-name"},
 		{Dest: "192.168.0.1/32", Gateway: "", Source: "192.168.0.2", Scope: 254, Device: "ifc-name"},
@@ -174,7 +175,7 @@ func TestUpdateRoutes(t *testing.T) {
 		"Interface created didn't match: got %+v, expecting %+v", results, testRoutes)
 
 	//Test unreachable example (no scope provided for initial link route)
-	inputRoutesNoScope := []*pb.Route{
+	inputRoutesNoScope := []*types.Route{
 		{Dest: "", Gateway: "192.168.0.1", Source: "", Scope: 0, Device: "ifc-name"},
 		{Dest: "192.168.0.0/16", Gateway: "", Source: "192.168.0.2", Scope: 0, Device: "ifc-name"},
 	}
@@ -193,12 +194,12 @@ func TestListInterfaces(t *testing.T) {
 	assert := assert.New(t)
 
 	s := sandbox{}
-	ifc := pb.Interface{
+	ifc := types.Interface{
 		Name:   "enoNumber",
 		Mtu:    1500,
 		HwAddr: "02:00:ca:fe:00:48",
 	}
-	ip := pb.IPAddress{
+	ip := types.IPAddress{
 		Family:  0,
 		Address: "192.168.0.101",
 		Mask:    "24",
@@ -257,7 +258,7 @@ func TestListRoutes(t *testing.T) {
 	netHandle.AddrAdd(link, netlinkAddr)
 
 	//Test a simple route setup:
-	inputRoutesSimple := []*pb.Route{
+	inputRoutesSimple := []*types.Route{
 		{Dest: "", Gateway: "192.168.0.1", Source: "", Scope: 0, Device: "ifc-name"},
 		{Dest: "192.168.0.0/16", Gateway: "", Source: "192.168.0.2", Scope: 253, Device: "ifc-name"},
 	}
