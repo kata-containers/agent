@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	pbTypes "github.com/kata-containers/agent/pkg/types"
 	pb "github.com/kata-containers/agent/protocols/grpc"
 )
 
@@ -286,7 +287,7 @@ func (m *mockServer) DestroySandbox(ctx context.Context, req *pb.DestroySandboxR
 	return &types.Empty{}, nil
 }
 
-func (m *mockServer) AddInterface(context.Context, *pb.AddInterfaceRequest) (*pb.Interface, error) {
+func (m *mockServer) AddInterface(context.Context, *pb.AddInterfaceRequest) (*pbTypes.Interface, error) {
 	mockLock.RLock()
 	defer mockLock.RUnlock()
 	if err := m.podExist(); err != nil {
@@ -296,7 +297,7 @@ func (m *mockServer) AddInterface(context.Context, *pb.AddInterfaceRequest) (*pb
 	return nil, nil
 }
 
-func (m *mockServer) RemoveInterface(context.Context, *pb.RemoveInterfaceRequest) (*pb.Interface, error) {
+func (m *mockServer) RemoveInterface(context.Context, *pb.RemoveInterfaceRequest) (*pbTypes.Interface, error) {
 	mockLock.RLock()
 	defer mockLock.RUnlock()
 	if err := m.podExist(); err != nil {
@@ -306,7 +307,7 @@ func (m *mockServer) RemoveInterface(context.Context, *pb.RemoveInterfaceRequest
 	return nil, nil
 }
 
-func (m *mockServer) UpdateInterface(ctx context.Context, req *pb.UpdateInterfaceRequest) (*pb.Interface, error) {
+func (m *mockServer) UpdateInterface(ctx context.Context, req *pb.UpdateInterfaceRequest) (*pbTypes.Interface, error) {
 	mockLock.RLock()
 	defer mockLock.RUnlock()
 	if err := m.podExist(); err != nil {

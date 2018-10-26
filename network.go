@@ -15,6 +15,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/kata-containers/agent/pkg/types"
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -34,10 +35,10 @@ var (
 // related information.
 type network struct {
 	ifacesLock sync.Mutex
-	ifaces     map[string]*pb.Interface
+	ifaces     map[string]*types.Interface
 
 	routesLock sync.Mutex
-	routes     []pb.Route
+	routes     []types.Route
 
 	dns []string
 }
@@ -82,7 +83,7 @@ func linkByHwAddr(netHandle *netlink.Handle, hwAddr string) (netlink.Link, error
 	return nil, grpcStatus.Errorf(codes.NotFound, "Could not find the link corresponding to HwAddr %q", hwAddr)
 }
 
-func updateLink(netHandle *netlink.Handle, link netlink.Link, iface *pb.Interface) error {
+func updateLink(netHandle *netlink.Handle, link netlink.Link, iface *types.Interface) error {
 	if netHandle == nil {
 		return errNoHandle
 	}
@@ -134,7 +135,7 @@ func updateLink(netHandle *netlink.Handle, link netlink.Link, iface *pb.Interfac
 	return nil
 }
 
-func (s *sandbox) addInterface(netHandle *netlink.Handle, iface *pb.Interface) (resultingIfc *pb.Interface, err error) {
+func (s *sandbox) addInterface(netHandle *netlink.Handle, iface *types.Interface) (resultingIfc *types.Interface, err error) {
 	if iface == nil {
 		return nil, errNoIF
 	}
@@ -179,7 +180,7 @@ func (s *sandbox) addInterface(netHandle *netlink.Handle, iface *pb.Interface) (
 
 	return iface, nil
 }
-func (s *sandbox) removeInterface(netHandle *netlink.Handle, iface *pb.Interface) (resultingIfc *pb.Interface, err error) {
+func (s *sandbox) removeInterface(netHandle *netlink.Handle, iface *types.Interface) (resultingIfc *types.Interface, err error) {
 	if iface == nil {
 		return nil, errNoIF
 	}
@@ -217,10 +218,10 @@ func (s *sandbox) removeInterface(netHandle *netlink.Handle, iface *pb.Interface
 	return nil, nil
 }
 
-// updateInterface will update an existing interface with the values provided in the pb.Interface.  It will identify the
+// updateInterface will update an existing interface with the values provided in the types.Interface.  It will identify the
 // existing interface via MAC address and will return the state of the interface once the function completes as well an any
 // errors observed.
-func (s *sandbox) updateInterface(netHandle *netlink.Handle, iface *pb.Interface) (resultingIfc *pb.Interface, err error) {
+func (s *sandbox) updateInterface(netHandle *netlink.Handle, iface *types.Interface) (resultingIfc *types.Interface, err error) {
 	if iface == nil {
 		return nil, errNoIF
 	}
@@ -301,7 +302,7 @@ func (s *sandbox) updateInterface(netHandle *netlink.Handle, iface *pb.Interface
 }
 
 // getInterface will retrieve interface details from the provided link
-func getInterface(netHandle *netlink.Handle, link netlink.Link) (*pb.Interface, error) {
+func getInterface(netHandle *netlink.Handle, link netlink.Link) (*types.Interface, error) {
 	if netHandle == nil {
 		return nil, errNoHandle
 	}
@@ -310,7 +311,7 @@ func getInterface(netHandle *netlink.Handle, link netlink.Link) (*pb.Interface, 
 		return nil, errNoLink
 	}
 
-	var ifc pb.Interface
+	var ifc types.Interface
 	linkAttrs := link.Attrs()
 	ifc.Name = linkAttrs.Name
 	ifc.Mtu = uint64(linkAttrs.MTU)
@@ -323,7 +324,7 @@ func getInterface(netHandle *netlink.Handle, link netlink.Link) (*pb.Interface, 
 	}
 	for _, addr := range addrs {
 		netMask, _ := addr.Mask.Size()
-		m := pb.IPAddress{
+		m := types.IPAddress{
 			Address: addr.IP.String(),
 			Mask:    fmt.Sprintf("%d", netMask),
 		}
@@ -481,7 +482,7 @@ func getCurrentRoutes(netHandle *netlink.Handle) (*pb.Routes, error) {
 	}
 
 	for _, route := range finalRouteList {
-		var r pb.Route
+		var r types.Route
 		if route.Dst != nil {
 			r.Dest = route.Dst.String()
 		}
@@ -508,7 +509,7 @@ func getCurrentRoutes(netHandle *netlink.Handle) (*pb.Routes, error) {
 	return &routes, nil
 }
 
-func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *pb.Route, add bool) (err error) {
+func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *types.Route, add bool) (err error) {
 	s.network.routesLock.Lock()
 	defer s.network.routesLock.Unlock()
 

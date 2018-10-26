@@ -21,6 +21,7 @@ import (
 	"time"
 
 	gpb "github.com/gogo/protobuf/types"
+	"github.com/kata-containers/agent/pkg/types"
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
@@ -1212,7 +1213,7 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 
 	a.sandbox.hostname = req.Hostname
 	a.sandbox.containers = make(map[string]*container)
-	a.sandbox.network.ifaces = make(map[string]*pb.Interface)
+	a.sandbox.network.ifaces = make(map[string]*types.Interface)
 	a.sandbox.network.dns = req.Dns
 	a.sandbox.running = true
 	a.sandbox.sandboxPidNs = req.SandboxPidns
@@ -1310,15 +1311,15 @@ func (a *agentGRPC) DestroySandbox(ctx context.Context, req *pb.DestroySandboxRe
 	return emptyResp, nil
 }
 
-func (a *agentGRPC) AddInterface(ctx context.Context, req *pb.AddInterfaceRequest) (*pb.Interface, error) {
+func (a *agentGRPC) AddInterface(ctx context.Context, req *pb.AddInterfaceRequest) (*types.Interface, error) {
 	return a.sandbox.addInterface(nil, req.Interface)
 }
 
-func (a *agentGRPC) UpdateInterface(ctx context.Context, req *pb.UpdateInterfaceRequest) (*pb.Interface, error) {
+func (a *agentGRPC) UpdateInterface(ctx context.Context, req *pb.UpdateInterfaceRequest) (*types.Interface, error) {
 	return a.sandbox.updateInterface(nil, req.Interface)
 }
 
-func (a *agentGRPC) RemoveInterface(ctx context.Context, req *pb.RemoveInterfaceRequest) (*pb.Interface, error) {
+func (a *agentGRPC) RemoveInterface(ctx context.Context, req *pb.RemoveInterfaceRequest) (*types.Interface, error) {
 	return a.sandbox.removeInterface(nil, req.Interface)
 }
 
