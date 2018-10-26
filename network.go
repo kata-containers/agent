@@ -31,6 +31,18 @@ var (
 	errNoRoutes = grpcStatus.Errorf(codes.InvalidArgument, "Need network routes")
 )
 
+const (
+	// ipvlan plugin adds a route of the format "default dev eth0 scope link"
+	// Here since source, dest and gateway are empty, netlink will complain.
+	// Set the gateway address explcitly to handle this, setting this address
+	// is equivalent to the above route.
+
+	defaultV4RouteIP = "0.0.0.0"
+
+	// Use the below address for ipv6 gateway once ipv6 support is added
+	// defaultV6RouteIP = "::"
+)
+
 // Network fully describes a sandbox network with its interfaces, routes and dns
 // related information.
 type network struct {
@@ -536,6 +548,13 @@ func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *types.Route, add
 		return grpcStatus.Errorf(codes.Internal, "Could not get link's attributes for device %s", route.Device)
 	}
 
+	// We do not modify the gateway in the list of routes provided,
+	// since we loop through the routes checking for the gateway again.
+	gateway := route.Gateway
+	if route.Dest == "" && route.Gateway == "" && route.Source == "" {
+		gateway = defaultV4RouteIP
+	}
+
 	var dst *net.IPNet
 	if route.Dest == "default" || route.Dest == "" {
 		dst = nil
@@ -550,7 +569,7 @@ func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *types.Route, add
 		LinkIndex: linkAttrs.Index,
 		Dst:       dst,
 		Src:       net.ParseIP(route.Source),
-		Gw:        net.ParseIP(route.Gateway),
+		Gw:        net.ParseIP(gateway),
 		Scope:     netlink.Scope(route.Scope),
 	}
 
