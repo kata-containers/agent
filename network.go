@@ -521,31 +521,20 @@ func getCurrentRoutes(netHandle *netlink.Handle) (*pb.Routes, error) {
 	return &routes, nil
 }
 
-func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *types.Route, add bool) (err error) {
-	s.network.routesLock.Lock()
-	defer s.network.routesLock.Unlock()
-
-	if netHandle == nil {
-		netHandle, err = netlink.NewHandle(unix.NETLINK_ROUTE)
-		if err != nil {
-			return err
-		}
-		defer netHandle.Delete()
-	}
-
+func (s *sandbox) processRoute(netHandle *netlink.Handle, route *types.Route) (*netlink.Route, error) {
 	if route == nil {
-		return grpcStatus.Error(codes.InvalidArgument, "Provided route is nil")
+		return nil, grpcStatus.Error(codes.InvalidArgument, "Provided route is nil")
 	}
 
 	// Find link index from route's device name.
 	link, err := netHandle.LinkByName(route.Device)
 	if err != nil {
-		return grpcStatus.Errorf(codes.Internal, "Could not find link from device %s: %v", route.Device, err)
+		return nil, grpcStatus.Errorf(codes.Internal, "Could not find link from device %s: %v", route.Device, err)
 	}
 
 	linkAttrs := link.Attrs()
 	if linkAttrs == nil {
-		return grpcStatus.Errorf(codes.Internal, "Could not get link's attributes for device %s", route.Device)
+		return nil, grpcStatus.Errorf(codes.Internal, "Could not get link's attributes for device %s", route.Device)
 	}
 
 	// We do not modify the gateway in the list of routes provided,
@@ -561,7 +550,7 @@ func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *types.Route, add
 	} else {
 		_, dst, err = net.ParseCIDR(route.Dest)
 		if err != nil {
-			return grpcStatus.Errorf(codes.Internal, "Could not parse route destination %s: %v", route.Dest, err)
+			return nil, grpcStatus.Errorf(codes.Internal, "Could not parse route destination %s: %v", route.Dest, err)
 		}
 	}
 
@@ -571,6 +560,26 @@ func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *types.Route, add
 		Src:       net.ParseIP(route.Source),
 		Gw:        net.ParseIP(gateway),
 		Scope:     netlink.Scope(route.Scope),
+	}
+
+	return netRoute, nil
+}
+
+func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *types.Route, add bool) (err error) {
+	s.network.routesLock.Lock()
+	defer s.network.routesLock.Unlock()
+
+	if netHandle == nil {
+		netHandle, err = netlink.NewHandle(unix.NETLINK_ROUTE)
+		if err != nil {
+			return err
+		}
+		defer netHandle.Delete()
+	}
+
+	netRoute, err := s.processRoute(netHandle, route)
+	if err != nil {
+		return err
 	}
 
 	if add {
