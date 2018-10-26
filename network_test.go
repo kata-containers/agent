@@ -187,6 +187,53 @@ func TestUpdateRoutes(t *testing.T) {
 		"Interface created didn't match: got %+v, expecting %+v", results.Routes[0], testRoutes.Routes[1])
 }
 
+func TestUpdateRoutesIPVlan(t *testing.T) {
+	tearDown := setupNetworkTest(t)
+	defer tearDown()
+
+	s := sandbox{}
+	testRoutes := &pb.Routes{}
+
+	// create a dummy link which we'll play with
+	macAddr := net.HardwareAddr{0x02, 0x00, 0xCA, 0xFE, 0x00, 0x48}
+	link := &netlink.Dummy{
+		LinkAttrs: netlink.LinkAttrs{
+			MTU:          1500,
+			TxQLen:       -1,
+			Name:         "ifc-name",
+			HardwareAddr: macAddr,
+		},
+	}
+	netHandle, _ := netlink.NewHandle()
+	defer netHandle.Delete()
+
+	netHandle.LinkAdd(link)
+	if err := netHandle.LinkSetUp(link); err != nil {
+		t.Fatal(err)
+	}
+	netlinkAddr, _ := netlink.ParseAddr("192.168.0.2/16")
+	netHandle.AddrAdd(link, netlinkAddr)
+
+	//Test a route setup mimicking what could be provided by ipvlan CNI plugin:
+	inputRoutesIPVlanExample := []*types.Route{
+		// route "default dev ifc-name scope link"
+		{Dest: "", Gateway: "", Source: "", Scope: 1, Device: "ifc-name"},
+
+		// route "192.168.0.0/24 dev eth0 proto kernel scope link src 192.168.0.2"
+		// TODO : We dont really handle route protocol currently. We need to add this and
+		// test that protocol is handled.
+		// Issue: https://github.com/kata-containers/agent/issues/405
+		{Dest: "192.168.0.0/24", Gateway: "", Source: "192.168.0.2", Scope: 1, Device: "ifc-name"},
+	}
+	testRoutes.Routes = inputRoutesIPVlanExample
+
+	results, err := s.updateRoutes(netHandle, testRoutes)
+	assert.Nil(t, err, "Unexpected update interface failure: %v", err)
+	assert.True(t, reflect.DeepEqual(results, testRoutes),
+		"Interface created didn't match: got %+v, expecting %+v", results, testRoutes)
+
+}
+
 func TestListInterfaces(t *testing.T) {
 	tearDown := setupNetworkTest(t)
 	defer tearDown()
