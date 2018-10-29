@@ -31,6 +31,18 @@ var (
 	errNoRoutes = grpcStatus.Errorf(codes.InvalidArgument, "Need network routes")
 )
 
+const (
+	// ipvlan plugin adds a route of the format "default dev eth0 scope link"
+	// Here since source, dest and gateway are empty, netlink will complain.
+	// Set the gateway address explcitly to handle this, setting this address
+	// is equivalent to the above route.
+
+	defaultV4RouteIP = "0.0.0.0"
+
+	// Use the below address for ipv6 gateway once ipv6 support is added
+	// defaultV6RouteIP = "::"
+)
+
 // Network fully describes a sandbox network with its interfaces, routes and dns
 // related information.
 type network struct {
@@ -509,6 +521,50 @@ func getCurrentRoutes(netHandle *netlink.Handle) (*pb.Routes, error) {
 	return &routes, nil
 }
 
+func (s *sandbox) processRoute(netHandle *netlink.Handle, route *types.Route) (*netlink.Route, error) {
+	if route == nil {
+		return nil, grpcStatus.Error(codes.InvalidArgument, "Provided route is nil")
+	}
+
+	// Find link index from route's device name.
+	link, err := netHandle.LinkByName(route.Device)
+	if err != nil {
+		return nil, grpcStatus.Errorf(codes.Internal, "Could not find link from device %s: %v", route.Device, err)
+	}
+
+	linkAttrs := link.Attrs()
+	if linkAttrs == nil {
+		return nil, grpcStatus.Errorf(codes.Internal, "Could not get link's attributes for device %s", route.Device)
+	}
+
+	// We do not modify the gateway in the list of routes provided,
+	// since we loop through the routes checking for the gateway again.
+	gateway := route.Gateway
+	if route.Dest == "" && route.Gateway == "" && route.Source == "" {
+		gateway = defaultV4RouteIP
+	}
+
+	var dst *net.IPNet
+	if route.Dest == "default" || route.Dest == "" {
+		dst = nil
+	} else {
+		_, dst, err = net.ParseCIDR(route.Dest)
+		if err != nil {
+			return nil, grpcStatus.Errorf(codes.Internal, "Could not parse route destination %s: %v", route.Dest, err)
+		}
+	}
+
+	netRoute := &netlink.Route{
+		LinkIndex: linkAttrs.Index,
+		Dst:       dst,
+		Src:       net.ParseIP(route.Source),
+		Gw:        net.ParseIP(gateway),
+		Scope:     netlink.Scope(route.Scope),
+	}
+
+	return netRoute, nil
+}
+
 func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *types.Route, add bool) (err error) {
 	s.network.routesLock.Lock()
 	defer s.network.routesLock.Unlock()
@@ -521,37 +577,9 @@ func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *types.Route, add
 		defer netHandle.Delete()
 	}
 
-	if route == nil {
-		return grpcStatus.Error(codes.InvalidArgument, "Provided route is nil")
-	}
-
-	// Find link index from route's device name.
-	link, err := netHandle.LinkByName(route.Device)
+	netRoute, err := s.processRoute(netHandle, route)
 	if err != nil {
-		return grpcStatus.Errorf(codes.Internal, "Could not find link from device %s: %v", route.Device, err)
-	}
-
-	linkAttrs := link.Attrs()
-	if linkAttrs == nil {
-		return grpcStatus.Errorf(codes.Internal, "Could not get link's attributes for device %s", route.Device)
-	}
-
-	var dst *net.IPNet
-	if route.Dest == "default" || route.Dest == "" {
-		dst = nil
-	} else {
-		_, dst, err = net.ParseCIDR(route.Dest)
-		if err != nil {
-			return grpcStatus.Errorf(codes.Internal, "Could not parse route destination %s: %v", route.Dest, err)
-		}
-	}
-
-	netRoute := &netlink.Route{
-		LinkIndex: linkAttrs.Index,
-		Dst:       dst,
-		Src:       net.ParseIP(route.Source),
-		Gw:        net.ParseIP(route.Gateway),
-		Scope:     netlink.Scope(route.Scope),
+		return err
 	}
 
 	if add {
