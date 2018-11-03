@@ -257,7 +257,20 @@ func mountStorage(storage pb.Storage) error {
 		return err
 	}
 
-	return mount(storage.Source, storage.MountPoint, storage.Fstype, flags, options)
+	var fsType = storage.Fstype
+	if (storage.Driver == driverSCSIType || storage.Driver == driverBlkType) && strings.Contains(storage.Fstype, "bind") {
+		cs := strings.Split(storage.Fstype, "-")
+		if len(cs) == 2 && cs[1] != "" {
+			fsType = cs[1]
+			// here we temporarily discard the bind option,
+			// in order to be able to mount the file system of the block device.
+			// and then reset `storage.Fstype` to "bind" which pass through to the libcontainer pkg.
+			flags = flags &^ flagList["bind"]
+			storage.Fstype = "bind"
+		}
+	}
+
+	return mount(storage.Source, storage.MountPoint, fsType, flags, options)
 }
 
 // addStorages takes a list of storages passed by the caller, and perform the
