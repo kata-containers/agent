@@ -272,10 +272,17 @@ func (s *sandbox) updateInterface(netHandle *netlink.Handle, iface *types.Interf
 		// Find the interface link from its hardware address.
 		link, err = linkByHwAddr(netHandle, iface.HwAddr)
 		if err != nil {
-			return nil, grpcStatus.Errorf(codes.Internal, "updateInterface: %v", err)
+			return nil, grpcStatus.Errorf(codes.Internal, "updateInterface by HwAddr: %v", err)
+		}
+	} else if iface.Device != "" {
+		fieldLogger.Info("Getting interface from name")
+		// Find the interface link from its name.
+		link, err = netHandle.LinkByName(iface.Device)
+		if err != nil {
+			return nil, grpcStatus.Errorf(codes.Internal, "updateInterface byName: %v", err)
 		}
 	} else {
-		return nil, grpcStatus.Errorf(codes.InvalidArgument, "Interface HwAddr empty")
+		return nil, grpcStatus.Errorf(codes.InvalidArgument, "Interface HwAddr and Name are both empty")
 	}
 
 	// Use defer function to create and return the interface's state in
