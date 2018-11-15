@@ -42,6 +42,10 @@
   name = "google.golang.org/grpc"
   revision = "d11072e7ca9811b1100b80ca0269ac831f06d024"
 
+[[override]]
+  name = "github.com/containerd/console"
+  revision = "2748ece16665b45a47f884001d5831ec79703880"
+
 [prune]
   non-go = true
   go-tests = true

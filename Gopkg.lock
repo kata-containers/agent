@@ -2,12 +2,11 @@
 
 
 [[projects]]
-  branch = "master"
-  digest = "1:86feeb6c372fd7984322882737b00f32d7e75c6b437f93d75f43db3195574dab"
+  digest = "1:f366457ff35859c2de7fb1e7c0842595d55aa362c6174259f58a3cbf4cb7c727"
   name = "github.com/containerd/console"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "84eeaae905fa414d03e07bcd6c8d3f19e7cf180e"
+  revision = "2748ece16665b45a47f884001d5831ec79703880"
 
 [[projects]]
   digest = "1:5745ae844cff2e5063ff983e8a39f12200d97a41a23d5e94169bc776c24a6580"
@@ -101,6 +100,19 @@
   packages = ["."]
   pruneopts = "NUT"
   revision = "cc6d2ea263b2471faabce371255777a365bf8306"
+
+[[projects]]
+  branch = "master"
+  digest = "1:14dbca697f2f73a9c950d916b9b1299b3fabc4668a1b443a342e4df23466de41"
+  name = "github.com/kata-containers/agent"
+  packages = [
+    "pkg/types",
+    "pkg/uevent",
+    "protocols/grpc",
+    "protocols/mockserver",
+  ]
+  pruneopts = "NUT"
+  revision = "3bef6122c307bf1e562d5c645f45fb4bb66d8053"
 
 [[projects]]
   digest = "1:0159dcdabe50788e5dcfb469521f8f8dcd362db3ab6b465b99a3d33a90726fc0"
@@ -342,11 +354,16 @@
     "github.com/gogo/protobuf/types",
     "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc",
     "github.com/hashicorp/yamux",
+    "github.com/kata-containers/agent/pkg/types",
+    "github.com/kata-containers/agent/pkg/uevent",
+    "github.com/kata-containers/agent/protocols/grpc",
+    "github.com/kata-containers/agent/protocols/mockserver",
     "github.com/mdlayher/vsock",
     "github.com/opencontainers/runc/libcontainer",
     "github.com/opencontainers/runc/libcontainer/cgroups",
     "github.com/opencontainers/runc/libcontainer/configs",
     "github.com/opencontainers/runc/libcontainer/nsenter",
+    "github.com/opencontainers/runc/libcontainer/seccomp",
     "github.com/opencontainers/runc/libcontainer/specconv",
     "github.com/opencontainers/runc/libcontainer/utils",
     "github.com/opencontainers/runtime-spec/specs-go",
