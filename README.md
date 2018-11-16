@@ -3,7 +3,7 @@
 
 # Kata Containers Agent
 
-This project implements an agent meant to be run inside a virtual machine.
+This project implements an agent called `kata-agent` that runs inside a virtual machine (VM).
 
-The goal for this component is to spawn containers and processes inside this
-virtual machine, on behalf of the runtime running on the host.
+The agent manages container processes inside the VM, on behalf of the
+[runtime](https://github.com/kata-containers/runtime) running on the host.
