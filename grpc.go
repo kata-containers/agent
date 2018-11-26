@@ -560,6 +560,8 @@ func (a *agentGRPC) finishCreateContainer(ctr *container, req *pb.CreateContaine
 		return emptyResp, err
 	}
 
+	// Make sure add Container to Sandbox, before call updateSharedPidNs
+	a.sandbox.setContainer(req.ContainerId, ctr)
 	if err := a.updateSharedPidNs(ctr); err != nil {
 		return emptyResp, err
 	}
@@ -605,8 +607,6 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		mounts:          mountList,
 		useSandboxPidNs: req.SandboxPidns,
 	}
-
-	a.sandbox.setContainer(req.ContainerId, ctr)
 
 	// In case the container creation failed, make sure we cleanup
 	// properly by rolling back the actions previously performed.
