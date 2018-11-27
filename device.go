@@ -27,6 +27,7 @@ const (
 	driver9pType        = "9p"
 	driverBlkType       = "blk"
 	driverSCSIType      = "scsi"
+	driverNvdimmType    = "nvdimm"
 	driverEphemeralType = "ephemeral"
 )
 
@@ -58,8 +59,9 @@ var (
 type deviceHandler func(device pb.Device, spec *pb.Spec, s *sandbox) error
 
 var deviceHandlerList = map[string]deviceHandler{
-	driverBlkType:  virtioBlkDeviceHandler,
-	driverSCSIType: virtioSCSIDeviceHandler,
+	driverBlkType:    virtioBlkDeviceHandler,
+	driverSCSIType:   virtioSCSIDeviceHandler,
+	driverNvdimmType: nvdimmDeviceHandler,
 }
 
 func rescanPciBus() error {
@@ -189,6 +191,10 @@ func virtioSCSIDeviceHandler(device pb.Device, spec *pb.Spec, s *sandbox) error 
 	}
 	device.VmPath = devPath
 
+	return updateSpecDeviceList(device, spec)
+}
+
+func nvdimmDeviceHandler(device pb.Device, spec *pb.Spec, s *sandbox) error {
 	return updateSpecDeviceList(device, spec)
 }
 
