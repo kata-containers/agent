@@ -15,8 +15,6 @@ INIT := no
 UNIT_DIR := /usr/lib/systemd/system
 
 GENERATED_FILES :=
-# Define if agent will be built by seccomp tag
-SECCOMP := no
 
 ifeq ($(INIT),no)
 # Unit file to start kata agent in systemd systems
@@ -34,7 +32,9 @@ COMMIT := $(if $(shell git status --porcelain --untracked-files=no),${COMMIT_NO}
 VERSION_COMMIT := $(if $(COMMIT),$(VERSION)-$(COMMIT),$(VERSION))
 ARCH := $(shell go env GOARCH)
 ifeq ($(SECCOMP),yes)
-BUILDTAGS := seccomp
+	BUILDTAGS := seccomp
+else
+	SECCOMP=no
 endif
 # go build common flags
 BUILDFLAGS := -buildmode=pie
