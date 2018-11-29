@@ -1211,6 +1211,10 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 		return emptyResp, grpcStatus.Error(codes.AlreadyExists, "Sandbox already started, impossible to start again")
 	}
 
+	if err := a.sandbox.syncTimeHw2Sys(); err != nil {
+		return emptyResp, err
+	}
+
 	a.sandbox.hostname = req.Hostname
 	a.sandbox.containers = make(map[string]*container)
 	a.sandbox.network.ifaces = make(map[string]*types.Interface)

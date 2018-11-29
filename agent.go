@@ -853,6 +853,14 @@ func (s *sandbox) stopGRPC() {
 	}
 }
 
+func (s *sandbox) syncTimeHw2Sys() error {
+	cmd := &exec.Cmd{
+		Path: "/sbin/hwclock",
+		Args: []string{"hwclock", "--hctosys"},
+	}
+	return s.subreaper.run(cmd)
+}
+
 type initMount struct {
 	fstype, src, dest string
 	options           []string
