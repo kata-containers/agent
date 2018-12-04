@@ -1399,3 +1399,10 @@ func (a *agentGRPC) getAgentDetails(ctx context.Context) *pb.AgentDetails {
 
 	return &details
 }
+
+func (a *agentGRPC) SetGuestDateTime(ctx context.Context, req *pb.SetGuestDateTimeRequest) (*gpb.Empty, error) {
+	if err := syscall.Settimeofday(&syscall.Timeval{Sec: req.Sec, Usec: req.Usec}); err != nil {
+		return nil, grpcStatus.Errorf(codes.Internal, "Could not set guest time: %v", err)
+	}
+	return &gpb.Empty{}, nil
+}
