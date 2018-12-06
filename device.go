@@ -26,6 +26,7 @@ import (
 const (
 	driver9pType        = "9p"
 	driverBlkType       = "blk"
+	driverMmioBlkType   = "mmioblk"
 	driverSCSIType      = "scsi"
 	driverNvdimmType    = "nvdimm"
 	driverEphemeralType = "ephemeral"
@@ -59,9 +60,10 @@ var (
 type deviceHandler func(device pb.Device, spec *pb.Spec, s *sandbox) error
 
 var deviceHandlerList = map[string]deviceHandler{
-	driverBlkType:    virtioBlkDeviceHandler,
-	driverSCSIType:   virtioSCSIDeviceHandler,
-	driverNvdimmType: nvdimmDeviceHandler,
+	driverMmioBlkType: virtioMmioBlkDeviceHandler,
+	driverBlkType:     virtioBlkDeviceHandler,
+	driverSCSIType:    virtioSCSIDeviceHandler,
+	driverNvdimmType:  nvdimmDeviceHandler,
 }
 
 func rescanPciBus() error {
@@ -166,6 +168,16 @@ func getPCIDeviceName(s *sandbox, pciID string) (string, error) {
 	}
 
 	return filepath.Join(systemDevPath, devName), nil
+}
+
+// device.Id should be the predicted device name (vda, vdb, ...)
+// device.VmPath already provides a way to send it in
+func virtioMmioBlkDeviceHandler(device pb.Device, spec *pb.Spec, s *sandbox) error {
+	if device.VmPath == "" {
+		return fmt.Errorf("Invalid path for virtioMmioBlkDevice")
+	}
+
+	return updateSpecDeviceList(device, spec)
 }
 
 // device.Id should be the PCI address in the format  "bridgeAddr/deviceAddr".
