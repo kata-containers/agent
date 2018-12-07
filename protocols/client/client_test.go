@@ -34,7 +34,11 @@ const (
 )
 
 func startMockServer(t *testing.T, enableYamux bool) (*grpc.Server, chan error, error) {
-	os.Remove(mockSockAddr)
+	err := os.RemoveAll(mockSockAddr)
+	assert.Nil(t, err, "Remove %s failed", mockSockAddr)
+	if err != nil {
+		assert.FailNow(t, err.Error(), "Failed to start mock server")
+	}
 
 	l, err := net.Listen("unix", mockSockAddr)
 	assert.Nil(t, err, "Listen on %s failed: %s", mockSockAddr, err)
@@ -114,6 +118,7 @@ func agentClientTest(t *testing.T, sock string, success, enableYamux bool, expec
 func TestNewAgentClient(t *testing.T) {
 	mock, waitCh, err := startMockServer(t, false)
 	assert.Nil(t, err, "failed to start mock server: %s", err)
+	defer os.Remove(mockSockAddr)
 
 	cliFunc := func(sock string, success bool, expect string) {
 		agentClientTest(t, sock, success, false, expect)
@@ -137,6 +142,7 @@ func TestNewAgentClient(t *testing.T) {
 func TestNewAgentClientWithYamux(t *testing.T) {
 	mock, waitCh, err := startMockServer(t, true)
 	assert.Nil(t, err, "failed to start mock server: %s", err)
+	defer os.Remove(mockSockAddr)
 
 	cliFunc := func(sock string, success bool, expect string) {
 		agentClientTest(t, sock, success, true, expect)
