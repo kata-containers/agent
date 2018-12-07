@@ -26,6 +26,7 @@ import (
 	"github.com/opencontainers/runc/libcontainer/seccomp"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/sys/unix"
 )
 
 var testSharedPidNs = "testSharedPidNs"
@@ -737,4 +738,51 @@ func TestHaveSeccomp(t *testing.T) {
 			assert.Equal(a.haveSeccomp(), false)
 		}
 	}
+}
+
+func TestPosixRlimitsToRlimits(t *testing.T) {
+	assert := assert.New(t)
+
+	expectedRlimits := []configs.Rlimit{
+		{unix.RLIMIT_CPU, 100, 120},
+		{unix.RLIMIT_FSIZE, 100, 120},
+		{unix.RLIMIT_DATA, 100, 120},
+		{unix.RLIMIT_STACK, 100, 120},
+		{unix.RLIMIT_CORE, 100, 120},
+		{unix.RLIMIT_RSS, 100, 120},
+		{unix.RLIMIT_NPROC, 100, 120},
+		{unix.RLIMIT_NOFILE, 100, 120},
+		{unix.RLIMIT_MEMLOCK, 100, 120},
+		{unix.RLIMIT_AS, 100, 120},
+		{unix.RLIMIT_LOCKS, 100, 120},
+		{unix.RLIMIT_SIGPENDING, 100, 120},
+		{unix.RLIMIT_MSGQUEUE, 100, 120},
+		{unix.RLIMIT_NICE, 100, 120},
+		{unix.RLIMIT_RTPRIO, 100, 120},
+		{unix.RLIMIT_RTTIME, 100, 120},
+	}
+
+	posixRlimits := []specs.POSIXRlimit{
+		{"RLIMIT_CPU", 100, 120},
+		{"RLIMIT_FSIZE", 100, 120},
+		{"RLIMIT_DATA", 100, 120},
+		{"RLIMIT_STACK", 100, 120},
+		{"RLIMIT_CORE", 100, 120},
+		{"RLIMIT_RSS", 100, 120},
+		{"RLIMIT_NPROC", 100, 120},
+		{"RLIMIT_NOFILE", 100, 120},
+		{"RLIMIT_MEMLOCK", 100, 120},
+		{"RLIMIT_AS", 100, 120},
+		{"RLIMIT_LOCKS", 100, 120},
+		{"RLIMIT_SIGPENDING", 100, 120},
+		{"RLIMIT_MSGQUEUE", 100, 120},
+		{"RLIMIT_NICE", 100, 120},
+		{"RLIMIT_RTPRIO", 100, 120},
+		{"RLIMIT_RTTIME", 100, 120},
+		{"RLIMIT_UNSUPPORTED", 0, 0},
+	}
+
+	rlimits := posixRlimitsToRlimits(posixRlimits)
+
+	assert.Equal(rlimits, expectedRlimits)
 }
