@@ -652,6 +652,9 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		return emptyResp, err
 	}
 
+	// apply rlimits
+	config.Rlimits = posixRlimitsToRlimits(ociSpec.Process.Rlimits)
+
 	// Update libcontainer configuration for specific cases not handled
 	// by the specconv converter.
 	if err = a.updateContainerConfig(ociSpec, config, ctr); err != nil {
@@ -659,6 +662,46 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 	}
 
 	return a.finishCreateContainer(ctr, req, config)
+}
+
+func posixRlimitsToRlimits(posixRlimits []specs.POSIXRlimit) []configs.Rlimit {
+	var rlimits []configs.Rlimit
+
+	rlimitsMap := map[string]int{
+		"RLIMIT_CPU":        unix.RLIMIT_CPU,        // 0x0
+		"RLIMIT_FSIZE":      unix.RLIMIT_FSIZE,      // 0x1
+		"RLIMIT_DATA":       unix.RLIMIT_DATA,       // 0x2
+		"RLIMIT_STACK":      unix.RLIMIT_STACK,      // 0x3
+		"RLIMIT_CORE":       unix.RLIMIT_CORE,       // 0x4
+		"RLIMIT_RSS":        unix.RLIMIT_RSS,        // 0x5
+		"RLIMIT_NPROC":      unix.RLIMIT_NPROC,      // 0x6
+		"RLIMIT_NOFILE":     unix.RLIMIT_NOFILE,     // 0x7
+		"RLIMIT_MEMLOCK":    unix.RLIMIT_MEMLOCK,    // 0x8
+		"RLIMIT_AS":         unix.RLIMIT_AS,         // 0x9
+		"RLIMIT_LOCKS":      unix.RLIMIT_LOCKS,      // 0xa
+		"RLIMIT_SIGPENDING": unix.RLIMIT_SIGPENDING, // 0xb
+		"RLIMIT_MSGQUEUE":   unix.RLIMIT_MSGQUEUE,   // 0xc
+		"RLIMIT_NICE":       unix.RLIMIT_NICE,       // 0xd
+		"RLIMIT_RTPRIO":     unix.RLIMIT_RTPRIO,     // 0xe
+		"RLIMIT_RTTIME":     unix.RLIMIT_RTTIME,     // 0xf
+	}
+
+	for _, l := range posixRlimits {
+		limit, ok := rlimitsMap[l.Type]
+		if !ok {
+			agentLog.WithField("rlimit", l.Type).Warnf("Unknown rlimit")
+			continue
+		}
+
+		rl := configs.Rlimit{
+			Type: limit,
+			Hard: l.Hard,
+			Soft: l.Soft,
+		}
+		rlimits = append(rlimits, rl)
+	}
+
+	return rlimits
 }
 
 func (a *agentGRPC) createContainerChecks(req *pb.CreateContainerRequest) (err error) {
