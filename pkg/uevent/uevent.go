@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"io"
 	"strings"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
@@ -33,7 +34,7 @@ type ReaderCloser struct {
 }
 
 // NewReaderCloser returns an io.ReadCloser handle for uevent.
-func NewReaderCloser() (io.ReadCloser, error) {
+func NewReaderCloser(netlinkRecvBufSize uint32) (io.ReadCloser, error) {
 	nl := unix.SockaddrNetlink{
 		Family: unix.AF_NETLINK,
 		// Passing Pid as 0 here allows the kernel to take care of assigning
@@ -45,6 +46,14 @@ func NewReaderCloser() (io.ReadCloser, error) {
 	fd, err := unix.Socket(unix.AF_NETLINK, unix.SOCK_RAW, unix.NETLINK_KOBJECT_UEVENT)
 	if err != nil {
 		return nil, err
+	}
+
+	// If netlinkRecvBufSize > 0, set netlink socket recv buffer size to netlinkRecvBufSize
+	if netlinkRecvBufSize > 0 {
+		err = unix.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_RCVBUFFORCE, int(netlinkRecvBufSize))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if err := unix.Bind(fd, &nl); err != nil {
@@ -85,8 +94,8 @@ type Handler struct {
 }
 
 // NewHandler returns a uevent handler.
-func NewHandler() (*Handler, error) {
-	rdCloser, err := NewReaderCloser()
+func NewHandler(netlinkRecvBufSize uint32) (*Handler, error) {
+	rdCloser, err := NewReaderCloser(netlinkRecvBufSize)
 	if err != nil {
 		return nil, err
 	}

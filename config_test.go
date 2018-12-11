@@ -486,3 +486,58 @@ func TestParseCmdlineOptionContainerPipeSize(t *testing.T) {
 		assert.Equal(d.expectedContainerPipeSize, containerPipeSize, "test %d (%+v)", i, d)
 	}
 }
+
+func TestParseCmdlineOptionNetlinkSockRecvBufSize(t *testing.T) {
+	assert := assert.New(t)
+
+	type testData struct {
+		option                         string
+		shouldErr                      bool
+		expectedNetlinkSockRecvBufSize uint32
+	}
+
+	data := []testData{
+		{"", false, 0},
+		{"netlink_recv_buf_siz", false, 0},
+		{"netlink_recv_buf_size", false, 0},
+		{"netlink_recv_buf_size=", false, 0},
+		{"netlink_recv_buf_size=4096", false, 0},
+		{"netlink_recv_buf_size=4KB", false, 0},
+		{"agent.netlink_recv_buf_size=", true, 0},
+		{"agent.netlink_recv_buf_size=foobar", true, 0},
+		{"agent.netlink_recv_buf_size=-1", true, 0},
+		{"agent.netlink_recv_buf_size=0", true, 0},
+		{"agent.netlink_recv_buf_size=100", true, 0},
+		{"agent.netlink_recv_buf_size=3KB", true, 0},
+		{"agent.netlink_recv_buf_size=3.6KB", true, 0},
+		{"agent.netlink_recv_buf_size=4095", true, 0},
+		{"agent.netlink_recv_buf_size=4096xB", true, 0},
+		{"agent.netlink_recv_buf_size=4096", false, 4096},
+		{"agent.netlink_recv_buf_size=4097", false, 4097},
+		{"agent.netlink_recv_buf_size=4096.0", false, 4096},
+		{"agent.netlink_recv_buf_size=1024KB", false, 1048576},
+		{"agent.netlink_recv_buf_size=1MB", false, 1048576},
+		{"agent.netlink_recv_buf_size=4194303", false, 4194303},
+		{"agent.netlink_recv_buf_size=3.999MB", false, 4193255},
+		{"agent.netlink_recv_buf_size=4194304", false, 4194304},
+		{"agent.netlink_recv_buf_size=4MB", false, 4194304},
+		{"agent.netlink_recv_buf_size=4.001MB", true, 0},
+		{"agent.netlink_recv_buf_size=4194305", true, 0},
+		{"agent.netlink_recv_buf_size=100MB", true, 0},
+		{"agent.netlink_recv_buf_size=1GB", true, 0},
+	}
+
+	for i, d := range data {
+		// reset the netlink socket recv buffer size
+		netlinkSockRecvBufSize = 0
+
+		err := parseCmdlineOption(d.option)
+		if d.shouldErr {
+			assert.Error(err)
+		} else {
+			assert.NoError(err)
+		}
+
+		assert.Equal(d.expectedNetlinkSockRecvBufSize, netlinkSockRecvBufSize, "test %d (%+v)", i, d)
+	}
+}

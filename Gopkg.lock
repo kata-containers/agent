@@ -71,12 +71,11 @@
   version = "v1.13.1"
 
 [[projects]]
-  digest = "1:9d8fe33c2e1aa01c76db67f285ffdb7dbdb5c5d90d9deb296526d67b9798ce7b"
+  digest = "1:97176fe8a268479a527d08df458c269dc27abf59c1643807d4e36398cbd9ef2d"
   name = "github.com/docker/go-units"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "0dadbb0345b35ec7ef35e228dabb8de89a65bf52"
-  version = "v0.3.2"
+  revision = "519db1ee28dcc9fd2474ae59fca29a810482bfb1"
 
 [[projects]]
   digest = "1:ca3369c0fc8d471d8698f85a37a4f8c98a847402681a31431fb87a84fa2e5373"
@@ -402,6 +401,7 @@
   analyzer-version = 1
   input-imports = [
     "github.com/docker/docker/pkg/parsers",
+    "github.com/docker/go-units",
     "github.com/gogo/protobuf/gogoproto",
     "github.com/gogo/protobuf/jsonpb",
     "github.com/gogo/protobuf/proto",

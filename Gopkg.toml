@@ -50,6 +50,9 @@
   name = "github.com/uber/jaeger-client-go"
   version = "2.15.0"
 
+[[constraint]]
+  name = "github.com/docker/go-units"
+  revision = "519db1ee28dcc9fd2474ae59fca29a810482bfb1"
 
 [prune]
   non-go = true

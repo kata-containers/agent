@@ -98,6 +98,19 @@ The pipe's capacity for stdout/stderr can be modified by specifying the `agent.c
 to the guest kernel command line. For example, `agent.container_pipe_size=2097152` will set the stdout and stderr
 pipes to 2097152 bytes.
 
+## Uevent Netlink Socket Receive Buffer Size
+
+When hotplugging a huge size memory into the Kata VM, the kernel in the VM will produce a lot of memory object add
+uevents and send all these uevents to Kata agent by netlink socket. However, default netlink socket receive buffer
+size is 4KB, which is too small and can only hold 256 memory add uevents. If memory add uevents number is larger
+than 256, the left uevents can not be received and processed by Kata agent.
+
+The uevent netlink socket receive buffer size can be modified by specifying the `agent.netlink_recv_buf_size` flag
+to the guest kernel command line. For example, `agent.netlink_recv_buf_size=2MB` will set the uevent netlink socket
+receive buffer size to 2MB value. `agent.netlink_recv_buf_size` valid value range is `[4KB ~ 4MB]` and value can be
+set in human-readable memory format or pure digital number format(default memory unit is byte). 
+
+
 [1]: https://github.com/firecracker-microvm/firecracker/blob/master/docs/vsock.md
 [2]: https://golang.org/pkg/time/#ParseDuration
 [3]: http://man7.org/linux/man-pages/man7/pipe.7.html

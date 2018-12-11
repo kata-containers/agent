@@ -7,11 +7,13 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/docker/go-units"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	grpcStatus "google.golang.org/grpc/status"
@@ -29,6 +31,7 @@ const (
 	hotplugTimeoutFlag         = optionPrefix + "hotplug_timeout"
 	unifiedCgroupHierarchyFlag = optionPrefix + "unified_cgroup_hierarchy"
 	containerPipeSizeFlag      = optionPrefix + "container_pipe_size"
+	netlinkSockRecvBufSizeFlag = optionPrefix + "netlink_recv_buf_size"
 	traceModeStatic            = "static"
 	traceModeDynamic           = "dynamic"
 	traceTypeIsolated          = "isolated"
@@ -63,11 +66,6 @@ func parseKernelCmdline() error {
 
 //Parse a string that represents a kernel cmdline option
 func parseCmdlineOption(option string) error {
-	const (
-		optionPosition = iota
-		valuePosition
-		optionSeparator = "="
-	)
 
 	if option == devModeFlag {
 		crashOnError = true
@@ -85,6 +83,18 @@ func parseCmdlineOption(option string) error {
 		enableTracing(traceModeStatic, defaultTraceType)
 		return nil
 	}
+
+	return parseCmdlineOptionWithValue(option)
+}
+
+// parseCmdlineOptionWithValue parse the `agent.<flag>=<value>` format
+// kernel cmdline option
+func parseCmdlineOptionWithValue(option string) error {
+	const (
+		optionPosition = iota
+		valuePosition
+		optionSeparator = "="
+	)
 
 	split := strings.Split(option, optionSeparator)
 
@@ -155,6 +165,18 @@ func parseCmdlineOption(option string) error {
 			return err
 		}
 		unifiedCgroupHierarchy = flag
+	case netlinkSockRecvBufSizeFlag:
+		bufSizeInBytes, err := units.RAMInBytes(split[valuePosition])
+		if err != nil {
+			return err
+		}
+
+		if bufSizeInBytes < minNetlinkSockRecvBufSize || bufSizeInBytes > maxNetlinkSockRecvBufSize {
+			return fmt.Errorf("invalid netlink socket recv buf size: %d (valid size range %s-%s bytes)", bufSizeInBytes,
+				units.BytesSize(minNetlinkSockRecvBufSize), units.BytesSize(maxNetlinkSockRecvBufSize))
+		}
+
+		netlinkSockRecvBufSize = uint32(bufSizeInBytes)
 	default:
 		if strings.HasPrefix(split[optionPosition], optionPrefix) {
 			return grpcStatus.Errorf(codes.NotFound, "Unknown option %s", split[optionPosition])

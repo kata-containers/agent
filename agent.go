@@ -192,6 +192,14 @@ var unifiedCgroupHierarchy = false
 // Size in bytes of the stdout/stderr pipes created for each container.
 var containerPipeSize = uint32(0)
 
+const (
+	minNetlinkSockRecvBufSize = 4 * 1024
+	maxNetlinkSockRecvBufSize = 4 * 1024 * 1024
+)
+
+// Size in bytes of the netlink socket recv buf size
+var netlinkSockRecvBufSize = uint32(0)
+
 // commType is used to denote the communication channel type used.
 type commType int
 
@@ -710,7 +718,7 @@ func (s *sandbox) waitForStopServer() {
 func (s *sandbox) listenToUdevEvents() {
 	fieldLogger := agentLog.WithField("subsystem", "udevlistener")
 
-	uEvHandler, err := uevent.NewHandler()
+	uEvHandler, err := uevent.NewHandler(netlinkSockRecvBufSize)
 	if err != nil {
 		fieldLogger.Warnf("Error starting uevent listening loop %s", err)
 		return
