@@ -420,3 +420,7 @@ func (m *mockServer) GetGuestDetails(ctx context.Context, req *pb.GuestDetailsRe
 
 	return nil, nil
 }
+
+func (m *mockServer) SetGuestDateTime(ctx context.Context, req *pb.SetGuestDateTimeRequest) (*types.Empty, error) {
+	return &types.Empty{}, nil
+}

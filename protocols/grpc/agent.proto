@@ -55,6 +55,7 @@ service AgentService {
 	rpc OnlineCPUMem(OnlineCPUMemRequest) returns (google.protobuf.Empty);
 	rpc ReseedRandomDev(ReseedRandomDevRequest) returns (google.protobuf.Empty);
 	rpc GetGuestDetails(GuestDetailsRequest) returns (GuestDetailsResponse);
+	rpc SetGuestDateTime(SetGuestDateTimeRequest) returns (google.protobuf.Empty);
 }
 
 message CreateContainerRequest {
@@ -353,6 +354,13 @@ message GuestDetailsResponse {
 	uint64 mem_block_size_bytes = 1;
 
 	AgentDetails agent_details = 2;
+}
+
+message SetGuestDateTimeRequest {
+	// Sec the second since the Epoch.
+	int64 Sec = 1;
+	// Usec the microseconds portion of time since the Epoch.
+	int64 Usec = 2;
 }
 
 // Storage represents both the rootfs of the container, and any volume that
