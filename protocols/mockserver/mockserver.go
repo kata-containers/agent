@@ -424,3 +424,9 @@ func (m *mockServer) GetGuestDetails(ctx context.Context, req *pb.GuestDetailsRe
 func (m *mockServer) SetGuestDateTime(ctx context.Context, req *pb.SetGuestDateTimeRequest) (*types.Empty, error) {
 	return &types.Empty{}, nil
 }
+
+func (m *mockServer) CopyFile(ctx context.Context, req *pb.CopyFileRequest) (*types.Empty, error) {
+	mockLock.RLock()
+	defer mockLock.RUnlock()
+	return nil, m.podExist()
+}

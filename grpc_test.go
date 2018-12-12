@@ -786,3 +786,53 @@ func TestPosixRlimitsToRlimits(t *testing.T) {
 
 	assert.Equal(rlimits, expectedRlimits)
 }
+
+func TestCopyFile(t *testing.T) {
+	assert := assert.New(t)
+
+	oldContainersRootfsPath := containersRootfsPath
+	containersRootfsPath = "/tmp"
+	defer func() {
+		containersRootfsPath = oldContainersRootfsPath
+	}()
+
+	a := &agentGRPC{}
+	req := &pb.CopyFileRequest{
+		DirMode:  0755,
+		FileMode: 0755,
+		Uid:      int32(os.Getuid()),
+		Gid:      int32(os.Getgid()),
+	}
+
+	_, err := a.CopyFile(context.Background(), req)
+	assert.Error(err)
+
+	dir, err := ioutil.TempDir("", "copy")
+	assert.NoError(err)
+	defer os.RemoveAll(dir)
+
+	req.Path = filepath.Join(dir, "file")
+
+	part1 := []byte("hello")
+	part2 := []byte("world")
+	req.FileSize = int64(len(part1) + len(part2))
+
+	// send first part
+	req.Offset = 0
+	req.Data = part1
+	_, err = a.CopyFile(context.Background(), req)
+	assert.NoError(err)
+
+	// send second part
+	req.Offset = int64(len(part1))
+	req.Data = part2
+	_, err = a.CopyFile(context.Background(), req)
+	assert.NoError(err)
+
+	// check file exist
+	assert.FileExists(req.Path)
+	content, err := ioutil.ReadFile(req.Path)
+	assert.NoError(err)
+	// check file's content
+	assert.Equal(content, append(part1, part2...))
+}

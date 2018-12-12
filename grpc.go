@@ -53,6 +53,7 @@ var (
 	sysfsMemOnlinePath       = "/sys/devices/system/memory"
 	sysfsMemoryBlockSizePath = "/sys/devices/system/memory/block_size_bytes"
 	sysfsConnectedCPUsPath   = filepath.Join(sysfsCPUOnlinePath, "online")
+	containersRootfsPath     = "/run"
 )
 
 type onlineResource struct {
@@ -1449,4 +1450,79 @@ func (a *agentGRPC) SetGuestDateTime(ctx context.Context, req *pb.SetGuestDateTi
 		return nil, grpcStatus.Errorf(codes.Internal, "Could not set guest time: %v", err)
 	}
 	return &gpb.Empty{}, nil
+}
+
+// CopyFile copies files form host to container's rootfs (guest). Files can be copied by parts, for example
+// a file which size is 2MB, can be copied calling CopyFile 2 times, in the first call req.Offset is 0,
+// req.FileSize is 2MB and req.Data contains the first half of the file, in the seconds call req.Offset is 1MB,
+// req.FileSize is 2MB and req.Data contains the second half of the file. For security reason all write operations
+// are made in a temporary file, once temporary file reaches the expected size (req.FileSize), it's moved to
+// destination file (req.Path).
+func (a *agentGRPC) CopyFile(ctx context.Context, req *pb.CopyFileRequest) (*gpb.Empty, error) {
+	// get absolute path, to avoid paths like '/run/../sbin/init'
+	path, err := filepath.Abs(req.Path)
+	if err != nil {
+		return emptyResp, err
+	}
+
+	// container's rootfs is mounted at /run, in order to avoid overwrite guest's rootfs files, only
+	// is possible to copy files to /run
+	if !strings.HasPrefix(path, containersRootfsPath) {
+		return emptyResp, fmt.Errorf("Only is possible to copy files into the %s directory", containersRootfsPath)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), os.FileMode(req.DirMode)); err != nil {
+		return emptyResp, err
+	}
+
+	// create a temporary file and write the content.
+	tmpPath := path + ".tmp"
+	tmpFile, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		return emptyResp, err
+	}
+
+	if _, err := tmpFile.WriteAt(req.Data, req.Offset); err != nil {
+		tmpFile.Close()
+		return emptyResp, err
+	}
+	tmpFile.Close()
+
+	// get temporary file information
+	st, err := os.Stat(tmpPath)
+	if err != nil {
+		return emptyResp, err
+	}
+
+	agentLog.WithFields(logrus.Fields{
+		"tmp-file-size": st.Size(),
+		"expected-size": req.FileSize,
+	}).Debugf("Checking temporary file size")
+
+	// if file size is not equal to the expected size means that copy file operation has not finished.
+	// CopyFile should be called again with new content and a different offset.
+	if st.Size() != req.FileSize {
+		return emptyResp, nil
+	}
+
+	if err := os.Chmod(tmpPath, os.FileMode(req.FileMode)); err != nil {
+		return emptyResp, err
+	}
+
+	if err := os.Chown(tmpPath, int(req.Uid), int(req.Gid)); err != nil {
+		return emptyResp, err
+	}
+
+	// At this point temoporary file has the expected size, atomically move it overwriting
+	// the destination.
+	agentLog.WithFields(logrus.Fields{
+		"tmp-path": tmpPath,
+		"des-path": path,
+	}).Debugf("Moving temporary file")
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		return emptyResp, err
+	}
+
+	return emptyResp, nil
 }
