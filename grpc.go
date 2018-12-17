@@ -45,6 +45,7 @@ type agentGRPC struct {
 const (
 	cpuRegexpPattern = "cpu[0-9]*"
 	memRegexpPattern = "memory[0-9]*"
+	libcontainerPath = "/run/libcontainer"
 )
 
 var (
@@ -539,7 +540,7 @@ func (a *agentGRPC) rollbackFailingContainerCreation(ctr *container) {
 }
 
 func (a *agentGRPC) finishCreateContainer(ctr *container, req *pb.CreateContainerRequest, config *configs.Config) (resp *gpb.Empty, err error) {
-	containerPath := filepath.Join("/tmp/libcontainer", a.sandbox.id)
+	containerPath := filepath.Join(libcontainerPath, a.sandbox.id)
 	factory, err := libcontainer.New(containerPath, libcontainer.Cgroupfs)
 	if err != nil {
 		return emptyResp, err
