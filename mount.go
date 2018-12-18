@@ -192,6 +192,7 @@ type storageHandler func(storage pb.Storage, s *sandbox) (string, error)
 var storageHandlerList = map[string]storageHandler{
 	driver9pType:        virtio9pStorageHandler,
 	driverBlkType:       virtioBlkStorageHandler,
+	driverMmioBlkType:   virtioMmioBlkStorageHandler,
 	driverSCSIType:      virtioSCSIStorageHandler,
 	driverEphemeralType: ephemeralStorageHandler,
 }
@@ -213,6 +214,12 @@ func ephemeralStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
 
 // virtio9pStorageHandler handles the storage for 9p driver.
 func virtio9pStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
+	return commonStorageHandler(storage)
+}
+
+// virtioMmioBlkStorageHandler handles the storage for mmio blk driver.
+func virtioMmioBlkStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
+	//The source path is VmPath
 	return commonStorageHandler(storage)
 }
 
