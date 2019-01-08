@@ -49,11 +49,12 @@ const (
 )
 
 var (
-	sysfsCPUOnlinePath       = "/sys/devices/system/cpu"
-	sysfsMemOnlinePath       = "/sys/devices/system/memory"
-	sysfsMemoryBlockSizePath = "/sys/devices/system/memory/block_size_bytes"
-	sysfsConnectedCPUsPath   = filepath.Join(sysfsCPUOnlinePath, "online")
-	containersRootfsPath     = "/run"
+	sysfsCPUOnlinePath          = "/sys/devices/system/cpu"
+	sysfsMemOnlinePath          = "/sys/devices/system/memory"
+	sysfsMemoryBlockSizePath    = "/sys/devices/system/memory/block_size_bytes"
+	sysfsMemoryHotplugProbePath = "/sys/devices/system/memory/probe"
+	sysfsConnectedCPUsPath      = filepath.Join(sysfsCPUOnlinePath, "online")
+	containersRootfsPath        = "/run"
 )
 
 type onlineResource struct {
@@ -1411,6 +1412,16 @@ func (a *agentGRPC) GetGuestDetails(ctx context.Context, req *pb.GuestDetailsReq
 			if err != nil {
 				return nil, err
 			}
+		}
+	}
+
+	if req.MemHotplugProbe {
+		if _, err := os.Stat(sysfsMemoryHotplugProbePath); os.IsNotExist(err) {
+			details.SupportMemHotplugProbe = false
+		} else if err != nil {
+			return nil, err
+		} else {
+			details.SupportMemHotplugProbe = true
 		}
 	}
 

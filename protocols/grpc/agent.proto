@@ -348,6 +348,11 @@ message GuestDetailsRequest {
 	// for memory hotplug alignment. Typically the server returns what's in
 	// /sys/devices/system/memory/block_size_bytes.
 	bool mem_block_size = 1;
+
+	// MemoryHotplugProbe asks server to return whether guest kernel supports memory hotplug
+        // via probeinterface. Typically the server will check if the path
+        // /sys/devices/system/memory/probe exists.
+	bool mem_hotplug_probe = 2;
 }
 
 message GuestDetailsResponse {
@@ -355,6 +360,8 @@ message GuestDetailsResponse {
 	uint64 mem_block_size_bytes = 1;
 
 	AgentDetails agent_details = 2;
+
+	bool support_mem_hotplug_probe = 3;
 }
 
 message SetGuestDateTimeRequest {
