@@ -1430,6 +1430,16 @@ func (a *agentGRPC) GetGuestDetails(ctx context.Context, req *pb.GuestDetailsReq
 	return &details, nil
 }
 
+func (a *agentGRPC) MemHotplugByProbe(ctx context.Context, req *pb.MemHotplugByProbeRequest) (*gpb.Empty, error) {
+	for _, addr := range req.MemHotplugProbeAddr {
+		if err := ioutil.WriteFile(sysfsMemoryHotplugProbePath, []byte(fmt.Sprintf("0x%x", addr)), 0600); err != nil {
+			return emptyResp, err
+		}
+	}
+
+	return emptyResp, nil
+}
+
 func (a *agentGRPC) haveSeccomp() bool {
 	if seccompSupport == "yes" && seccomp.IsEnabled() {
 		return true
