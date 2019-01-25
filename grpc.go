@@ -176,7 +176,7 @@ func updateContainerCpuset(cgroupPath string, newCpuset string, cookies cookie) 
 		// Don't use c.container.Set because of it will modify container's config.
 		// c.container.Set MUST BE used only on update.
 		cpusetCpusPath := filepath.Join(cpusetPath, "cpuset.cpus")
-		agentLog.WithField("path", cpusetPath).Debug("updating cpuset cgroup")
+
 		if err := ioutil.WriteFile(cpusetCpusPath, []byte(newCpuset), cpusetMode); err != nil {
 			return fmt.Errorf("Could not update cpuset cgroup '%s': %v", newCpuset, err)
 		}
@@ -622,6 +622,15 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		return emptyResp, err
 	}
 
+	if ociSpec.Linux.Resources.CPU != nil && ociSpec.Linux.Resources.CPU.Cpus != "" {
+		availableCpuset, err := getAvailableCpusetList(ociSpec.Linux.Resources.CPU.Cpus)
+		if err != nil {
+			return emptyResp, err
+		}
+
+		ociSpec.Linux.Resources.CPU.Cpus = availableCpuset
+	}
+
 	if a.sandbox.guestHooksPresent {
 		// Add any custom OCI hooks to the spec
 		a.sandbox.addGuestHooks(ociSpec)
@@ -971,6 +980,11 @@ func (a *agentGRPC) UpdateContainer(ctx context.Context, req *pb.UpdateContainer
 
 	// cpuset is a special case where container's cpuset cgroup MUST BE updated
 	if resources.CpusetCpus != "" {
+		resources.CpusetCpus, err = getAvailableCpusetList(resources.CpusetCpus)
+		if err != nil {
+			return emptyResp, err
+		}
+
 		cookies := make(cookie)
 		if err = updateContainerCpuset(contConfig.Cgroups.Path, resources.CpusetCpus, cookies); err != nil {
 			agentLog.WithError(err).Warn("Could not update container cpuset cgroup")

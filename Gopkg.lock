@@ -44,6 +44,14 @@
   version = "v1.1.0"
 
 [[projects]]
+  digest = "1:68ee5b1250f956e3861277624ba80a1e5332d45c19c785e5bbc0a97c9bc019fe"
+  name = "github.com/docker/docker"
+  packages = ["pkg/parsers"]
+  pruneopts = "NUT"
+  revision = "092cba3727bb9b4a2f0e922cd6c0f93ea270e363"
+  version = "v1.13.1"
+
+[[projects]]
   digest = "1:9d8fe33c2e1aa01c76db67f285ffdb7dbdb5c5d90d9deb296526d67b9798ce7b"
   name = "github.com/docker/go-units"
   packages = ["."]
@@ -100,19 +108,6 @@
   packages = ["."]
   pruneopts = "NUT"
   revision = "cc6d2ea263b2471faabce371255777a365bf8306"
-
-[[projects]]
-  branch = "master"
-  digest = "1:14dbca697f2f73a9c950d916b9b1299b3fabc4668a1b443a342e4df23466de41"
-  name = "github.com/kata-containers/agent"
-  packages = [
-    "pkg/types",
-    "pkg/uevent",
-    "protocols/grpc",
-    "protocols/mockserver",
-  ]
-  pruneopts = "NUT"
-  revision = "3bef6122c307bf1e562d5c645f45fb4bb66d8053"
 
 [[projects]]
   digest = "1:0159dcdabe50788e5dcfb469521f8f8dcd362db3ab6b465b99a3d33a90726fc0"
@@ -348,16 +343,13 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "github.com/docker/docker/pkg/parsers",
     "github.com/gogo/protobuf/gogoproto",
     "github.com/gogo/protobuf/jsonpb",
     "github.com/gogo/protobuf/proto",
     "github.com/gogo/protobuf/types",
     "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc",
     "github.com/hashicorp/yamux",
-    "github.com/kata-containers/agent/pkg/types",
-    "github.com/kata-containers/agent/pkg/uevent",
-    "github.com/kata-containers/agent/protocols/grpc",
-    "github.com/kata-containers/agent/protocols/mockserver",
     "github.com/mdlayher/vsock",
     "github.com/opencontainers/runc/libcontainer",
     "github.com/opencontainers/runc/libcontainer/cgroups",
