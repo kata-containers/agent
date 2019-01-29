@@ -120,6 +120,7 @@ type sandbox struct {
 	enableGrpcTrace   bool
 	sandboxPidNs      bool
 	storages          map[string]*sandboxStorage
+	stopServer        chan struct{}
 }
 
 var agentFields = logrus.Fields{
@@ -524,6 +525,44 @@ func (s *sandbox) teardownSharedPidNs() error {
 	return nil
 }
 
+func (s *sandbox) waitForStopServer() {
+	fieldLogger := agentLog.WithField("subsystem", "stopserverwatcher")
+
+	fieldLogger.Info("Waiting for stopServer signal...")
+
+	// Wait for DestroySandbox() to signal this thread about the need to
+	// stop the server.
+	<-s.stopServer
+
+	fieldLogger.Info("stopServer signal received")
+
+	if s.server == nil {
+		fieldLogger.Info("No server initialized, nothing to stop")
+		return
+	}
+
+	defer fieldLogger.Info("gRPC server stopped")
+
+	// Try to gracefully stop the server for a minute
+	timeout := time.Minute
+	done := make(chan struct{})
+	go func() {
+		s.server.GracefulStop()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		s.server = nil
+		return
+	case <-time.After(timeout):
+		fieldLogger.WithField("timeout", timeout).Warn("Could not gracefully stop the server")
+	}
+
+	fieldLogger.Info("Force stopping the server now")
+	s.stopGRPC()
+}
+
 func (s *sandbox) listenToUdevEvents() {
 	fieldLogger := agentLog.WithField("subsystem", "udevlistener")
 
@@ -810,6 +849,7 @@ func (s *sandbox) startGRPC() {
 		defer s.wg.Done()
 
 		var err error
+		var servErr error
 		for {
 			agentLog.Info("agent grpc server starts")
 
@@ -833,14 +873,25 @@ func (s *sandbox) startGRPC() {
 			}
 
 			// l is closed when Serve() returns
-			err = grpcServer.Serve(l)
-			if err != nil {
+			servErr = grpcServer.Serve(l)
+			if servErr != nil {
 				agentLog.WithError(err).Warn("agent grpc server quits")
 			}
 
 			err = s.channel.teardown()
 			if err != nil {
 				agentLog.WithError(err).Warn("agent grpc channel teardown failed")
+			}
+
+			// Based on the definition of grpc.Serve(), the function
+			// returns nil in case of a proper stop triggered by either
+			// grpc.GracefulStop() or grpc.Stop(). Those calls can only
+			// be issued by the chain of events coming from DestroySandbox
+			// and explicitly means the server should not try to listen
+			// again, as the sandbox is being completely removed.
+			if servErr == nil {
+				agentLog.Info("agent grpc server has been explicitly stopped")
+				return
 			}
 		}
 	}()
@@ -1019,6 +1070,7 @@ func realMain() {
 		pciDeviceMap:   make(map[string]string),
 		deviceWatchers: make(map[string](chan string)),
 		storages:       make(map[string]*sandboxStorage),
+		stopServer:     make(chan struct{}),
 	}
 
 	if err = s.initLogger(); err != nil {
@@ -1045,6 +1097,8 @@ func realMain() {
 
 	// Start gRPC server.
 	s.startGRPC()
+
+	go s.waitForStopServer()
 
 	go s.listenToUdevEvents()
 
