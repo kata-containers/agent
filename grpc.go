@@ -1341,6 +1341,10 @@ func (a *agentGRPC) DestroySandbox(ctx context.Context, req *pb.DestroySandboxRe
 		return emptyResp, err
 	}
 
+	// Close stopServer channel to signal the main agent code to stop
+	// the server when all gRPC calls will be completed.
+	close(a.sandbox.stopServer)
+
 	a.sandbox.hostname = ""
 	a.sandbox.id = ""
 	a.sandbox.containers = make(map[string]*container)
