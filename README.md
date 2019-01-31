@@ -5,6 +5,7 @@
 
 * [Debug mode](#debug-mode)
 * [Developer mode](#developer-mode)
+* [Enable trace support](#enable-trace-support)
 
 This project implements an agent called `kata-agent` that runs inside a virtual machine (VM).
 
@@ -22,3 +23,7 @@ See the [developer guide](https://github.com/kata-containers/documentation/blob/
 Add `agent.devmode` to the guest kernel command line to allow the agent
 process to coredump (disabled by default). Specifying this option implicitly
 enables [debug mode](#debug-mode).
+
+## Enable trace support
+
+See [the tracing guide](TRACING.md).

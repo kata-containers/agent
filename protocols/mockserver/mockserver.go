@@ -420,3 +420,11 @@ func (m *mockServer) CopyFile(ctx context.Context, req *pb.CopyFileRequest) (*ty
 	defer mockLock.RUnlock()
 	return nil, m.podExist()
 }
+
+func (m *mockServer) StartTracing(ctx context.Context, req *pb.StartTracingRequest) (*types.Empty, error) {
+	return nil, nil
+}
+
+func (m *mockServer) StopTracing(ctx context.Context, req *pb.StopTracingRequest) (*types.Empty, error) {
+	return nil, nil
+}

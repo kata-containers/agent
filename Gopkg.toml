@@ -8,7 +8,7 @@
 
 [[constraint]]
   name = "github.com/mdlayher/vsock"
-  revision = "738c88d6e4cfd60e8124a5344fa10d205fd828b9"
+  revision = "676f733b747cd6406f297a51bd086ee8ec8abdbe"
 
 [[constraint]]
   name = "github.com/opencontainers/runc"
@@ -45,6 +45,11 @@
 [[override]]
   name = "github.com/containerd/console"
   revision = "2748ece16665b45a47f884001d5831ec79703880"
+
+[[constraint]]
+  name = "github.com/uber/jaeger-client-go"
+  version = "2.15.0"
+
 
 [prune]
   non-go = true

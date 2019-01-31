@@ -1,0 +1,45 @@
+# Copyright (c) 2019 Intel Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+
+#---------------------------------------------------------------------
+# Description: Systemd unit to redirect Jaeger client UDP traffic from
+#   the Kata Containers agent to a Jaeger agent process running on the
+#   host. This is achieved by creating a VSOCK bridge.
+#
+# Note: The "other side" of the VSOCK bridge (outside the virtual
+#   machine) is handled by the vsock-to-udp-server.sh script.
+#---------------------------------------------------------------------
+
+[Unit]
+Description=Jaeger client VM to host redirector
+
+[Service]
+# Default Jaeger agent UDP port a Jaeger client should send trace traffic to.
+#
+# See:
+#
+# - https://jaegertracing.io/docs/getting-started
+# - https://jaegertracing.io/docs/architecture
+Environment=jaeger_port=6831
+# The horrid hex string below represents the VSOCK address with:
+#
+# - CID 2 (reserved for HOST)
+# - port 6831
+#
+# This hex string is required to be passed to socat(1) since at the time of
+# writing socat version 1.7.3.2 does not understand VSOCK sockets
+# (but does provide this method to overcome this limitation).
+#
+# See:
+#
+# - https://gist.github.com/mcastelino/9a57d00ccf245b98de2129f0efe39857#using-specific-ports
+# - http://www.dest-unreach.org/socat/doc/socat-genericsocket.html
+Environment=host_vsock_addr=x00x00xafx1ax00x00x02x00x00x00x00x00x00x00
+Type=simple
+ExecStart=/bin/socat -u "udp-listen:${jaeger_port},reuseaddr,fork" "socket-connect:40:0:${host_vsock_addr}"
+LimitNOFILE=infinity
+Restart=on-failure
+
+[Install]
+WantedBy=kata-agent.service

@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2018 Intel Corporation
+// Copyright (c) 2018-2019 Intel Corporation
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -185,26 +185,103 @@ func TestGetConfig(t *testing.T) {
 		a.logLevel, logrus.InfoLevel)
 }
 
-func TestSetGrpcTrace(t *testing.T) {
+func TestParseCmdlineOptionTracing(t *testing.T) {
 	assert := assert.New(t)
 
-	a := &agentConfig{}
+	type testData struct {
+		option              string
+		expectTraceEnabled  bool
+		expectCollatedTrace bool
+	}
 
-	tmpFile, err := ioutil.TempFile("", "test")
-	assert.NoError(err, "%v", err)
-	fileName := tmpFile.Name()
+	data := []testData{
+		{"", false, false},
+		{"moo", false, false},
+		{"." + traceModeFlag, false, false},
+		{traceModeFlag + ".", false, false},
+		{"x" + traceModeFlag, false, false},
+		{traceModeFlag + "x", false, false},
+		{"x" + traceModeFlag + "x", false, false},
+		{"=" + traceModeFlag, false, false},
+		{traceModeFlag + "=", false, false},
 
-	tmpFile.Write([]byte(logLevelFlag + "=debug"))
-	tmpFile.Close()
+		{traceModeFlag, true, false},
+		{traceModeFlag + "=" + traceValueIsolated, true, false},
+		{traceModeFlag + "=" + traceValueCollated, true, true},
 
-	defer os.Remove(fileName)
+		{traceModeFlag + "=" + traceValueIsolated + "x", false, false},
+		{traceModeFlag + "=" + traceValueCollated + "x", false, false},
+	}
 
-	err = a.getConfig(fileName)
-	assert.NoError(err, "%v", err)
+	for i, d := range data {
+		// force reset
+		tracing = false
+		collatedTrace = false
+		debug = false
 
-	s := &sandbox{}
+		a := &agentConfig{}
 
-	a.applyConfig(s)
+		tmpFile, err := ioutil.TempFile("", "")
+		assert.NoError(err)
 
-	assert.True(s.enableGrpcTrace, "grpc trace should be enabled")
+		fileName := tmpFile.Name()
+		defer os.Remove(fileName)
+
+		tmpFile.Write([]byte(d.option))
+		tmpFile.Close()
+
+		assert.False(tracing)
+		assert.False(collatedTrace)
+		assert.False(debug)
+
+		err = a.getConfig(fileName)
+		assert.NoError(err)
+
+		if d.expectTraceEnabled {
+			assert.Truef(tracing, "test %d (%+v)", i, d)
+		} else {
+			assert.Falsef(tracing, "test %d (%+v)", i, d)
+		}
+
+		if d.expectCollatedTrace {
+			assert.Truef(collatedTrace, "test %d (%+v)", i, d)
+		} else {
+			assert.Falsef(collatedTrace, "test %d (%+v)", i, d)
+		}
+
+		if d.expectTraceEnabled || d.expectCollatedTrace {
+			assert.True(debug, "test %d (%+v)", i, d)
+		}
+	}
+}
+
+func TestEnableTracing(t *testing.T) {
+	assert := assert.New(t)
+
+	type testData struct {
+		collatedTrace bool
+	}
+
+	data := []testData{
+		{false},
+		{true},
+	}
+
+	for i, d := range data {
+		// force reset
+		tracing = false
+		collatedTrace = false
+		debug = false
+
+		enableTracing(d.collatedTrace)
+
+		assert.True(debug, "test %d (%+v)", i, d)
+		assert.True(tracing, "test %d (%+v)", i, d)
+
+		if d.collatedTrace {
+			assert.True(collatedTrace, "test %d (%+v)", i, d)
+		} else {
+			assert.False(collatedTrace, "test %d (%+v)", i, d)
+		}
+	}
 }

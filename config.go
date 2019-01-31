@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2017 Intel Corporation
+// Copyright (c) 2017-2019 Intel Corporation
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -16,10 +16,13 @@ import (
 )
 
 const (
-	optionPrefix      = "agent."
-	logLevelFlag      = optionPrefix + "log"
-	devModeFlag       = optionPrefix + "devmode"
-	kernelCmdlineFile = "/proc/cmdline"
+	optionPrefix       = "agent."
+	logLevelFlag       = optionPrefix + "log"
+	devModeFlag        = optionPrefix + "devmode"
+	traceModeFlag      = optionPrefix + "trace"
+	kernelCmdlineFile  = "/proc/cmdline"
+	traceValueIsolated = "isolated"
+	traceValueCollated = "collated"
 )
 
 type agentConfig struct {
@@ -56,13 +59,6 @@ func (c *agentConfig) getConfig(cmdLineFile string) error {
 	return nil
 }
 
-func (c *agentConfig) applyConfig(s *sandbox) {
-	agentLog.Logger.SetLevel(c.logLevel)
-	if c.logLevel == logrus.DebugLevel {
-		s.enableGrpcTrace = true
-	}
-}
-
 //Parse a string that represents a kernel cmdline option
 func (c *agentConfig) parseCmdlineOption(option string) error {
 	const (
@@ -75,6 +71,11 @@ func (c *agentConfig) parseCmdlineOption(option string) error {
 		crashOnError = true
 		debug = true
 
+		return nil
+	}
+
+	if option == traceModeFlag {
+		enableTracing(false)
 		return nil
 	}
 
@@ -94,6 +95,13 @@ func (c *agentConfig) parseCmdlineOption(option string) error {
 		if level == logrus.DebugLevel {
 			debug = true
 		}
+	case traceModeFlag:
+		switch split[valuePosition] {
+		case traceValueIsolated:
+			enableTracing(false)
+		case traceValueCollated:
+			enableTracing(true)
+		}
 	default:
 		if strings.HasPrefix(split[optionPosition], optionPrefix) {
 			return grpcStatus.Errorf(codes.NotFound, "Unknown option %s", split[optionPosition])
@@ -102,4 +110,15 @@ func (c *agentConfig) parseCmdlineOption(option string) error {
 
 	return nil
 
+}
+
+func enableTracing(enableCollatedTrace bool) {
+	agentLog.Info("enabling tracing")
+
+	tracing = true
+
+	// Enable in case this generates more trace spans
+	debug = true
+
+	collatedTrace = enableCollatedTrace
 }

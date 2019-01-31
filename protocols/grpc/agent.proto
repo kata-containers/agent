@@ -47,6 +47,10 @@ service AgentService {
 	rpc ListInterfaces(ListInterfacesRequest) returns(Interfaces);
 	rpc ListRoutes(ListRoutesRequest) returns (Routes);
 
+	// tracing
+	rpc StartTracing(StartTracingRequest) returns (google.protobuf.Empty);
+	rpc StopTracing(StopTracingRequest) returns (google.protobuf.Empty);
+
 	// misc (TODO: some rpcs can be replaced by hyperstart-exec)
 	rpc CreateSandbox(CreateSandboxRequest) returns (google.protobuf.Empty);
 	rpc DestroySandbox(DestroySandboxRequest) returns (google.protobuf.Empty);
@@ -460,4 +464,10 @@ message CopyFileRequest {
 	int64 offset = 7;
 	// Data to write in the destination file.
 	bytes data = 8;
+}
+
+message StartTracingRequest {
+}
+
+message StopTracingRequest {
 }

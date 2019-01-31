@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2018 Intel Corporation
+// Copyright (c) 2018-2019 Intel Corporation
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -7,6 +7,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"io/ioutil"
 	"os"
@@ -111,17 +112,17 @@ func TestNewChannel(t *testing.T) {
 		isAFVSockSupportedFunc = orgIsAFVSockSupportedFunc
 	}()
 
-	c, err := newChannel()
+	c, err := newChannel(context.Background())
 	assert.Error(err)
 	assert.Nil(c)
 
 	vSockDevPath = "/dev/null"
-	c, err = newChannel()
+	c, err = newChannel(context.Background())
 	assert.Error(err)
 	assert.Nil(c)
 
 	isAFVSockSupportedFunc = func() (bool, error) { return true, nil }
-	c, err = newChannel()
+	c, err = newChannel(context.Background())
 	assert.NoError(err)
 	_, ok := c.(*vSockChannel)
 	assert.True(ok)
@@ -135,7 +136,7 @@ func TestNewChannel(t *testing.T) {
 	defer os.Remove(portPath)
 	err = ioutil.WriteFile(filepath.Join(portPath, "name"), []byte(serialChannelName), 0777)
 	assert.NoError(err)
-	c, err = newChannel()
+	c, err = newChannel(context.Background())
 	assert.NoError(err)
 	_, ok = c.(*serialChannel)
 	assert.True(ok)

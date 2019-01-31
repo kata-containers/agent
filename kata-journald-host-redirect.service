@@ -1,0 +1,45 @@
+# Copyright (c) 2019 Intel Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+
+#---------------------------------------------------------------------
+# Description: Systemd unit to redirect guest OS syslog (journald) logs
+#   to a VSOCK server running on the host.
+#
+# Note: The "other side" of the VSOCK bridge (outside the virtual
+#   machine) is handled by the vsock-to-text-server.sh script.
+#---------------------------------------------------------------------
+
+[Unit]
+Description=Fake syslog service that redirects to the host via vsock
+# Only start this service when `kernel_params` in `configuration.yaml` contains the specified systemd option
+ConditionKernelCommandLine=systemd.journald.forward_to_syslog=1
+Requires=syslog.socket
+
+[Service]
+Type=simple
+StandardOutput=null
+StandardError=null
+# The horrid hex string below represents the VSOCK address with:
+#
+# - CID 2 (reserved for HOST)
+# - port 5140 (note: 514 is syslog)
+#
+# This hex string is required to be passed to socat(1) since at the time of
+# writing socat version 1.7.3.2 does not understand VSOCK sockets
+# (but does provide this method to overcome this limitation).
+#
+# See:
+#
+# - https://gist.github.com/mcastelino/9a57d00ccf245b98de2129f0efe39857#using-specific-ports
+# - http://www.dest-unreach.org/socat/doc/socat-genericsocket.html
+Environment=host_vsock_addr=x00x00x14x14x00x00x02x00x00x00x00x00x00x00
+# Listen on file descriptor 3, which is the first socket-activated file descriptor
+# (see systemd-socket-activate(1)).
+ExecStart=/bin/socat -u "fd:3" "socket-connect:40:0:${host_vsock_addr}"
+LimitNOFILE=infinity
+Restart=on-failure
+
+[Install]
+WantedBy=kata-containers.target
+Alias=syslog.service

@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2017 Intel Corporation
+// Copyright (c) 2017-2019 Intel Corporation
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -7,6 +7,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -44,7 +45,10 @@ type channel interface {
 // can be calculated by using the following operation:
 // (channelExistMaxTries * channelExistWaitTime) / 1000 = timeout in seconds
 // If there are neither vsocks nor serial ports, an error is returned.
-func newChannel() (channel, error) {
+func newChannel(ctx context.Context) (channel, error) {
+	span, _ := trace(ctx, "channel", "newChannel")
+	defer span.Finish()
+
 	var serialErr error
 	var serialPath string
 	var vsockErr error
@@ -54,12 +58,15 @@ func newChannel() (channel, error) {
 		// check vsock path
 		if _, err := os.Stat(vSockDevPath); err == nil {
 			if vSockSupported, vsockErr = isAFVSockSupportedFunc(); vSockSupported && vsockErr == nil {
+				span.SetTag("channel-type", "vsock")
 				return &vSockChannel{}, nil
 			}
 		}
 
 		// Check serial port path
 		if serialPath, serialErr = findVirtualSerialPath(serialChannelName); serialErr == nil {
+			span.SetTag("channel-type", "serial")
+			span.SetTag("serial-path", serialPath)
 			return &serialChannel{serialPath: serialPath}, nil
 		}
 
