@@ -517,11 +517,11 @@ func TestUpdateContainerCpuset(t *testing.T) {
 	cookies := make(cookie)
 	cgroupPath += "///"
 
-	err = updateContainerCpuset(cgroupPath, "0-7", cookies)
+	err = updateCpusetPath(cgroupPath, "0-7", cookies)
 	assert.NoError(err)
 
 	// run again to ensure cookies are used
-	err = updateContainerCpuset(cgroupPath, "0-7", cookies)
+	err = updateCpusetPath(cgroupPath, "0-7", cookies)
 	assert.NoError(err)
 }
 
