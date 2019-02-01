@@ -421,6 +421,16 @@ func (m *mockServer) GetGuestDetails(ctx context.Context, req *pb.GuestDetailsRe
 	return nil, nil
 }
 
+func (m *mockServer) MemHotplugByProbe(ctx context.Context, req *pb.MemHotplugByProbeRequest) (*types.Empty, error) {
+	mockLock.RLock()
+	defer mockLock.RUnlock()
+	if err := m.podExist(); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
 func (m *mockServer) SetGuestDateTime(ctx context.Context, req *pb.SetGuestDateTimeRequest) (*types.Empty, error) {
 	return &types.Empty{}, nil
 }

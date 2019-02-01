@@ -55,6 +55,7 @@ service AgentService {
 	rpc OnlineCPUMem(OnlineCPUMemRequest) returns (google.protobuf.Empty);
 	rpc ReseedRandomDev(ReseedRandomDevRequest) returns (google.protobuf.Empty);
 	rpc GetGuestDetails(GuestDetailsRequest) returns (GuestDetailsResponse);
+	rpc MemHotplugByProbe(MemHotplugByProbeRequest) returns (google.protobuf.Empty);
 	rpc SetGuestDateTime(SetGuestDateTimeRequest) returns (google.protobuf.Empty);
 	rpc CopyFile(CopyFileRequest) returns (google.protobuf.Empty);
 }
@@ -348,6 +349,11 @@ message GuestDetailsRequest {
 	// for memory hotplug alignment. Typically the server returns what's in
 	// /sys/devices/system/memory/block_size_bytes.
 	bool mem_block_size = 1;
+
+	// MemoryHotplugProbe asks server to return whether guest kernel supports memory hotplug
+        // via probeinterface. Typically the server will check if the path
+        // /sys/devices/system/memory/probe exists.
+	bool mem_hotplug_probe = 2;
 }
 
 message GuestDetailsResponse {
@@ -355,6 +361,14 @@ message GuestDetailsResponse {
 	uint64 mem_block_size_bytes = 1;
 
 	AgentDetails agent_details = 2;
+
+	bool support_mem_hotplug_probe = 3;
+}
+
+message MemHotplugByProbeRequest {
+	// server needs to send the value of memHotplugProbeAddr into file /sys/devices/system/memory/probe,
+	// in order to notify the guest kernel about hot-add memory event
+	repeated uint64 memHotplugProbeAddr = 1;
 }
 
 message SetGuestDateTimeRequest {

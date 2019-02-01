@@ -664,12 +664,19 @@ func TestGetGuestDetails(t *testing.T) {
 	}
 
 	req := &pb.GuestDetailsRequest{
-		MemBlockSize: true,
+		MemBlockSize:    true,
+		MemHotplugProbe: true,
 	}
 
 	// sysfsMemoryBlockSizePath exist with error format
 	file, err := ioutil.TempFile("", "test")
 	assert.NoError(err)
+
+	oldsysfsMemoryBlockSizePath := sysfsMemoryBlockSizePath
+	defer func() {
+		sysfsMemoryBlockSizePath = oldsysfsMemoryBlockSizePath
+	}()
+
 	sysfsMemoryBlockSizePath = file.Name()
 	// empty
 	_, err = a.GetGuestDetails(context.TODO(), req)
@@ -699,6 +706,26 @@ func TestGetGuestDetails(t *testing.T) {
 	resp, err = a.GetGuestDetails(context.TODO(), req)
 	assert.NoError(err)
 	assert.Equal(resp.MemBlockSizeBytes, uint64(0))
+
+	// sysfsMemoryHotplugProbePath exist
+	probeFile, err := ioutil.TempFile("", "probe")
+	assert.NoError(err)
+
+	oldSysfsMemoryHotplugProbePath := sysfsMemoryHotplugProbePath
+	defer func() {
+		sysfsMemoryHotplugProbePath = oldSysfsMemoryHotplugProbePath
+	}()
+
+	sysfsMemoryHotplugProbePath = probeFile.Name()
+	resp, err = a.GetGuestDetails(context.TODO(), req)
+	assert.NoError(err)
+	assert.Equal(resp.SupportMemHotplugProbe, true)
+
+	// sysfsMemoryHotplugProbePath does not exist
+	os.Remove(sysfsMemoryHotplugProbePath)
+	resp, err = a.GetGuestDetails(context.TODO(), req)
+	assert.NoError(err)
+	assert.Equal(resp.SupportMemHotplugProbe, false)
 }
 
 func TestGetAgentDetails(t *testing.T) {
