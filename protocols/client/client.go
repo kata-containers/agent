@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -82,6 +83,7 @@ func NewAgentClient(ctx context.Context, sock string, enableYamux bool) (*AgentC
 	if err != nil {
 		return nil, err
 	}
+
 	dialOpts := []grpc.DialOption{grpc.WithInsecure(), grpc.WithBlock()}
 	dialOpts = append(dialOpts, grpc.WithDialer(agentDialer(parsedAddr, enableYamux)))
 
@@ -154,6 +156,9 @@ func parse(sock string) (string, *url.URL, error) {
 			return "", nil, grpcStatus.Errorf(codes.InvalidArgument, "Invalid unix scheme: %s", sock)
 		}
 		if addr.Host == "" {
+			if _, err := os.Stat(addr.Path); os.IsNotExist(err) {
+				return "", nil, grpcStatus.Errorf(codes.InvalidArgument, "Socket does not exist %s", sock)
+			}
 			grpcAddr = unixSocketScheme + ":///" + addr.Path
 		} else {
 			grpcAddr = unixSocketScheme + ":///" + addr.Host + "/" + addr.Path
