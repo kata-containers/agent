@@ -42,9 +42,7 @@ service AgentService {
 	rpc TtyWinResize(TtyWinResizeRequest) returns (google.protobuf.Empty);
 
 	// networking
-	rpc AddInterface(AddInterfaceRequest) returns(types.Interface);
 	rpc UpdateInterface(UpdateInterfaceRequest) returns (types.Interface);
-	rpc RemoveInterface(RemoveInterfaceRequest) returns (types.Interface);
 	rpc UpdateRoutes(UpdateRoutesRequest) returns (Routes);
 	rpc ListInterfaces(ListInterfacesRequest) returns(Interfaces);
 	rpc ListRoutes(ListRoutesRequest) returns (Routes);
@@ -286,14 +284,6 @@ message Routes {
 }
 
 message UpdateInterfaceRequest {
-	types.Interface interface = 1;
-}
-
-message AddInterfaceRequest {
-	types.Interface interface = 1;
-}
-
-message RemoveInterfaceRequest {
 	types.Interface interface = 1;
 }
 

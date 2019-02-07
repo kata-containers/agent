@@ -147,51 +147,6 @@ func updateLink(netHandle *netlink.Handle, link netlink.Link, iface *types.Inter
 	return nil
 }
 
-func (s *sandbox) addInterface(netHandle *netlink.Handle, iface *types.Interface) (resultingIfc *types.Interface, err error) {
-	if iface == nil {
-		return nil, errNoIF
-	}
-
-	s.network.ifacesLock.Lock()
-	defer s.network.ifacesLock.Unlock()
-
-	if netHandle == nil {
-		netHandle, err = netlink.NewHandle(unix.NETLINK_ROUTE)
-		if err != nil {
-			return nil, err
-		}
-		defer netHandle.Delete()
-	}
-
-	hwAddr, err := net.ParseMAC(iface.HwAddr)
-	if err != nil {
-		return nil, err
-	}
-
-	link := &netlink.Device{
-		LinkAttrs: netlink.LinkAttrs{
-			MTU:          int(iface.Mtu),
-			TxQLen:       -1,
-			Name:         iface.Name,
-			HardwareAddr: hwAddr,
-		},
-	}
-
-	// Create the link.
-	if err := netHandle.LinkAdd(link); err != nil {
-		return nil, err
-	}
-
-	// Set the link up.
-	if err := netHandle.LinkSetUp(link); err != nil {
-		return iface, err
-	}
-
-	// Update sandbox interface list.
-	s.network.ifaces[iface.Name] = iface
-
-	return iface, nil
-}
 func (s *sandbox) removeInterface(netHandle *netlink.Handle, iface *types.Interface) (resultingIfc *types.Interface, err error) {
 	if iface == nil {
 		return nil, errNoIF
