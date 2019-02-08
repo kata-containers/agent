@@ -12,6 +12,7 @@ import (
 	"os"
 	"reflect"
 	"sync"
+	"time"
 
 	"golang.org/x/sys/unix"
 
@@ -230,6 +231,49 @@ func (s *sandbox) removeInterface(netHandle *netlink.Handle, iface *types.Interf
 	return nil, nil
 }
 
+const linkUpdateTimeout = 5
+
+var linkOperational = true
+
+func expectLinkUpdate(ch <-chan netlink.LinkUpdate, ifaceName string) bool {
+	for {
+		timeout := time.After(time.Second * linkUpdateTimeout)
+		select {
+		case update := <-ch:
+			// Reference: https://www.kernel.org/doc/Documentation/networking/operstates.txt
+
+			if ifaceName == update.Link.Attrs().Name && (update.IfInfomsg.Flags&unix.IFF_UP != 0) {
+				if linkOperational == (update.Link.Attrs().OperState == netlink.OperUp) {
+					return true
+				}
+			}
+		case <-timeout:
+			return false
+		}
+	}
+}
+
+func waitForLinkUp(netHandle *netlink.Handle, link netlink.Link, ifaceName string) (err error) {
+	ch := make(chan netlink.LinkUpdate)
+	done := make(chan struct{})
+	defer close(done)
+
+	if err = netlink.LinkSubscribe(ch, done); err != nil {
+		return
+	}
+
+	//put the link back into the up state
+	if err = netHandle.LinkSetUp(link); err != nil {
+		return
+	}
+
+	if !expectLinkUpdate(ch, ifaceName) {
+		err = fmt.Errorf("Link Up update not received as expected for interface %s", ifaceName)
+	}
+
+	return err
+}
+
 // updateInterface will update an existing interface with the values provided in the types.Interface.  It will identify the
 // existing interface via MAC address and will return the state of the interface once the function completes as well an any
 // errors observed.
@@ -286,8 +330,8 @@ func (s *sandbox) updateInterface(netHandle *netlink.Handle, iface *types.Interf
 		} else {
 			resultingIfc = iface
 		}
-		//put the link back into the up state
-		retErr := netHandle.LinkSetUp(link)
+
+		retErr := waitForLinkUp(netHandle, link, iface.Name)
 
 		//if we failed to setup the link but already are returning
 		//with an error, return the original error

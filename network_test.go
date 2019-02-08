@@ -22,6 +22,11 @@ import (
 func TestUpdateRemoveInterface(t *testing.T) {
 	skipUnlessRoot(t)
 
+	linkOperational = false
+	defer func() {
+		linkOperational = true
+	}()
+
 	s := sandbox{}
 
 	ifc := types.Interface{
