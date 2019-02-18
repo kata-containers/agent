@@ -155,37 +155,59 @@ func onlineMemResources() error {
 	return err
 }
 
-// updates container's cpuset cgroups visiting each sub-directory in cgroupPath and writing
-// newCpuset in the cpuset.cpus file, cookies are used for performance reasons in order to
+// updates a cpuset cgroups path visiting each sub-directory in cgroupPath parent and writing
+// the maximal set of cpus in cpuset.cpus file, finally the cgroupPath is updated with the requsted
+//value.
+// cookies are used for performance reasons in order to
 // don't update a cgroup twice.
-func updateContainerCpuset(cgroupPath string, newCpuset string, cookies cookie) error {
-	// Each cpuset cgroup MUST BE updated with the actual number of vCPUs.
-	cpusetPath := cgroupCpusetPath
-	cgroupsPaths := strings.Split(cgroupPath, "/")
-	for _, path := range cgroupsPaths {
+func updateCpusetPath(cgroupPath string, newCpuset string, cookies cookie) error {
+	// Each cpuset cgroup parent MUST BE updated with the actual number of vCPUs.
+	//Start to update from cgroup system root.
+	cgroupParentPath := cgroupCpusetPath
+
+	cpusetGuest, err := getCpusetGuest()
+	if err != nil {
+		return err
+	}
+
+	// Update parents with max set of current cpus
+	//Iterate  all parent dirs in order.
+	//This is needed to ensure the cgroup parent has cpus on needed needed
+	//by the request.
+	cgroupsParentPaths := strings.Split(filepath.Dir(cgroupPath), "/")
+	for _, path := range cgroupsParentPaths {
 		// Skip if empty.
 		if path == "" {
 			continue
 		}
 
-		cpusetPath = filepath.Join(cpusetPath, path)
+		cgroupParentPath = filepath.Join(cgroupParentPath, path)
 
 		// check if the cgroup was already updated.
-		if cookies[cpusetPath] == true {
-			agentLog.WithField("path", cpusetPath).Debug("cpuset cgroup already updated")
+		if cookies[cgroupParentPath] == true {
+			agentLog.WithField("path", cgroupParentPath).Debug("cpuset cgroup already updated")
 			continue
 		}
 
-		// Don't use c.container.Set because of it will modify container's config.
-		// c.container.Set MUST BE used only on update.
-		cpusetCpusPath := filepath.Join(cpusetPath, "cpuset.cpus")
-		agentLog.WithField("path", cpusetPath).Debug("updating cpuset cgroup")
-		if err := ioutil.WriteFile(cpusetCpusPath, []byte(newCpuset), cpusetMode); err != nil {
-			return fmt.Errorf("Could not update cpuset cgroup '%s': %v", newCpuset, err)
+		cpusetCpusParentPath := filepath.Join(cgroupParentPath, "cpuset.cpus")
+
+		agentLog.WithField("path", cpusetCpusParentPath).Debug("updating cpuset parent cgroup")
+
+		if err := ioutil.WriteFile(cpusetCpusParentPath, []byte(cpusetGuest), cpusetMode); err != nil {
+			return fmt.Errorf("Could not update parent cpuset cgroup (%s) cpuset:'%s': %v", cpusetCpusParentPath, cpusetGuest, err)
 		}
 
 		// add cgroup path to the cookies.
-		cookies[cpusetPath] = true
+		cookies[cgroupParentPath] = true
+	}
+
+	// Finally update group path with requested value.
+	cpusetCpusPath := filepath.Join(cgroupCpusetPath, cgroupPath, "cpuset.cpus")
+
+	agentLog.WithField("path", cpusetCpusPath).Debug("updating cpuset cgroup")
+
+	if err := ioutil.WriteFile(cpusetCpusPath, []byte(newCpuset), cpusetMode); err != nil {
+		return fmt.Errorf("Could not update parent cpuset cgroup (%s) cpuset:'%s': %v", cpusetCpusPath, cpusetGuest, err)
 	}
 
 	return nil
@@ -215,11 +237,10 @@ func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
 
 	// At this point all CPUs have been connected, we need to know
 	// the actual range of CPUs
-	cpus, err := ioutil.ReadFile(sysfsConnectedCPUsPath)
+	connectedCpus, err := getCpusetGuest()
 	if err != nil {
 		return handleError(req.Wait, fmt.Errorf("Could not get the actual range of connected CPUs: %v", err))
 	}
-	connectedCpus := strings.Trim(string(cpus), "\t\n ")
 	agentLog.WithField("range-of-vcpus", connectedCpus).Debug("connecting vCPUs")
 
 	cookies := make(cookie)
@@ -238,13 +259,15 @@ func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
 		// - write /sys/fs/cgroup/cpuset/XXXXX/cpuset.cpus: device or resource busy
 		// NOTE: updating container cpuset cgroup *parents* won't affect container cpuset cgroup, for example if container cpuset cgroup has "0"
 		// and its cpuset cgroup *parents* have "0-5", the container will be able to use only the CPU 0.
+
+		// cpuset assinged containers are not updated, only we update its parents.
 		if contConfig.Cgroups.Resources.CpusetCpus != "" {
 			agentLog.WithField("cpuset", contConfig.Cgroups.Resources.CpusetCpus).Debug("updating container cpuset cgroup parents")
 			// remove container cgroup directory
 			cgroupPath = filepath.Dir(cgroupPath)
 		}
 
-		if err := updateContainerCpuset(cgroupPath, connectedCpus, cookies); err != nil {
+		if err := updateCpusetPath(cgroupPath, connectedCpus, cookies); err != nil {
 			return handleError(req.Wait, err)
 		}
 	}
@@ -623,6 +646,15 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 	ociSpec, err := pb.GRPCtoOCI(req.OCI)
 	if err != nil {
 		return emptyResp, err
+	}
+
+	if ociSpec.Linux.Resources.CPU != nil && ociSpec.Linux.Resources.CPU.Cpus != "" {
+		availableCpuset, err := getAvailableCpusetList(ociSpec.Linux.Resources.CPU.Cpus)
+		if err != nil {
+			return emptyResp, err
+		}
+
+		ociSpec.Linux.Resources.CPU.Cpus = availableCpuset
 	}
 
 	if a.sandbox.guestHooksPresent {
@@ -1017,8 +1049,13 @@ func (a *agentGRPC) UpdateContainer(ctx context.Context, req *pb.UpdateContainer
 
 	// cpuset is a special case where container's cpuset cgroup MUST BE updated
 	if resources.CpusetCpus != "" {
+		resources.CpusetCpus, err = getAvailableCpusetList(resources.CpusetCpus)
+		if err != nil {
+			return emptyResp, err
+		}
+
 		cookies := make(cookie)
-		if err = updateContainerCpuset(contConfig.Cgroups.Path, resources.CpusetCpus, cookies); err != nil {
+		if err = updateCpusetPath(contConfig.Cgroups.Path, resources.CpusetCpus, cookies); err != nil {
 			agentLog.WithError(err).Warn("Could not update container cpuset cgroup")
 		}
 	}
