@@ -11,3 +11,8 @@
 
 *.md    @kata-containers/documentation
 
+# All protocol changes need to get some review from these groups.
+# Note, we include all subdirs, including the vendor dir, as at present there are no .proto files
+# in the vendor dir. Later we may have to extend this matching rule if that changes.
+*.proto    @kata-containers/architecture-committee @kata-containers/builder @kata-containers/packaging
+
