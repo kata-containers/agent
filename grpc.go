@@ -1394,16 +1394,8 @@ func (a *agentGRPC) DestroySandbox(ctx context.Context, req *pb.DestroySandboxRe
 	return emptyResp, nil
 }
 
-func (a *agentGRPC) AddInterface(ctx context.Context, req *pb.AddInterfaceRequest) (*types.Interface, error) {
-	return a.sandbox.addInterface(nil, req.Interface)
-}
-
 func (a *agentGRPC) UpdateInterface(ctx context.Context, req *pb.UpdateInterfaceRequest) (*types.Interface, error) {
 	return a.sandbox.updateInterface(nil, req.Interface)
-}
-
-func (a *agentGRPC) RemoveInterface(ctx context.Context, req *pb.RemoveInterfaceRequest) (*types.Interface, error) {
-	return a.sandbox.removeInterface(nil, req.Interface)
 }
 
 func (a *agentGRPC) UpdateRoutes(ctx context.Context, req *pb.UpdateRoutesRequest) (*pb.Routes, error) {

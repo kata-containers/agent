@@ -287,26 +287,6 @@ func (m *mockServer) DestroySandbox(ctx context.Context, req *pb.DestroySandboxR
 	return &types.Empty{}, nil
 }
 
-func (m *mockServer) AddInterface(context.Context, *pb.AddInterfaceRequest) (*pbTypes.Interface, error) {
-	mockLock.RLock()
-	defer mockLock.RUnlock()
-	if err := m.podExist(); err != nil {
-		return nil, err
-	}
-
-	return nil, nil
-}
-
-func (m *mockServer) RemoveInterface(context.Context, *pb.RemoveInterfaceRequest) (*pbTypes.Interface, error) {
-	mockLock.RLock()
-	defer mockLock.RUnlock()
-	if err := m.podExist(); err != nil {
-		return nil, err
-	}
-
-	return nil, nil
-}
-
 func (m *mockServer) UpdateInterface(ctx context.Context, req *pb.UpdateInterfaceRequest) (*pbTypes.Interface, error) {
 	mockLock.RLock()
 	defer mockLock.RUnlock()
