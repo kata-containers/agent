@@ -17,11 +17,11 @@ UNIT_DIR := /usr/lib/systemd/system
 GENERATED_FILES :=
 
 ifeq ($(INIT),no)
-# Unit file to start kata agent in systemd systems
-UNIT_FILES = kata-agent.service
-GENERATED_FILES := $(UNIT_FILES)
-# Target to be reached in systemd services
-UNIT_FILES += kata-containers.target
+    # Unit file to start kata agent in systemd systems
+    UNIT_FILES = kata-agent.service
+    GENERATED_FILES := $(UNIT_FILES)
+    # Target to be reached in systemd services
+    UNIT_FILES += kata-containers.target
 endif
 
 VERSION_FILE := ./VERSION
