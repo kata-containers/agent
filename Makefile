@@ -32,9 +32,9 @@ COMMIT := $(if $(shell git status --porcelain --untracked-files=no),${COMMIT_NO}
 VERSION_COMMIT := $(if $(COMMIT),$(VERSION)-$(COMMIT),$(VERSION))
 ARCH := $(shell go env GOARCH)
 ifeq ($(SECCOMP),yes)
-	BUILDTAGS := seccomp
+    BUILDTAGS := seccomp
 else
-	SECCOMP=no
+    SECCOMP=no
 endif
 # go build common flags
 BUILDFLAGS := -buildmode=pie
