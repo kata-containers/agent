@@ -1,0 +1,18 @@
+# Copyright 2019 Intel Corporation.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# Define any code owners for this repository.
+# The code owners lists are used to help automatically enforce
+# reviews and acks of the right groups on the right PRs.
+
+# Order in this file is important. Only the last match will be
+# used. See https://help.github.com/articles/about-code-owners/
+
+*.md    @kata-containers/documentation
+
+# All protocol changes need to get some review from these groups.
+# Note, we include all subdirs, including the vendor dir, as at present there are no .proto files
+# in the vendor dir. Later we may have to extend this matching rule if that changes.
+*.proto    @kata-containers/architecture-committee @kata-containers/builder @kata-containers/packaging
+
