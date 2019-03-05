@@ -227,10 +227,10 @@ func TestOnlineCPUMem(t *testing.T) {
 	sysfsCPUOnlinePath = "/xyz/123/rgb/abc"
 	sysfsMemOnlinePath = "/xyz/123/rgb/abc"
 
-	oldOnlineCPUMaxTries := onlineCPUMaxTries
-	onlineCPUMaxTries = 10
+	oldOnlineCPUMaxTries := cpuStateChangeMaxTries
+	cpuStateChangeMaxTries = 10
 	defer func() {
-		onlineCPUMaxTries = oldOnlineCPUMaxTries
+		cpuStateChangeMaxTries = oldOnlineCPUMaxTries
 	}()
 
 	_, err := a.OnlineCPUMem(context.TODO(), req)
@@ -290,6 +290,73 @@ func TestOnlineCPUMem(t *testing.T) {
 
 	_, err = a.OnlineCPUMem(context.TODO(), req)
 	assert.NoError(err)
+}
+
+func TestOfflineCPUMem(t *testing.T) {
+	assert := assert.New(t)
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	containerID := "1"
+	containerID2 := "2"
+	container := &container{
+		container: &mockContainer{
+			id:        containerID,
+			processes: []int{1},
+		},
+	}
+	a.sandbox.containers[containerID] = container
+	a.sandbox.containers[containerID2] = container
+
+	req := &pb.OfflineCPUMemRequest{
+		NbCpus: 1,
+		Wait:   true,
+	}
+	sysfsCPUOnlinePath = "/xyz/123/rgb/abc"
+
+	oldOfflineCPUMaxTries := cpuStateChangeMaxTries
+	cpuStateChangeMaxTries = 10
+	defer func() {
+		cpuStateChangeMaxTries = oldOfflineCPUMaxTries
+	}()
+
+	_, err := a.OfflineCPUMem(context.TODO(), req)
+	assert.Error(err, "sysfs paths do not exist")
+
+	sysfsCPUOnlinePath, err = ioutil.TempDir("", "cpu")
+	assert.NoError(err)
+	defer os.RemoveAll(sysfsCPUOnlinePath)
+	sysfsConnectedCPUsPath = filepath.Join(sysfsCPUOnlinePath, "online")
+
+	_, err = a.OfflineCPUMem(context.TODO(), req)
+	assert.Error(err, "CPU sysfs is empty")
+
+	cpu1dir := filepath.Join(sysfsCPUOnlinePath, "cpu1")
+	err = os.Mkdir(cpu1dir, 0775)
+	assert.NoError(err)
+
+	cpu1Offline := filepath.Join(cpu1dir, "online")
+	err = ioutil.WriteFile(cpu1Offline, []byte("0"), 0755)
+	assert.NoError(err)
+
+	_, err = a.OfflineCPUMem(context.TODO(), req)
+	assert.Error(err, "disconnected cpus path does not exist")
+	sysfsConnectedCPUsPath = filepath.Join(sysfsCPUOnlinePath, "online")
+	ioutil.WriteFile(sysfsConnectedCPUsPath, []byte("0-1"), 0644)
+
+	_, err = a.OfflineCPUMem(context.TODO(), req)
+	assert.Error(err, "docker cgroup path does not exist")
+
+	cgroupCpusetPath, err = ioutil.TempDir("", "cgroup")
+	assert.NoError(err)
+	cfg := container.container.Config()
+	cgroupPath := filepath.Join(cgroupCpusetPath, cfg.Cgroups.Path)
+	err = os.MkdirAll(cgroupPath, 0777)
+	assert.NoError(err)
+	defer os.RemoveAll(cgroupCpusetPath)
 }
 
 func TestGetPIDIndex(t *testing.T) {
