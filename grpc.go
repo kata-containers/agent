@@ -66,9 +66,9 @@ type cookie map[string]bool
 
 var emptyResp = &gpb.Empty{}
 
-const onlineCPUMemWaitTime = 100 * time.Millisecond
+const cpuMemChangeStateWaitTime = 100 * time.Millisecond
 
-var onlineCPUMaxTries = uint32(100)
+var cpuStateChangeMaxTries = uint32(100)
 
 const cpusetMode = 0644
 
@@ -81,9 +81,59 @@ func handleError(wait bool, err error) error {
 	return err
 }
 
-// Online resources, nbResources specifies the maximum number of resources to online.
-// If nbResources is <= 0 then there is no limit and all resources are connected.
-// Returns the number of resources connected.
+// Offline resources, nbResources specifies the maximum number of resources to offline.
+// If nbResources is <= 0 then there is no limit and all resources are disconnected.
+// Returns the number of resources disconnected.
+func offlineResources(resource onlineResource, nbResources int32) (uint32, error) {
+	// Get the bitmap of the online cpus
+	onlineCPUBitmapPath := filepath.Join(resource.sysfsOnlinePath, "online")
+	status, err := ioutil.ReadFile(onlineCPUBitmapPath)
+	if err != nil {
+		return 0, err
+	}
+
+	// Get the last online cpu, e.g. 0,3,4-7  cpu7 is the last online cpu
+	str := strings.Replace(string(status), ",", "-", -1)
+	strArr := strings.Split(str, "-")
+
+	strLastOnlineCPU := strings.Trim((strArr[len(strArr)-1]), "\n\t ")
+	lastOnlineCPU, err := strconv.Atoi(strLastOnlineCPU)
+	if err != nil {
+		return 0, err
+	}
+	if lastOnlineCPU < 0 {
+		agentLog.Warnf("Can not offline cpu because no online cpu is found")
+		return 0, nil
+	}
+	if lastOnlineCPU == 0 {
+		agentLog.Warnf("offlining last available CPU disallowed")
+		return 0, nil
+	}
+
+	var count uint32
+	// Iteration from the last online cpu
+	for i := lastOnlineCPU; i > 0; i-- {
+		onlinePath := filepath.Join(resource.sysfsOnlinePath, "cpu"+strLastOnlineCPU, "online")
+		status, err := ioutil.ReadFile(onlinePath)
+		if err != nil {
+			continue
+		}
+		if strings.Trim(string(status), "\n\t ") == "0" {
+			continue
+		}
+		if err := ioutil.WriteFile(onlinePath, []byte("0"), 0600); err != nil {
+			agentLog.WithField("online-path", onlinePath).WithError(err).Errorf("Could not offline resource")
+			continue
+		}
+		count++
+		if nbResources > 0 && count == uint32(nbResources) {
+			return count, nil
+		}
+	}
+
+	return count, nil
+}
+
 func onlineResources(resource onlineResource, nbResources int32) (uint32, error) {
 	files, err := ioutil.ReadDir(resource.sysfsOnlinePath)
 	if err != nil {
@@ -123,6 +173,27 @@ func onlineResources(resource onlineResource, nbResources int32) (uint32, error)
 	return count, nil
 }
 
+func offlineCPUResources(nbCpus uint32) error {
+	resource := onlineResource{
+		sysfsOnlinePath: sysfsCPUOnlinePath,
+		regexpPattern:   cpuRegexpPattern,
+	}
+
+	var count uint32
+	for i := uint32(0); i < cpuStateChangeMaxTries; i++ {
+		r, err := offlineResources(resource, int32(nbCpus-count))
+		if err != nil {
+			return err
+		}
+		count += r
+		if count == nbCpus {
+			return nil
+		}
+		time.Sleep(cpuMemChangeStateWaitTime)
+	}
+
+	return fmt.Errorf("only %d of %d were disconnected(offline)", count, nbCpus)
+}
 func onlineCPUResources(nbCpus uint32) error {
 	resource := onlineResource{
 		sysfsOnlinePath: sysfsCPUOnlinePath,
@@ -130,7 +201,7 @@ func onlineCPUResources(nbCpus uint32) error {
 	}
 
 	var count uint32
-	for i := uint32(0); i < onlineCPUMaxTries; i++ {
+	for i := uint32(0); i < cpuStateChangeMaxTries; i++ {
 		r, err := onlineResources(resource, int32(nbCpus-count))
 		if err != nil {
 			return err
@@ -139,7 +210,7 @@ func onlineCPUResources(nbCpus uint32) error {
 		if count == nbCpus {
 			return nil
 		}
-		time.Sleep(onlineCPUMemWaitTime)
+		time.Sleep(cpuMemChangeStateWaitTime)
 	}
 
 	return fmt.Errorf("only %d of %d were connected", count, nbCpus)
@@ -261,6 +332,66 @@ func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
 		// and its cpuset cgroup *parents* have "0-5", the container will be able to use only the CPU 0.
 
 		// cpuset assinged containers are not updated, only we update its parents.
+		if contConfig.Cgroups.Resources.CpusetCpus != "" {
+			agentLog.WithField("cpuset", contConfig.Cgroups.Resources.CpusetCpus).Debug("updating container cpuset cgroup parents")
+			// remove container cgroup directory
+			cgroupPath = filepath.Dir(cgroupPath)
+		}
+
+		if err := updateCpusetPath(cgroupPath, connectedCpus, cookies); err != nil {
+			return handleError(req.Wait, err)
+		}
+	}
+
+	return nil
+}
+
+func (a *agentGRPC) offlineCPUMem(req *pb.OfflineCPUMemRequest) error {
+	if req.NbCpus == 0 && req.CpuOnly {
+		return handleError(req.Wait, fmt.Errorf("requested number of CPUs '%d' must be greater than 0", req.NbCpus))
+	}
+
+	// we are going to update the containers of the sandbox, we have to lock it
+	a.sandbox.Lock()
+	defer a.sandbox.Unlock()
+
+	if req.NbCpus > 0 {
+		agentLog.WithField("vcpus-to-disconnect", req.NbCpus).Debug("disconnecting vCPUs")
+		if err := offlineCPUResources(req.NbCpus); err != nil {
+			return handleError(req.Wait, err)
+		}
+	}
+
+	if !req.CpuOnly {
+		/*not supported*/
+		return handleError(req.Wait, fmt.Errorf("Could not offline memory block, not supported"))
+	}
+
+	// At this point all wanted CPUs have been disconnected, we need to know
+	// the actual range of CPUs
+	cpus, err := ioutil.ReadFile(sysfsConnectedCPUsPath)
+	if err != nil {
+		return handleError(req.Wait, fmt.Errorf("Could not get the actual range of connected CPUs: %v", err))
+	}
+	connectedCpus := strings.Trim(string(cpus), "\t\n ")
+	agentLog.WithField("range-of-vcpus", connectedCpus).Debug("connecting vCPUs")
+
+	cookies := make(cookie)
+
+	// Now that we know the actual range of connected CPUs, we need to iterate over
+	// all containers an update each cpuset cgroup. This is not required in docker
+	// containers since they don't hot add/remove CPUs.
+	for _, c := range a.sandbox.containers {
+		agentLog.WithField("container", c.container.ID()).Debug("updating cpuset cgroup")
+		contConfig := c.container.Config()
+		cgroupPath := contConfig.Cgroups.Path
+
+		// In order to avoid issues updating the container cpuset cgroup, its cpuset cgroup *parents*
+		// MUST BE updated, otherwise we'll get next errors:
+		// - write /sys/fs/cgroup/cpuset/XXXXX/cpuset.cpus: permission denied
+		// - write /sys/fs/cgroup/cpuset/XXXXX/cpuset.cpus: device or resource busy
+		// NOTE: updating container cpuset cgroup *parents* won't affect container cpuset cgroup, for example if container cpuset cgroup has "0"
+		// and its cpuset cgroup *parents* have "0-5", the container will be able to use only the CPU 0.
 		if contConfig.Cgroups.Resources.CpusetCpus != "" {
 			agentLog.WithField("cpuset", contConfig.Cgroups.Resources.CpusetCpus).Debug("updating container cpuset cgroup parents")
 			// remove container cgroup directory
@@ -1465,6 +1596,14 @@ func (a *agentGRPC) OnlineCPUMem(ctx context.Context, req *pb.OnlineCPUMemReques
 	return emptyResp, a.onlineCPUMem(req)
 }
 
+func (a *agentGRPC) OfflineCPUMem(ctx context.Context, req *pb.OfflineCPUMemRequest) (*gpb.Empty, error) {
+	if !req.Wait {
+		go a.offlineCPUMem(req)
+		return emptyResp, nil
+	}
+
+	return emptyResp, a.offlineCPUMem(req)
+}
 func (a *agentGRPC) ReseedRandomDev(ctx context.Context, req *pb.ReseedRandomDevRequest) (*gpb.Empty, error) {
 	return emptyResp, reseedRNG(req.Data)
 }

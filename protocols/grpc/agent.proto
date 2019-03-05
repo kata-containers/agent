@@ -51,6 +51,7 @@ service AgentService {
 	rpc CreateSandbox(CreateSandboxRequest) returns (google.protobuf.Empty);
 	rpc DestroySandbox(DestroySandboxRequest) returns (google.protobuf.Empty);
 	rpc OnlineCPUMem(OnlineCPUMemRequest) returns (google.protobuf.Empty);
+	rpc OfflineCPUMem(OfflineCPUMemRequest) returns (google.protobuf.Empty);
 	rpc ReseedRandomDev(ReseedRandomDevRequest) returns (google.protobuf.Empty);
 	rpc GetGuestDetails(GuestDetailsRequest) returns (GuestDetailsResponse);
 	rpc MemHotplugByProbe(MemHotplugByProbeRequest) returns (google.protobuf.Empty);
@@ -307,6 +308,18 @@ message OnlineCPUMemRequest {
 	uint32 nb_cpus = 2;
 
 	// CpuOnly specifies whether only online CPU or not.
+	bool cpu_only = 3;
+}
+message OfflineCPUMemRequest {
+	// Wait specifies if the caller waits for the agent to offline all resources.
+	// If true the agent returns once all resources have been connected, otherwise all
+	// resources are connected asynchronously and the agent returns immediately.
+	bool wait = 1;
+
+	// NbCpus specifies the number of CPUs that were added and the agent has to offline.
+	uint32 nb_cpus = 2;
+
+	// CpuOnly specifies whether only offline CPU or not.
 	bool cpu_only = 3;
 }
 
