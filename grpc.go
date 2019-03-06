@@ -648,13 +648,8 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		return emptyResp, err
 	}
 
-	if ociSpec.Linux.Resources.CPU != nil && ociSpec.Linux.Resources.CPU.Cpus != "" {
-		availableCpuset, err := getAvailableCpusetList(ociSpec.Linux.Resources.CPU.Cpus)
-		if err != nil {
-			return emptyResp, err
-		}
-
-		ociSpec.Linux.Resources.CPU.Cpus = availableCpuset
+	if err := a.handleCPUSet(ociSpec); err != nil {
+		return emptyResp, err
 	}
 
 	if err := a.applyNetworkSysctls(ociSpec); err != nil {
@@ -735,6 +730,18 @@ func (a *agentGRPC) applyNetworkSysctls(ociSpec *specs.Spec) error {
 	}
 
 	ociSpec.Linux.Sysctl = sysctls
+	return nil
+}
+
+func (a *agentGRPC) handleCPUSet(ociSpec *specs.Spec) error {
+	if ociSpec.Linux.Resources.CPU != nil && ociSpec.Linux.Resources.CPU.Cpus != "" {
+		availableCpuset, err := getAvailableCpusetList(ociSpec.Linux.Resources.CPU.Cpus)
+		if err != nil {
+			return err
+		}
+
+		ociSpec.Linux.Resources.CPU.Cpus = availableCpuset
+	}
 	return nil
 }
 
