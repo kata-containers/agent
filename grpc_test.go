@@ -357,6 +357,98 @@ func TestListProcesses(t *testing.T) {
 	assert.NotEmpty(r.ProcessList)
 }
 
+func TestIsNetworkSysctl(t *testing.T) {
+	assert := assert.New(t)
+
+	sysctl := "net.core.somaxconn"
+	isNet := isNetworkSysctl(sysctl)
+	assert.True(isNet)
+
+	sysctl = "kernel.shmmax"
+	isNet = isNetworkSysctl(sysctl)
+	assert.False(isNet)
+}
+
+func TestWriteSystemProperty(t *testing.T) {
+	assert := assert.New(t)
+
+	tmpDir, err := ioutil.TempDir("", "procsys")
+	assert.Nil(err)
+	defer os.RemoveAll(tmpDir)
+
+	key := "net.core.somaxconn"
+	value := "1024"
+	procSysDir = filepath.Join(tmpDir, "proc", "sys")
+	err = os.MkdirAll(procSysDir, 0755)
+	assert.Nil(err)
+
+	netCoreDir := filepath.Join(procSysDir, "net", "core")
+	err = os.MkdirAll(netCoreDir, 0755)
+	assert.Nil(err)
+
+	sysFile := filepath.Join(netCoreDir, "somaxconn")
+	fd, err := os.Create(sysFile)
+	assert.Nil(err)
+	fd.Close()
+
+	err = writeSystemProperty(key, value)
+	assert.Nil(err)
+
+	// Read file and verify
+	content, err := ioutil.ReadFile(sysFile)
+	assert.Nil(err)
+	assert.Equal(value, string(content))
+
+	// Following checks require root privileges to remove a read-only dir
+	if os.Geteuid() != 0 {
+		return
+	}
+
+	// Remove write permissions for procSysDir to what they normally are
+	// for /proc/sys so that files cannot be created
+	err = os.Chmod(procSysDir, 0555)
+	assert.Nil(err)
+
+	// Nonexistent sys file
+	key = "net.ipv4.ip_forward"
+	value = "1"
+	err = writeSystemProperty(key, value)
+	assert.NotNil(err)
+}
+
+func TestApplyNetworkSysctls(t *testing.T) {
+	assert := assert.New(t)
+	a := &agentGRPC{}
+
+	spec := &specs.Spec{}
+	spec.Linux = &specs.Linux{}
+
+	spec.Linux.Sysctl = make(map[string]string)
+	spec.Linux.Sysctl["kernel.shmmax"] = "512"
+
+	err := a.applyNetworkSysctls(spec)
+	assert.Nil(err)
+	assert.Equal(len(spec.Linux.Sysctl), 1)
+	assert.Equal(spec.Linux.Sysctl["kernel.shmmax"], "512")
+
+	// Check with network sysctl
+	spec.Linux.Sysctl["net.core.somaxconn"] = "1024"
+	tmpDir, err := ioutil.TempDir("", "procsys")
+	assert.Nil(err)
+	defer os.RemoveAll(tmpDir)
+
+	procSysDir = filepath.Join(tmpDir, "proc", "sys")
+	netCoreDir := filepath.Join(procSysDir, "net", "core")
+	err = os.MkdirAll(netCoreDir, 0755)
+	assert.Nil(err)
+
+	assert.Equal(len(spec.Linux.Sysctl), 2)
+	err = a.applyNetworkSysctls(spec)
+	assert.Nil(err)
+	assert.Equal(len(spec.Linux.Sysctl), 1)
+	assert.Equal(spec.Linux.Sysctl["kernel.shmmax"], "512")
+}
+
 func TestUpdateContainer(t *testing.T) {
 	containerID := "1"
 	assert := assert.New(t)

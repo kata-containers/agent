@@ -648,13 +648,12 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		return emptyResp, err
 	}
 
-	if ociSpec.Linux.Resources.CPU != nil && ociSpec.Linux.Resources.CPU.Cpus != "" {
-		availableCpuset, err := getAvailableCpusetList(ociSpec.Linux.Resources.CPU.Cpus)
-		if err != nil {
-			return emptyResp, err
-		}
+	if err := a.handleCPUSet(ociSpec); err != nil {
+		return emptyResp, err
+	}
 
-		ociSpec.Linux.Resources.CPU.Cpus = availableCpuset
+	if err := a.applyNetworkSysctls(ociSpec); err != nil {
+		return emptyResp, err
 	}
 
 	if a.sandbox.guestHooksPresent {
@@ -697,6 +696,53 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 	}
 
 	return a.finishCreateContainer(ctr, req, config)
+}
+
+// Path overridden in unit tests
+var procSysDir = "/proc/sys"
+
+// writeSystemProperty writes the value to a path under /proc/sys as determined from the key.
+// For e.g. net.ipv4.ip_forward translated to /proc/sys/net/ipv4/ip_forward.
+func writeSystemProperty(key, value string) error {
+	keyPath := strings.Replace(key, ".", "/", -1)
+	return ioutil.WriteFile(filepath.Join(procSysDir, keyPath), []byte(value), 0644)
+}
+
+func isNetworkSysctl(sysctl string) bool {
+	return strings.HasPrefix(sysctl, "net.")
+}
+
+// libcontainer checks if the container is running in a separate network namespace
+// before applying the network related sysctls. If it sees that the network namespace of the container
+// is the same as the "host", it errors out. Since we do no create a new net namespace inside the guest,
+// libcontainer would error out while verifying network sysctls. To overcome this, we dont pass
+// network sysctls to libcontainer, we instead have the agent directly apply them. All other namespaced
+// sysctls are applied by libcontainer.
+func (a *agentGRPC) applyNetworkSysctls(ociSpec *specs.Spec) error {
+	sysctls := ociSpec.Linux.Sysctl
+	for key, value := range sysctls {
+		if isNetworkSysctl(key) {
+			if err := writeSystemProperty(key, value); err != nil {
+				return err
+			}
+			delete(sysctls, key)
+		}
+	}
+
+	ociSpec.Linux.Sysctl = sysctls
+	return nil
+}
+
+func (a *agentGRPC) handleCPUSet(ociSpec *specs.Spec) error {
+	if ociSpec.Linux.Resources.CPU != nil && ociSpec.Linux.Resources.CPU.Cpus != "" {
+		availableCpuset, err := getAvailableCpusetList(ociSpec.Linux.Resources.CPU.Cpus)
+		if err != nil {
+			return err
+		}
+
+		ociSpec.Linux.Resources.CPU.Cpus = availableCpuset
+	}
+	return nil
 }
 
 func posixRlimitsToRlimits(posixRlimits []specs.POSIXRlimit) []configs.Rlimit {
