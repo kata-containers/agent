@@ -25,6 +25,7 @@ import (
 
 const (
 	driver9pType        = "9p"
+	driverVirtioFSType  = "virtio-fs"
 	driverBlkType       = "blk"
 	driverMmioBlkType   = "mmioblk"
 	driverSCSIType      = "scsi"
