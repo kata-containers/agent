@@ -68,7 +68,7 @@ var emptyResp = &gpb.Empty{}
 
 const onlineCPUMemWaitTime = 100 * time.Millisecond
 
-const onlineCPUMaxTries = 10
+var onlineCPUMaxTries = uint32(100)
 
 const cpusetMode = 0644
 

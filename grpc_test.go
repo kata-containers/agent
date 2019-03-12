@@ -227,6 +227,12 @@ func TestOnlineCPUMem(t *testing.T) {
 	sysfsCPUOnlinePath = "/xyz/123/rgb/abc"
 	sysfsMemOnlinePath = "/xyz/123/rgb/abc"
 
+	oldOnlineCPUMaxTries := onlineCPUMaxTries
+	onlineCPUMaxTries = 10
+	defer func() {
+		onlineCPUMaxTries = oldOnlineCPUMaxTries
+	}()
+
 	_, err := a.OnlineCPUMem(context.TODO(), req)
 	assert.Error(err, "sysfs paths do not exist")
 
