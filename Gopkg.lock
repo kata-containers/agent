@@ -125,7 +125,7 @@
   revision = "7d4729fb36185a7c1719923406c9d40e54fb93c7"
 
 [[projects]]
-  digest = "1:e9efda6418044c653a9d6051719196214dbdbe4fa50ebcc7975dde8932b6d2f5"
+  digest = "1:ca544a1255c958c6b86726643f6fed10c218b640ede95c0f4c17920335ca4e22"
   name = "github.com/opencontainers/runc"
   packages = [
     "libcontainer",
@@ -148,7 +148,7 @@
     "libcontainer/utils",
   ]
   pruneopts = "NUT"
-  revision = "cc4307ab6643668ce5abc6b524e1764a54c32550"
+  revision = "f414f497b50a61750ea3af9fccf998a3db687cea"
 
 [[projects]]
   digest = "1:0d447d4961f4f9270457fbc20d0261bba8d3056f395efd2e2480e2dfa4487a60"
