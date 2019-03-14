@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2017 Intel Corporation
+// Copyright (c) 2017-2019 Intel Corporation
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -24,12 +24,14 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/kata-containers/agent/pkg/uevent"
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	_ "github.com/opencontainers/runc/libcontainer/nsenter"
 	"github.com/opencontainers/runtime-spec/specs-go"
+	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 	"golang.org/x/sys/unix"
@@ -54,6 +56,11 @@ var (
 
 	// Set by the build
 	seccompSupport string
+
+	// Set to the context that should be used for tracing gRPC calls.
+	grpcContext context.Context
+
+	rootContext context.Context
 )
 
 var initRootfsMounts = []initMount{
@@ -90,6 +97,7 @@ type container struct {
 	processes       map[string]*process
 	mounts          []string
 	useSandboxPidNs bool
+	ctx             context.Context
 }
 
 type sandboxStorage struct {
@@ -98,6 +106,7 @@ type sandboxStorage struct {
 
 type sandbox struct {
 	sync.RWMutex
+	ctx context.Context
 
 	id                string
 	hostname          string
@@ -120,6 +129,7 @@ type sandbox struct {
 	enableGrpcTrace   bool
 	sandboxPidNs      bool
 	storages          map[string]*sandboxStorage
+	stopServer        chan struct{}
 }
 
 var agentFields = logrus.Fields{
@@ -134,6 +144,13 @@ var agentLog = logrus.WithFields(agentFields)
 var version = "unknown"
 
 var debug = false
+
+// tracing enables opentracing support
+var tracing = false
+
+// Associate agent traces with runtime traces. This can only be enabled using
+// the traceModeFlag.
+var collatedTrace = false
 
 // if true, coredump when an internal error occurs or a fatal signal is received
 var crashOnError = false
@@ -189,6 +206,15 @@ func (p *process) closePostExitFDs() {
 	}
 }
 
+func (c *container) trace(name string) (opentracing.Span, context.Context) {
+	if c.ctx == nil {
+		agentLog.WithField("type", "bug").Error("trace called before context set")
+		c.ctx = context.Background()
+	}
+
+	return trace(c.ctx, "container", name)
+}
+
 func (c *container) setProcess(process *process) {
 	c.Lock()
 	c.processes[process.id] = process
@@ -196,12 +222,17 @@ func (c *container) setProcess(process *process) {
 }
 
 func (c *container) deleteProcess(execID string) {
+	span, _ := c.trace("deleteProcess")
+	span.SetTag("exec-id", execID)
+	defer span.Finish()
 	c.Lock()
 	delete(c.processes, execID)
 	c.Unlock()
 }
 
 func (c *container) removeContainer() error {
+	span, _ := c.trace("removeContainer")
+	defer span.Finish()
 	// This will terminates all processes related to this container, and
 	// destroy the container right after. But this will error in case the
 	// container in not in the right state.
@@ -222,6 +253,19 @@ func (c *container) getProcess(execID string) (*process, error) {
 	}
 
 	return proc, nil
+}
+
+func (s *sandbox) trace(name string) (opentracing.Span, context.Context) {
+	if s.ctx == nil {
+		agentLog.WithField("type", "bug").Error("trace called before context set")
+		s.ctx = context.Background()
+	}
+
+	span, ctx := trace(s.ctx, "sandbox", name)
+
+	span.SetTag("sandbox", s.id)
+
+	return span, ctx
 }
 
 // setSandboxStorage sets the sandbox level reference
@@ -246,6 +290,10 @@ func (s *sandbox) setSandboxStorage(path string) bool {
 // scanGuestHooks will search the given guestHookPath
 // for any OCI hooks
 func (s *sandbox) scanGuestHooks(guestHookPath string) {
+	span, _ := s.trace("scanGuestHooks")
+	span.SetTag("guest-hook-path", guestHookPath)
+	defer span.Finish()
+
 	fieldLogger := agentLog.WithField("oci-hook-path", guestHookPath)
 	fieldLogger.Info("Scanning guest filesystem for OCI hooks")
 
@@ -263,6 +311,9 @@ func (s *sandbox) scanGuestHooks(guestHookPath string) {
 // addGuestHooks will add any guest OCI hooks that were
 // found to the OCI spec
 func (s *sandbox) addGuestHooks(spec *specs.Spec) {
+	span, _ := s.trace("addGuestHooks")
+	defer span.Finish()
+
 	if spec == nil {
 		return
 	}
@@ -286,6 +337,10 @@ func (s *sandbox) addGuestHooks(spec *specs.Spec) {
 // It's assumed that caller is calling this method after
 // acquiring a lock on sandbox.
 func (s *sandbox) unSetSandboxStorage(path string) (bool, error) {
+	span, _ := s.trace("unSetSandboxStorage")
+	span.SetTag("path", path)
+	defer span.Finish()
+
 	if sbs, ok := s.storages[path]; ok {
 		sbs.refCount--
 		// If this sandbox storage is not used by any container
@@ -305,6 +360,10 @@ func (s *sandbox) unSetSandboxStorage(path string) (bool, error) {
 // It's assumed that caller is calling this method after
 // acquiring a lock on sandbox.
 func (s *sandbox) removeSandboxStorage(path string) error {
+	span, _ := s.trace("removeSandboxStorage")
+	span.SetTag("path", path)
+	defer span.Finish()
+
 	err := removeMounts([]string{path})
 	if err != nil {
 		return grpcStatus.Errorf(codes.Unknown, "Unable to unmount sandbox storage path %s", path)
@@ -323,6 +382,10 @@ func (s *sandbox) removeSandboxStorage(path string) error {
 // It's assumed that caller is calling this method after
 // acquiring a lock on sandbox.
 func (s *sandbox) unsetAndRemoveSandboxStorage(path string) error {
+	span, _ := s.trace("unsetAndRemoveSandboxStorage")
+	span.SetTag("path", path)
+	defer span.Finish()
+
 	if _, ok := s.storages[path]; ok {
 		removeSbs, err := s.unSetSandboxStorage(path)
 		if err != nil {
@@ -352,13 +415,27 @@ func (s *sandbox) getContainer(id string) (*container, error) {
 	return ctr, nil
 }
 
-func (s *sandbox) setContainer(id string, ctr *container) {
+func (s *sandbox) setContainer(ctx context.Context, id string, ctr *container) {
+	// Update the context. This is required since the function is called
+	// from by gRPC functions meaning we must use the latest context
+	// available.
+	s.ctx = ctx
+
+	span, _ := s.trace("setContainer")
+	span.SetTag("id", id)
+	span.SetTag("container", ctr.id)
+	defer span.Finish()
+
 	s.Lock()
 	s.containers[id] = ctr
 	s.Unlock()
 }
 
 func (s *sandbox) deleteContainer(id string) {
+	span, _ := s.trace("deleteContainer")
+	span.SetTag("container", id)
+	defer span.Finish()
+
 	s.Lock()
 
 	// Find the sandbox storage used by this container
@@ -442,7 +519,10 @@ func (s *sandbox) readStdio(cid, execID string, length int, stdout bool) ([]byte
 	return buf[:bytesRead], nil
 }
 
-func (s *sandbox) setupSharedNamespaces() error {
+func (s *sandbox) setupSharedNamespaces(ctx context.Context) error {
+	span, _ := trace(ctx, "sandbox", "setupSharedNamespaces")
+	defer span.Finish()
+
 	// Set up shared IPC namespace
 	ns, err := setupPersistentNs(nsTypeIPC)
 	if err != nil {
@@ -461,6 +541,9 @@ func (s *sandbox) setupSharedNamespaces() error {
 }
 
 func (s *sandbox) unmountSharedNamespaces() error {
+	span, _ := s.trace("unmountSharedNamespaces")
+	defer span.Finish()
+
 	if err := unix.Unmount(s.sharedIPCNs.path, unix.MNT_DETACH); err != nil {
 		return err
 	}
@@ -475,6 +558,9 @@ func (s *sandbox) unmountSharedNamespaces() error {
 // new PID namespace running into the namespace, preventing the namespace to
 // be destroyed if other processes are terminated.
 func (s *sandbox) setupSharedPidNs() error {
+	span, _ := s.trace("setupSharedPidNs")
+	defer span.Finish()
+
 	cmd := &exec.Cmd{
 		Path: selfBinPath,
 		Args: []string{os.Args[0], pauseBinArg},
@@ -500,6 +586,9 @@ func (s *sandbox) setupSharedPidNs() error {
 }
 
 func (s *sandbox) teardownSharedPidNs() error {
+	span, _ := s.trace("teardownSharedPidNs")
+	defer span.Finish()
+
 	if !s.sandboxPidNs {
 		// We are not in a case where we have created a pause process.
 		// Simply clear out the sharedPidNs path.
@@ -522,6 +611,49 @@ func (s *sandbox) teardownSharedPidNs() error {
 	s.sharedPidNs = namespace{}
 
 	return nil
+}
+
+func (s *sandbox) waitForStopServer() {
+	span, _ := s.trace("waitForStopServer")
+	defer span.Finish()
+
+	fieldLogger := agentLog.WithField("subsystem", "stopserverwatcher")
+
+	fieldLogger.Info("Waiting for stopServer signal...")
+
+	// Wait for DestroySandbox() to signal this thread about the need to
+	// stop the server.
+	<-s.stopServer
+
+	fieldLogger.Info("stopServer signal received")
+
+	if s.server == nil {
+		fieldLogger.Info("No server initialized, nothing to stop")
+		return
+	}
+
+	defer fieldLogger.Info("gRPC server stopped")
+
+	// Try to gracefully stop the server for a minute
+	timeout := time.Minute
+	done := make(chan struct{})
+	go func() {
+		s.server.GracefulStop()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		s.server = nil
+		return
+	case <-time.After(timeout):
+		fieldLogger.WithField("timeout", timeout).Warn("Could not gracefully stop the server")
+	}
+
+	fieldLogger.Info("Force stopping the server now")
+
+	span.SetTag("forced", true)
+	s.stopGRPC()
 }
 
 func (s *sandbox) listenToUdevEvents() {
@@ -547,6 +679,13 @@ func (s *sandbox) listenToUdevEvents() {
 		if uEv.Action != "add" {
 			continue
 		}
+
+		span, _ := trace(rootContext, "udev", "udev event")
+		span.SetTag("udev-action", uEv.Action)
+		span.SetTag("udev-name", uEv.DevName)
+		span.SetTag("udev-path", uEv.DevPath)
+		span.SetTag("udev-subsystem", uEv.SubSystem)
+		span.SetTag("udev-seqno", uEv.SeqNum)
 
 		fieldLogger = fieldLogger.WithFields(logrus.Fields{
 			"uevent-action":    uEv.Action,
@@ -584,6 +723,8 @@ func (s *sandbox) listenToUdevEvents() {
 				fieldLogger.WithError(err).Error("failed online device")
 			}
 		}
+
+		span.Finish()
 	}
 }
 
@@ -608,7 +749,7 @@ func (s *sandbox) signalHandlerLoop(sigCh chan os.Signal) {
 
 		if fatalSignal(nativeSignal) {
 			logger.Error("received fatal signal")
-			die()
+			die(s.ctx)
 		}
 
 		if debug && nonFatalSignal(nativeSignal) {
@@ -622,6 +763,9 @@ func (s *sandbox) signalHandlerLoop(sigCh chan os.Signal) {
 }
 
 func (s *sandbox) setupSignalHandler() error {
+	span, _ := s.trace("setupSignalHandler")
+	defer span.Finish()
+
 	// Set agent as subreaper
 	err := unix.Prctl(unix.PR_SET_CHILD_SUBREAPER, uintptr(1), 0, 0, 0)
 	if err != nil {
@@ -747,13 +891,17 @@ func (s *sandbox) initLogger() error {
 	if err := config.getConfig(kernelCmdlineFile); err != nil {
 		agentLog.WithError(err).Warn("Failed to get config from kernel cmdline")
 	}
-	config.applyConfig(s)
+
+	agentLog.Logger.SetLevel(config.logLevel)
 
 	return announce()
 }
 
 func (s *sandbox) initChannel() error {
-	c, err := newChannel()
+	span, ctx := s.trace("initChannel")
+	defer span.Finish()
+
+	c, err := newChannel(ctx)
 	if err != nil {
 		return err
 	}
@@ -763,43 +911,110 @@ func (s *sandbox) initChannel() error {
 	return nil
 }
 
-func grpcTracer(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
-	message := req.(proto.Message)
-	agentLog.WithFields(logrus.Fields{
-		"request": info.FullMethod,
-		"req":     message.String()}).Debug("new request")
+func makeUnaryInterceptor() grpc.UnaryServerInterceptor {
+	return func(origCtx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+		var start time.Time
+		var elapsed time.Duration
+		var message proto.Message
 
-	start := time.Now()
-	resp, err = handler(ctx, req)
-	elapsed := time.Now().Sub(start)
+		grpcCall := info.FullMethod
+		var ctx context.Context
+		var span opentracing.Span
 
-	message = resp.(proto.Message)
-	logger := agentLog.WithFields(logrus.Fields{
-		"request":  info.FullMethod,
-		"duration": elapsed.String(),
-		"resp":     message.String()})
-	if err != nil {
-		logger = logger.WithError(err)
+		if tracing {
+			ctx = getGRPCContext()
+			span, _ = trace(ctx, "gRPC", grpcCall)
+			span.SetTag("grpc-method-type", "unary")
+
+			if strings.HasSuffix(grpcCall, "/ReadStdout") || strings.HasSuffix(grpcCall, "/WriteStdin") {
+				// Add a tag to allow filtering of those calls dealing
+				// input and output. These tend to be very long and
+				// being able to filter them out allows the
+				// performance of "core" calls to be determined
+				// without the "noise" of these calls.
+				span.SetTag("api-category", "interactive")
+			}
+		} else {
+			// Just log call details
+			message = req.(proto.Message)
+
+			agentLog.WithFields(logrus.Fields{
+				"request": grpcCall,
+				"req":     message.String()}).Debug("new request")
+			start = time.Now()
+		}
+
+		// Use the context which will provide the correct trace
+		// ordering, *NOT* the context provided to the function
+		// returned by this function.
+		resp, err = handler(getGRPCContext(), req)
+
+		if !tracing {
+			// Just log call details
+			elapsed = time.Now().Sub(start)
+			message = resp.(proto.Message)
+
+			logger := agentLog.WithFields(logrus.Fields{
+				"request":  info.FullMethod,
+				"duration": elapsed.String(),
+				"resp":     message.String()})
+			logger.Debug("request end")
+		}
+
+		// Handle the following scenarios:
+		//
+		// - Tracing was (and still is) enabled.
+		// - Tracing was enabled but the handler (StopTracing()) disabled it.
+		// - Tracing was disabled but the handler (StartTracing()) enabled it.
+		if span != nil {
+			span.Finish()
+		}
+
+		if stopTracingCalled {
+			stopTracing(ctx)
+		}
+
+		return resp, err
 	}
-	logger.Debug("request end")
-
-	return resp, err
 }
 
 func (s *sandbox) startGRPC() {
+	span, _ := s.trace("startGRPC")
+	defer span.Finish()
+
+	// Save the context for gRPC calls. They are provided with a different
+	// context, but we need them to use our context as it contains trace
+	// metadata.
+	grpcContext = s.ctx
+
 	grpcImpl := &agentGRPC{
 		sandbox: s,
 		version: version,
 	}
 
 	var grpcServer *grpc.Server
-	if s.enableGrpcTrace {
-		agentLog.Info("Enable grpc tracing")
-		opt := grpc.UnaryInterceptor(grpcTracer)
-		grpcServer = grpc.NewServer(opt)
+
+	var serverOpts []grpc.ServerOption
+
+	if collatedTrace {
+		// "collated" tracing (allow agent traces to be
+		// associated with runtime-initiated traces.
+		tracer := span.Tracer()
+
+		serverOpts = append(serverOpts, grpc.UnaryInterceptor(otgrpc.OpenTracingServerInterceptor(tracer)))
 	} else {
-		grpcServer = grpc.NewServer()
+		// Enable interceptor whether tracing is enabled or not. This
+		// is necessary to support StartTracing() and StopTracing()
+		// since they require the interceptors to change their
+		// behaviour depending on whether tracing is enabled.
+		//
+		// When tracing is enabled, the interceptor handles "isolated"
+		// tracing (agent traces are not associated with runtime-initiated
+		// traces).
+		serverOpts = append(serverOpts, grpc.UnaryInterceptor(makeUnaryInterceptor()))
 	}
+
+	grpcServer = grpc.NewServer(serverOpts...)
 
 	pb.RegisterAgentServiceServer(grpcServer, grpcImpl)
 	pb.RegisterHealthServer(grpcServer, grpcImpl)
@@ -810,6 +1025,7 @@ func (s *sandbox) startGRPC() {
 		defer s.wg.Done()
 
 		var err error
+		var servErr error
 		for {
 			agentLog.Info("agent grpc server starts")
 
@@ -833,8 +1049,8 @@ func (s *sandbox) startGRPC() {
 			}
 
 			// l is closed when Serve() returns
-			err = grpcServer.Serve(l)
-			if err != nil {
+			servErr = grpcServer.Serve(l)
+			if servErr != nil {
 				agentLog.WithError(err).Warn("agent grpc server quits")
 			}
 
@@ -842,8 +1058,29 @@ func (s *sandbox) startGRPC() {
 			if err != nil {
 				agentLog.WithError(err).Warn("agent grpc channel teardown failed")
 			}
+
+			// Based on the definition of grpc.Serve(), the function
+			// returns nil in case of a proper stop triggered by either
+			// grpc.GracefulStop() or grpc.Stop(). Those calls can only
+			// be issued by the chain of events coming from DestroySandbox
+			// and explicitly means the server should not try to listen
+			// again, as the sandbox is being completely removed.
+			if servErr == nil {
+				agentLog.Info("agent grpc server has been explicitly stopped")
+				return
+			}
 		}
 	}()
+}
+
+func getGRPCContext() context.Context {
+	if grpcContext != nil {
+		return grpcContext
+	}
+
+	agentLog.Warn("Creating gRPC context as none found")
+
+	return context.Background()
 }
 
 func (s *sandbox) stopGRPC() {
@@ -976,7 +1213,7 @@ func init() {
 	}
 }
 
-func realMain() {
+func realMain() error {
 	var err error
 	var showVersion bool
 
@@ -986,24 +1223,15 @@ func realMain() {
 
 	if showVersion {
 		fmt.Printf("%v version %v\n", agentName, version)
-		os.Exit(0)
+		return nil
 	}
 
 	// Check if this agent has been run as the init process.
 	if os.Getpid() == 1 {
 		if err = initAgentAsInit(); err != nil {
-			panic(fmt.Sprintf("initAgentAsInit() error: %s", err))
+			panic(fmt.Sprintf("failed to setup agent as init: %v", err))
 		}
 	}
-
-	defer func() {
-		if err != nil {
-			agentLog.Error(err)
-			os.Exit(exitFailure)
-		}
-
-		os.Exit(exitSuccess)
-	}()
 
 	r := &agentReaper{}
 	r.init()
@@ -1019,39 +1247,71 @@ func realMain() {
 		pciDeviceMap:   make(map[string]string),
 		deviceWatchers: make(map[string](chan string)),
 		storages:       make(map[string]*sandboxStorage),
+		stopServer:     make(chan struct{}),
 	}
 
 	if err = s.initLogger(); err != nil {
-		agentLog.WithError(err).Error("failed to setup logger")
-		os.Exit(1)
+		return fmt.Errorf("failed to setup logger: %v", err)
 	}
 
+	rootSpan, rootContext, err = setupTracing(agentName)
+	if err != nil {
+		return fmt.Errorf("failed to setup tracing: %v", err)
+	}
+
+	// Set the sandbox context now that the context contains the tracing
+	// information.
+	s.ctx = rootContext
+
 	if err = s.setupSignalHandler(); err != nil {
-		agentLog.WithError(err).Error("failed to setup signal handler")
-		os.Exit(1)
+		return fmt.Errorf("failed to setup signal handler: %v", err)
 	}
 
 	if err = s.handleLocalhost(); err != nil {
-		agentLog.WithError(err).Error("failed to handle localhost")
-		os.Exit(1)
+		return fmt.Errorf("failed to handle localhost: %v", err)
 	}
 
 	// Check for vsock vs serial. This will fill the sandbox structure with
 	// information about the channel.
 	if err = s.initChannel(); err != nil {
-		agentLog.WithError(err).Error("failed to setup channels")
-		os.Exit(1)
+		return fmt.Errorf("failed to setup channels: %v", err)
 	}
 
 	// Start gRPC server.
 	s.startGRPC()
 
+	go s.waitForStopServer()
+
 	go s.listenToUdevEvents()
 
 	s.wg.Wait()
+
+	if !tracing {
+		// If tracing is not enabled, the agent should continue to run
+		// until the VM is killed by the runtime.
+		agentLog.Debug("waiting to be killed")
+		syscall.Pause()
+	}
+
+	// Report any traces before shutdown. This is not required if the
+	// client is using StartTracing()/StopTracing().
+	if !stopTracingCalled {
+		stopTracing(rootContext)
+	}
+
+	return nil
 }
 
 func main() {
 	defer handlePanic()
-	realMain()
+
+	err := realMain()
+	if err != nil {
+		agentLog.WithError(err).Error("agent failed")
+		os.Exit(1)
+	}
+
+	agentLog.Debug("agent exiting")
+
+	os.Exit(0)
 }

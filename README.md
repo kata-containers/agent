@@ -3,7 +3,27 @@
 
 # Kata Containers Agent
 
-This project implements an agent meant to be run inside a virtual machine.
+* [Debug mode](#debug-mode)
+* [Developer mode](#developer-mode)
+* [Enable trace support](#enable-trace-support)
 
-The goal for this component is to spawn containers and processes inside this
-virtual machine, on behalf of the runtime running on the host.
+This project implements an agent called `kata-agent` that runs inside a virtual machine (VM).
+
+The agent manages container processes inside the VM, on behalf of the
+[runtime](https://github.com/kata-containers/runtime) running on the host.
+
+## Debug mode
+
+To enable agent debug output, add the `agent.log=debug` option to the guest kernel command line.
+
+See the [developer guide](https://github.com/kata-containers/documentation/blob/master/Developer-Guide.md#enable-full-debug) for further details.
+
+## Developer mode
+
+Add `agent.devmode` to the guest kernel command line to allow the agent
+process to coredump (disabled by default). Specifying this option implicitly
+enables [debug mode](#debug-mode).
+
+## Enable trace support
+
+See [the tracing guide](TRACING.md).

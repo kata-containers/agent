@@ -11,17 +11,53 @@ PREFIX := /usr
 BINDIR := $(PREFIX)/bin
 # Define if agent will be installed as init
 INIT := no
+
+# Set to "yes" if agent should support OpenTracing with http://jaegertracing.io.
+TRACE := no
+
+# Tracing cannot currently be supported when running the agent as PID 1 since
+# the tracing requires additional services to be started _before_ the agent
+# process starts.
+#
+# These services are required since Jaeger does not currently support VSOCK.
+# Once Jaeger does support VSOCK, this limitation can be removed as the
+# additional services will no longer be required.
+#
+# See TRACING.md for further details.
+ifeq ($(TRACE),yes)
+  ifeq ($(INIT),yes)
+    $(error ERROR: "TRACE=yes" requires "INIT=no")
+  endif
+endif
+
+# If "yes", install additional services to redirect guest OS journal messages
+# to the host using VSOCK.
+TRACE_DEV_MODE := no
+
 # Path to systemd unit directory if installed as not init.
 UNIT_DIR := /usr/lib/systemd/system
+
+# Path to systemd drop-in snippet directory used to override the agent's
+# service without having to modify the pristine agent service file.
+SNIPPET_DIR := /etc/systemd/system/$(AGENT_SERVICE).d/
 
 GENERATED_FILES :=
 
 ifeq ($(INIT),no)
-# Unit file to start kata agent in systemd systems
-UNIT_FILES = kata-agent.service
-GENERATED_FILES := $(UNIT_FILES)
-# Target to be reached in systemd services
-UNIT_FILES += kata-containers.target
+    # Unit file to start kata agent in systemd systems
+    UNIT_FILES = kata-agent.service
+    GENERATED_FILES := $(UNIT_FILES)
+    # Target to be reached in systemd services
+    UNIT_FILES += kata-containers.target
+endif
+
+ifeq ($(TRACE),yes)
+    UNIT_FILES += jaeger-client-socat-redirector.service
+endif
+
+ifeq ($(TRACE_DEV_MODE),yes)
+    UNIT_FILES += kata-journald-host-redirect.service
+    SNIPPET_FILES += kata-redirect-agent-output-to-journal.conf
 endif
 
 VERSION_FILE := ./VERSION
@@ -32,9 +68,9 @@ COMMIT := $(if $(shell git status --porcelain --untracked-files=no),${COMMIT_NO}
 VERSION_COMMIT := $(if $(COMMIT),$(VERSION)-$(COMMIT),$(VERSION))
 ARCH := $(shell go env GOARCH)
 ifeq ($(SECCOMP),yes)
-	BUILDTAGS := seccomp
+    BUILDTAGS := seccomp
 else
-	SECCOMP=no
+    SECCOMP=no
 endif
 # go build common flags
 BUILDFLAGS := -buildmode=pie
@@ -55,6 +91,11 @@ install:
 ifeq ($(INIT),no)
 	@echo "Installing systemd unit files..."
 	$(foreach f,$(UNIT_FILES),$(call INSTALL_FILE,$f,$(UNIT_DIR)))
+endif
+ifeq ($(TRACE_DEV_MODE),yes)
+	@echo "Installing systemd snippet files..."
+	@mkdir -p $(SNIPPET_DIR)
+	$(foreach f,$(SNIPPET_FILES),$(call INSTALL_FILE,$f,$(SNIPPET_DIR)))
 endif
 
 build-image:

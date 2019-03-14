@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2017 Intel Corporation
+// Copyright (c) 2017-2019 Intel Corporation
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -7,6 +7,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -278,7 +279,11 @@ func mountStorage(storage pb.Storage) error {
 // associated operations such as waiting for the device to show up, and mount
 // it to a specific location, according to the type of handler chosen, and for
 // each storage.
-func addStorages(storages []*pb.Storage, s *sandbox) ([]string, error) {
+func addStorages(ctx context.Context, storages []*pb.Storage, s *sandbox) ([]string, error) {
+	span, ctx := trace(ctx, "mount", "addStorages")
+	span.SetTag("sandbox", s.id)
+	defer span.Finish()
+
 	var mountList []string
 
 	for _, storage := range storages {
@@ -292,7 +297,13 @@ func addStorages(storages []*pb.Storage, s *sandbox) ([]string, error) {
 				"Unknown storage driver %q", storage.Driver)
 		}
 
+		// Wrap the span around the handler call to avoid modifying
+		// the handler interface but also to avoid having to add trace
+		// code to each driver.
+		handlerSpan, _ := trace(ctx, "mount", storage.Driver)
 		mountPoint, err := devHandler(*storage, s)
+		handlerSpan.Finish()
+
 		if err != nil {
 			return nil, err
 		}

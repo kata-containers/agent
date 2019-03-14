@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2017 Intel Corporation
+// Copyright (c) 2017-2019 Intel Corporation
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -55,6 +55,12 @@ var (
 	sysfsMemoryHotplugProbePath = "/sys/devices/system/memory/probe"
 	sysfsConnectedCPUsPath      = filepath.Join(sysfsCPUOnlinePath, "online")
 	containersRootfsPath        = "/run"
+
+	// set when StartTracing() is called.
+	startTracingCalled = false
+
+	// set when StopTracing() is called.
+	stopTracingCalled = false
 )
 
 type onlineResource struct {
@@ -587,7 +593,7 @@ func (a *agentGRPC) finishCreateContainer(ctr *container, req *pb.CreateContaine
 	}
 
 	// Make sure add Container to Sandbox, before call updateSharedPidNs
-	a.sandbox.setContainer(req.ContainerId, ctr)
+	a.sandbox.setContainer(ctr.ctx, req.ContainerId, ctr)
 	if err := a.updateSharedPidNs(ctr); err != nil {
 		return emptyResp, err
 	}
@@ -622,7 +628,7 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 	// After all those storages have been processed, no matter the order
 	// here, the agent will rely on libcontainer (using the oci.Mounts
 	// list) to bind mount all of them inside the container.
-	mountList, err := addStorages(req.Storages, a.sandbox)
+	mountList, err := addStorages(ctx, req.Storages, a.sandbox)
 	if err != nil {
 		return emptyResp, err
 	}
@@ -632,6 +638,7 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		processes:       make(map[string]*process),
 		mounts:          mountList,
 		useSandboxPidNs: req.SandboxPidns,
+		ctx:             ctx,
 	}
 
 	// In case the container creation failed, make sure we cleanup
@@ -1360,7 +1367,7 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 	}
 
 	// Set up shared UTS and IPC namespaces
-	if err := a.sandbox.setupSharedNamespaces(); err != nil {
+	if err := a.sandbox.setupSharedNamespaces(ctx); err != nil {
 		return emptyResp, err
 	}
 
@@ -1370,7 +1377,7 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 		}
 	}
 
-	mountList, err := addStorages(req.Storages, a.sandbox)
+	mountList, err := addStorages(ctx, req.Storages, a.sandbox)
 	if err != nil {
 		return emptyResp, err
 	}
@@ -1423,6 +1430,12 @@ func (a *agentGRPC) DestroySandbox(ctx context.Context, req *pb.DestroySandboxRe
 
 	if err := a.sandbox.unmountSharedNamespaces(); err != nil {
 		return emptyResp, err
+	}
+
+	if tracing && !startTracingCalled {
+		// Close stopServer channel to signal the main agent code to stop
+		// the server when all gRPC calls will be completed.
+		close(a.sandbox.stopServer)
 	}
 
 	a.sandbox.hostname = ""
@@ -1619,6 +1632,50 @@ func (a *agentGRPC) CopyFile(ctx context.Context, req *pb.CopyFileRequest) (*gpb
 	if err := os.Rename(tmpPath, path); err != nil {
 		return emptyResp, err
 	}
+
+	return emptyResp, nil
+}
+
+func (a *agentGRPC) StartTracing(ctx context.Context, req *pb.StartTracingRequest) (*gpb.Empty, error) {
+	// We chould check 'tracing' too and error if already set. But
+	// instead, we permit that scenario, making this call a NOP if tracing
+	// is already enabled via traceModeFlag.
+	if startTracingCalled {
+		return nil, grpcStatus.Error(codes.FailedPrecondition, "tracing already enabled")
+	}
+
+	enableTracing(false)
+	startTracingCalled = true
+
+	var err error
+
+	// Ignore the provided context and recreate the root context.
+	// Note that this call will not be traced, but all subsequent ones
+	// will be.
+	rootSpan, rootContext, err = setupTracing(agentName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to setup tracing: %v", err)
+	}
+
+	a.sandbox.ctx = rootContext
+	grpcContext = rootContext
+
+	return emptyResp, nil
+}
+
+func (a *agentGRPC) StopTracing(ctx context.Context, req *pb.StopTracingRequest) (*gpb.Empty, error) {
+	// Like StartTracing(), this call permits tracing to be stopped when
+	// it was originally started using traceModeFlag.
+	if !tracing && !startTracingCalled {
+		return nil, grpcStatus.Error(codes.FailedPrecondition, "tracing not enabled")
+	}
+
+	if stopTracingCalled {
+		return nil, grpcStatus.Error(codes.FailedPrecondition, "tracing already disabled")
+	}
+
+	// Signal to the interceptors that tracing need to end.
+	stopTracingCalled = true
 
 	return emptyResp, nil
 }

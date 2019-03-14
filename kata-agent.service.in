@@ -1,3 +1,9 @@
+#
+# Copyright (c) 2018-2019 Intel Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
 [Unit]
 Description=Kata Containers Agent
 Documentation=https://github.com/kata-containers/agent
@@ -10,5 +16,4 @@ StandardOutput=tty
 Type=simple
 ExecStart=@bindir@/@kata-agent@
 LimitNOFILE=infinity
-ExecStop=/bin/sync ; /usr/bin/systemctl --force poweroff
-FailureAction=poweroff
+ExecStop=/bin/sync

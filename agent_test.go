@@ -16,9 +16,6 @@ import (
 	"syscall"
 	"testing"
 
-	"google.golang.org/grpc"
-
-	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/opencontainers/runc/libcontainer"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
@@ -298,7 +295,7 @@ func TestSetContainer(t *testing.T) {
 		id: testContainerID,
 	}
 
-	s.setContainer(testContainerID, c)
+	s.setContainer(context.Background(), testContainerID, c)
 
 	cont, exist := s.containers[testContainerID]
 	assert.True(t, exist, "Container entry should exist")
@@ -382,14 +379,6 @@ func TestSettingGrpcTracer(t *testing.T) {
 
 	s.stopGRPC()
 	assert.Nil(t, s.server, "failed stopping grpc server")
-}
-
-func TestGrpcTracer(t *testing.T) {
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return &pb.HealthCheckResponse{}, nil
-	}
-	_, err := grpcTracer(context.Background(), &pb.CheckRequest{}, &grpc.UnaryServerInfo{}, handler)
-	assert.Nil(t, err, "failed to trace grpc request: %v", err)
 }
 
 func TestMountToRootfs(t *testing.T) {

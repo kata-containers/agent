@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2018 Intel Corporation
+// Copyright (c) 2018-2019 Intel Corporation
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -7,6 +7,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -120,7 +121,7 @@ func TestVirtioBlkStorageHandlerSuccessful(t *testing.T) {
 }
 
 func testAddStoragesSuccessful(t *testing.T, storages []*pb.Storage) {
-	_, err := addStorages(storages, &sandbox{})
+	_, err := addStorages(context.Background(), storages, &sandbox{})
 	assert.Nil(t, err, "addStorages() failed: %v", err)
 }
 
@@ -162,7 +163,7 @@ func TestAddStoragesNoopHandlerSuccessful(t *testing.T) {
 }
 
 func testAddStoragesFailure(t *testing.T, storages []*pb.Storage) {
-	_, err := addStorages(storages, &sandbox{})
+	_, err := addStorages(context.Background(), storages, &sandbox{})
 	assert.NotNil(t, err, "addStorages() should have failed")
 }
 
