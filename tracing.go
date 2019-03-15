@@ -95,7 +95,10 @@ func setupTracing(rootSpanName string) (opentracing.Span, context.Context, error
 	span.SetTag("source", "agent")
 	span.SetTag("root-span", "true")
 
-	agentLog.Debugf("created root span %v", span)
+	// See comment in trace().
+	if tracing {
+		agentLog.Debugf("created root span %v", span)
+	}
 
 	// Associate the root span with the context
 	ctx = opentracing.ContextWithSpan(ctx, span)
@@ -134,7 +137,12 @@ func trace(ctx context.Context, subsystem, name string) (opentracing.Span, conte
 
 	span.SetTag("subsystem", subsystem)
 
-	agentLog.Debugf("created span %v", span)
+	// This is slightly confusing: when tracing is disabled, trace spans
+	// are still created - but the tracer used is a NOP. Therefore, only
+	// display the message when tracing is really enabled.
+	if tracing {
+		agentLog.Debugf("created span %v", span)
+	}
 
 	return span, ctx
 }
