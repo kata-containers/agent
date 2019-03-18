@@ -4,9 +4,9 @@
 * [OpenTracing summary](#opentracing-summary)
 * [Jaeger tracing architecture](#jaeger-tracing-architecture)
 * [Guest to Host communication using VSOCK](#guest-to-host-communication-using-vsock)
-* [Types of Agent tracing](#types-of-agent-tracing)
-    * [Primary trace types](#primary-trace-types)
-    * [Tracing sub-types](#tracing-sub-types)
+* [Agent tracing terminology](#agent-tracing-terminology)
+    * [Trace modes](#trace-modes)
+    * [Trace types](#trace-types)
 * [Enabling tracing](#enabling-tracing)
     * [Enabling dynamic tracing](#enabling-dynamic-tracing)
     * [Enabling static tracing](#enabling-static-tracing)
@@ -96,20 +96,22 @@ Further details:
 
 For tracing to work, the host system must have a Jaeger agent running.
 
-# Types of Agent tracing
+# Agent tracing terminology
 
-## Primary trace types
+## Trace modes
 
-Two types of agent tracing are available:
+The agent supports two different tracing modes:
 
-| Trace type | Description | Use-case | VM shutdown controller | Limitations |
+| Trace mode | Description | Use-case | VM shutdown controller | Limitations |
 |-|-|-|-|-|
 | Static | Traces from agent start to agent shutdown. | Obtain holistic view of agent activities. | Agent | None |
-| Dynamic | Traces begin when the gRPC `StartTracing()` API is called and end when the corresponding `StopTracing()` API is called. | on-demand (partial) tracing. | Runtime | Only "isolated" sub-type supported. |
+| Dynamic | Traces begin when the gRPC `StartTracing()` API is called and end when the corresponding `StopTracing()` API is called. | on-demand (partial) tracing. | Runtime | Only "isolated" type supported. |
 
-## Tracing sub-types
+## Trace types
 
-| Trace sub-type | Description | Use-case | Notes |
+Each trace mode is sub-divided into two different types:
+
+| Trace type | Description | Use-case | Notes |
 |-|-|-|-|
 | isolated | The traces only apply to the agent; after the container has been destroyed, the first span will start at agent startup and the last at agent shutdown | Observing agent lifespan. | |
 | collated | In this mode, spans are associated with their `kata-runtime` initiated counterparts. | Understanding how the runtime calls the agent. | Requires runtime tracing to be enabled in `configuration.toml` (`enable_tracing=true`). |
@@ -120,7 +122,7 @@ Two types of agent tracing are available:
 
 Call the gRPC `StartTracing()` API to start tracing and the corresponding `StopTracing()` API to stop tracing.
 
-> **Note:** Dynamic tracing will always use an isolated sub-type.
+> **Note:** The dynamic tracing mode will always use an isolated type.
 
 ## Enabling static tracing
 
