@@ -127,7 +127,7 @@ Call the gRPC `StartTracing()` API to start tracing and the corresponding `StopT
 ## Enabling static tracing
 
 Static tracing is enabled by adding the `agent.trace` option in the
-`kernel_params=` variable in the runtime's `configuration.toml` file.
+guest kernels command line.
 
 ### Static tracing options
 
@@ -138,13 +138,6 @@ following:
 |-|-|
 | "isolated" | `agent.trace=isolated` (or just `agent.trace`) |
 | "collated" | `agent.trace=collated` |
-
-For example, to enable isolated tracing explicitly, add the following to the
-runtime's `configuration.toml` file:
-
-```
-kernel_params = "agent.trace=isolated ... "
-```
 
 > **Note:**
 >
