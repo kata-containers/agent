@@ -7,6 +7,7 @@
 * [Agent tracing terminology](#agent-tracing-terminology)
     * [Trace modes](#trace-modes)
     * [Trace types](#trace-types)
+* [Agent shutdown behaviour](#agent-shutdown-behaviour)
 * [Enabling tracing](#enabling-tracing)
     * [Enabling dynamic tracing](#enabling-dynamic-tracing)
     * [Enabling static tracing](#enabling-static-tracing)
@@ -36,9 +37,7 @@ the following attributes:
 - A reference to the span's parent span
 
 All spans need to be *finished*, or *completed*, to allow the OpenTracing
-framework to generate the final trace information. This implies that the
-agent must be shutdown to obtain a full trace. This will occur after the
-workload has ended.
+framework to generate the final trace information.
 
 # Jaeger tracing architecture
 
@@ -104,7 +103,7 @@ The agent supports two different tracing modes:
 
 | Trace mode | Description | Use-case | VM shutdown controller | Limitations |
 |-|-|-|-|-|
-| Static | Traces from agent start to agent shutdown. | Obtain holistic view of agent activities. | Agent | None |
+| Static | Traces from agent start to agent shutdown. | Obtain holistic view of agent activities. | Agent | Requires systemd - see section [Agent shutdown behaviour](#agent-shutdown-behaviour). |
 | Dynamic | Traces begin when the gRPC `StartTracing()` API is called and end when the corresponding `StopTracing()` API is called. | on-demand (partial) tracing. | Runtime | Only "isolated" type supported. |
 
 ## Trace types
@@ -115,6 +114,21 @@ Each trace mode is sub-divided into two different types:
 |-|-|-|-|
 | isolated | The traces only apply to the agent; after the container has been destroyed, the first span will start at agent startup and the last at agent shutdown | Observing agent lifespan. | |
 | collated | In this mode, spans are associated with their `kata-runtime` initiated counterparts. | Understanding how the runtime calls the agent. | Requires runtime tracing to be enabled in `configuration.toml` (`enable_tracing=true`). |
+
+# Agent shutdown behaviour
+ 
+As shown in the [trace modes](#trace-modes) section, the different trace modes
+change how the VM is shutdown. In normal operation, the `kata-runtime` manages
+the VM shutdown. The **only** scenario the agent itself is responsible for
+VM shutdown is if static tracing is enabled. In this scenario, the
+agent finishes the trace spans and actually exits. The systemd unit that
+launches the `kata-agent` detects this and then runs the `ExecStop=` commands,
+which shutdown the VM.
+
+> **Note:** This implies that currently systemd is required for static
+> tracing. However, it is not a hard requirement. The agent can be modified to
+> invoke the `ExecStop=` commands itself to avoid relying on systemd to handle
+> VM shutdown.
 
 # Enabling tracing
 
