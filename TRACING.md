@@ -51,7 +51,7 @@ forwards the information on to other components of a Jaeger system.
 
 The Jaeger client package bound into the application sends the trace spans to
 the Jaeger agent process using the UDP protocol. This is problematic since it
-is not desirable to run a `jaeger-agent` process inside the VM:
+is not desirable to run a `jaeger-agent` process inside the Virtual Machine (VM):
 
 - Adding extra binaries and an extra service to run the Jaeger agent inside
   the VM increases the size of the guest OS image used to
