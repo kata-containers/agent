@@ -69,6 +69,7 @@ var initRootfsMounts = []initMount{
 	{"devtmpfs", "dev", "/dev", []string{"nosuid"}},
 	{"tmpfs", "tmpfs", "/dev/shm", []string{"nosuid", "nodev"}},
 	{"devpts", "devpts", "/dev/pts", []string{"nosuid", "noexec"}},
+	{"tmpfs", "tmpfs", "/run", []string{"nosuid", "nodev"}},
 }
 
 type process struct {
