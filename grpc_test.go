@@ -742,11 +742,11 @@ func testAgentDetails(assert *assert.Assertions, details *pb.AgentDetails, haveS
 		storages = append(storages, handler)
 	}
 
-	sort.Sort(sort.StringSlice(details.DeviceHandlers))
-	sort.Sort(sort.StringSlice(details.StorageHandlers))
+	sort.Strings(details.DeviceHandlers)
+	sort.Strings(details.StorageHandlers)
 
-	sort.Sort(sort.StringSlice(devices))
-	sort.Sort(sort.StringSlice(storages))
+	sort.Strings(devices)
+	sort.Strings(storages)
 
 	assert.Equal(details.DeviceHandlers, devices)
 	assert.Equal(details.StorageHandlers, storages)
