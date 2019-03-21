@@ -73,8 +73,8 @@ func assertIsEqual(t *testing.T, ociSpec *specs.Spec, grpcSpec *Spec) {
 	assert.Equal(len(grpcSpec.Linux.Namespaces), 5)
 
 	for i := range grpcSpec.Linux.Namespaces {
-		assert.Equal(grpcSpec.Linux.Namespaces[i].Type, (string)(ociSpec.Linux.Namespaces[i].Type))
-		assert.Equal(grpcSpec.Linux.Namespaces[i].Path, (string)(ociSpec.Linux.Namespaces[i].Path))
+		assert.Equal(grpcSpec.Linux.Namespaces[i].Type, (string)(ociSpec.Linux.Namespaces[i].Type)) //nolint:unconvert
+		assert.Equal(grpcSpec.Linux.Namespaces[i].Path, (string)(ociSpec.Linux.Namespaces[i].Path)) //nolint:unconvert
 	}
 }
 

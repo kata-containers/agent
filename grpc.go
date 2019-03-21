@@ -190,7 +190,7 @@ func updateCpusetPath(cgroupPath string, newCpuset string, cookies cookie) error
 		cgroupParentPath = filepath.Join(cgroupParentPath, path)
 
 		// check if the cgroup was already updated.
-		if cookies[cgroupParentPath] == true {
+		if cookies[cgroupParentPath] {
 			agentLog.WithField("path", cgroupParentPath).Debug("cpuset cgroup already updated")
 			continue
 		}
@@ -373,7 +373,7 @@ func (a *agentGRPC) Version(ctx context.Context, req *pb.CheckRequest) (*pb.Vers
 }
 
 func (a *agentGRPC) getContainer(cid string) (*container, error) {
-	if a.sandbox.running == false {
+	if !a.sandbox.running {
 		return nil, grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started")
 	}
 
@@ -793,7 +793,7 @@ func posixRlimitsToRlimits(posixRlimits []specs.POSIXRlimit) []configs.Rlimit {
 }
 
 func (a *agentGRPC) createContainerChecks(req *pb.CreateContainerRequest) (err error) {
-	if a.sandbox.running == false {
+	if !a.sandbox.running {
 		return grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started, impossible to run a new container")
 	}
 
@@ -887,7 +887,7 @@ func (a *agentGRPC) ExecProcess(ctx context.Context, req *pb.ExecProcessRequest)
 }
 
 func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequest) (*gpb.Empty, error) {
-	if a.sandbox.running == false {
+	if !a.sandbox.running {
 		return emptyResp, grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started, impossible to signal the container")
 	}
 
@@ -1343,7 +1343,7 @@ func (a *agentGRPC) TtyWinResize(ctx context.Context, req *pb.TtyWinResizeReques
 }
 
 func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequest) (*gpb.Empty, error) {
-	if a.sandbox.running == true {
+	if a.sandbox.running {
 		return emptyResp, grpcStatus.Error(codes.AlreadyExists, "Sandbox already started, impossible to start again")
 	}
 
@@ -1392,7 +1392,7 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 }
 
 func (a *agentGRPC) DestroySandbox(ctx context.Context, req *pb.DestroySandboxRequest) (*gpb.Empty, error) {
-	if a.sandbox.running == false {
+	if !a.sandbox.running {
 		agentLog.Info("Sandbox not started, this is a no-op")
 		return emptyResp, nil
 	}
