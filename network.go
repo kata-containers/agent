@@ -144,6 +144,14 @@ func updateLink(netHandle *netlink.Handle, link netlink.Link, iface *types.Inter
 		return grpcStatus.Errorf(codes.Internal, "Could not set MTU %d for interface %v: %v", iface.Mtu, link, err)
 	}
 
+	if iface.RawFlags&unix.IFF_NOARP == uint32(unix.IFF_NOARP) {
+		agentLog.WithField("link", link).Info("Set NOARP")
+		if err := netHandle.LinkSetARPOff(link); err != nil {
+			return grpcStatus.Errorf(codes.Internal, "Could not set NOARP %d for interface %v: %v",
+				iface.RawFlags, link, err)
+		}
+	}
+
 	return nil
 }
 
