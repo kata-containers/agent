@@ -36,6 +36,7 @@ message Interface {
 	// library, regarding each type of link. Here is a non exhaustive
 	// list: "veth", "macvtap", "vlan", "macvlan", "tap", ...
 	string type = 7;
+	uint32 raw_flags = 8;
 }
 
 message Route {
