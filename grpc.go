@@ -292,7 +292,7 @@ func setConsoleCarriageReturn(fd int) error {
 	return unix.IoctlSetTermios(fd, unix.TCSETS, termios)
 }
 
-func buildProcess(agentProcess *pb.Process, procID string, init bool) (*process, error) {
+func buildProcess(agentProcess *pb.Process, procID string) (*process, error) {
 	user := agentProcess.User.Username
 	if user == "" {
 		// We can specify the user and the group separated by ":"
@@ -312,7 +312,6 @@ func buildProcess(agentProcess *pb.Process, procID string, init bool) (*process,
 			Env:              agentProcess.Env,
 			User:             user,
 			AdditionalGroups: additionalGids,
-			Init:             init,
 		},
 	}
 
@@ -584,7 +583,7 @@ func (a *agentGRPC) finishCreateContainer(ctr *container, req *pb.CreateContaine
 	}
 	ctr.config = *config
 
-	ctr.initProcess, err = buildProcess(req.OCI.Process, req.ExecId, true)
+	ctr.initProcess, err = buildProcess(req.OCI.Process, req.ExecId)
 	if err != nil {
 		return emptyResp, err
 	}
@@ -875,7 +874,7 @@ func (a *agentGRPC) ExecProcess(ctx context.Context, req *pb.ExecProcessRequest)
 		return nil, grpcStatus.Errorf(codes.FailedPrecondition, "Cannot exec in stopped container %s", req.ContainerId)
 	}
 
-	proc, err := buildProcess(req.Process, req.ExecId, false)
+	proc, err := buildProcess(req.Process, req.ExecId)
 	if err != nil {
 		return emptyResp, err
 	}
