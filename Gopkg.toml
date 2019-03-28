@@ -12,7 +12,7 @@
 
 [[constraint]]
   name = "github.com/opencontainers/runc"
-  revision = "f56b4cbeadc407e715d9b2ba49e62185bd81cef4"
+  revision = "cc4307ab6643668ce5abc6b524e1764a54c32550"
 
 [[constraint]]
   name = "github.com/opencontainers/runtime-spec"

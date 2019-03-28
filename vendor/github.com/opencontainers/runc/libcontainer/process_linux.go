@@ -22,10 +22,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// Synchronisation value for cgroup namespace setup.
-// The same constant is defined in nsexec.c as "CREATECGROUPNS".
-const createCgroupns = 0x80
-
 type parentProcess interface {
 	// pid returns the pid for the running process.
 	pid() int
@@ -50,16 +46,15 @@ type parentProcess interface {
 }
 
 type setnsProcess struct {
-	cmd             *exec.Cmd
-	parentPipe      *os.File
-	childPipe       *os.File
-	cgroupPaths     map[string]string
-	rootlessCgroups bool
-	intelRdtPath    string
-	config          *initConfig
-	fds             []string
-	process         *Process
-	bootstrapData   io.Reader
+	cmd           *exec.Cmd
+	parentPipe    *os.File
+	childPipe     *os.File
+	cgroupPaths   map[string]string
+	intelRdtPath  string
+	config        *initConfig
+	fds           []string
+	process       *Process
+	bootstrapData io.Reader
 }
 
 func (p *setnsProcess) startTime() (uint64, error) {
@@ -91,7 +86,7 @@ func (p *setnsProcess) start() (err error) {
 		return newSystemErrorWithCause(err, "executing setns process")
 	}
 	if len(p.cgroupPaths) > 0 {
-		if err := cgroups.EnterPid(p.cgroupPaths, p.pid()); err != nil && !p.rootlessCgroups {
+		if err := cgroups.EnterPid(p.cgroupPaths, p.pid()); err != nil {
 			return newSystemErrorWithCausef(err, "adding pid %d to cgroups", p.pid())
 		}
 	}
@@ -229,17 +224,12 @@ func (p *initProcess) externalDescriptors() []string {
 	return p.fds
 }
 
-// getChildPid receives the final child's pid over the provided pipe.
-func (p *initProcess) getChildPid() (int, error) {
-	var pid pid
-	if err := json.NewDecoder(p.parentPipe).Decode(&pid); err != nil {
-		p.cmd.Wait()
-		return -1, err
-	}
-	return pid.Pid, nil
-}
-
-func (p *initProcess) waitForChildExit(childPid int) error {
+// execSetns runs the process that executes C code to perform the setns calls
+// because setns support requires the C process to fork off a child and perform the setns
+// before the go runtime boots, we wait on the process to die and receive the child's pid
+// over the provided pipe.
+// This is called by initProcess.start function
+func (p *initProcess) execSetns() error {
 	status, err := p.cmd.Process.Wait()
 	if err != nil {
 		p.cmd.Wait()
@@ -249,8 +239,22 @@ func (p *initProcess) waitForChildExit(childPid int) error {
 		p.cmd.Wait()
 		return &exec.ExitError{ProcessState: status}
 	}
+	var pid *pid
+	if err := json.NewDecoder(p.parentPipe).Decode(&pid); err != nil {
+		p.cmd.Wait()
+		return err
+	}
 
-	process, err := os.FindProcess(childPid)
+	// Clean up the zombie parent process
+	firstChildProcess, err := os.FindProcess(pid.PidFirstChild)
+	if err != nil {
+		return err
+	}
+
+	// Ignore the error in case the child has already been reaped for any reason
+	_, _ = firstChildProcess.Wait()
+
+	process, err := os.FindProcess(pid.Pid)
 	if err != nil {
 		return err
 	}
@@ -292,47 +296,19 @@ func (p *initProcess) start() error {
 	if _, err := io.Copy(p.parentPipe, p.bootstrapData); err != nil {
 		return newSystemErrorWithCause(err, "copying bootstrap data to pipe")
 	}
-	childPid, err := p.getChildPid()
-	if err != nil {
-		return newSystemErrorWithCause(err, "getting the final child's pid from pipe")
+
+	if err := p.execSetns(); err != nil {
+		return newSystemErrorWithCause(err, "running exec setns process for init")
 	}
 
 	// Save the standard descriptor names before the container process
 	// can potentially move them (e.g., via dup2()).  If we don't do this now,
 	// we won't know at checkpoint time which file descriptor to look up.
-	fds, err := getPipeFds(childPid)
+	fds, err := getPipeFds(p.pid())
 	if err != nil {
-		return newSystemErrorWithCausef(err, "getting pipe fds for pid %d", childPid)
+		return newSystemErrorWithCausef(err, "getting pipe fds for pid %d", p.pid())
 	}
 	p.setExternalDescriptors(fds)
-	// Do this before syncing with child so that no children
-	// can escape the cgroup
-	if err := p.manager.Apply(childPid); err != nil {
-		return newSystemErrorWithCause(err, "applying cgroup configuration for process")
-	}
-	if p.intelRdtManager != nil {
-		if err := p.intelRdtManager.Apply(childPid); err != nil {
-			return newSystemErrorWithCause(err, "applying Intel RDT configuration for process")
-		}
-	}
-	// Now it's time to setup cgroup namesapce
-	if p.config.Config.Namespaces.Contains(configs.NEWCGROUP) && p.config.Config.Namespaces.PathOf(configs.NEWCGROUP) == "" {
-		if _, err := p.parentPipe.Write([]byte{createCgroupns}); err != nil {
-			return newSystemErrorWithCause(err, "sending synchronization value to init process")
-		}
-	}
-
-	// Wait for our first child to exit
-	if err := p.waitForChildExit(childPid); err != nil {
-		return newSystemErrorWithCause(err, "waiting for our first child to exit")
-	}
-
-	defer func() {
-		if err != nil {
-			// TODO: should not be the responsibility to call here
-			p.manager.Destroy()
-		}
-	}()
 	if err := p.createNetworkInterfaces(); err != nil {
 		return newSystemErrorWithCause(err, "creating network interfaces")
 	}
@@ -365,13 +341,14 @@ func (p *initProcess) start() error {
 				}
 
 				if p.config.Config.Hooks != nil {
-					s, err := p.container.currentOCIState()
-					if err != nil {
-						return err
+					bundle, annotations := utils.Annotations(p.container.config.Labels)
+					s := configs.HookState{
+						Version:     p.container.config.Version,
+						ID:          p.container.id,
+						Pid:         p.pid(),
+						Bundle:      bundle,
+						Annotations: annotations,
 					}
-					// initProcessStartTime hasn't been set yet.
-					s.Pid = p.cmd.Process.Pid
-					s.Status = "creating"
 					for i, hook := range p.config.Config.Hooks.Prestart {
 						if err := hook.Run(s); err != nil {
 							return newSystemErrorWithCausef(err, "running prestart hook %d", i)
@@ -395,13 +372,14 @@ func (p *initProcess) start() error {
 				}
 			}
 			if p.config.Config.Hooks != nil {
-				s, err := p.container.currentOCIState()
-				if err != nil {
-					return err
+				bundle, annotations := utils.Annotations(p.container.config.Labels)
+				s := configs.HookState{
+					Version:     p.container.config.Version,
+					ID:          p.container.id,
+					Pid:         p.pid(),
+					Bundle:      bundle,
+					Annotations: annotations,
 				}
-				// initProcessStartTime hasn't been set yet.
-				s.Pid = p.cmd.Process.Pid
-				s.Status = "creating"
 				for i, hook := range p.config.Config.Hooks.Prestart {
 					if err := hook.Run(s); err != nil {
 						return newSystemErrorWithCausef(err, "running prestart hook %d", i)
@@ -559,7 +537,7 @@ func (p *Process) InitializeIO(rootuid, rootgid int) (i *IO, err error) {
 	}
 	fds = append(fds, r.Fd(), w.Fd())
 	p.Stderr, i.Stderr = w, r
-	// change ownership of the pipes in case we are in a user namespace
+	// change ownership of the pipes incase we are in a user namespace
 	for _, fd := range fds {
 		if err := unix.Fchown(int(fd), rootuid, rootgid); err != nil {
 			return nil, err

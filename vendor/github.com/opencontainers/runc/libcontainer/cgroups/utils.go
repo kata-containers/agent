@@ -13,51 +13,40 @@ import (
 	"strings"
 	"time"
 
-	units "github.com/docker/go-units"
-	"golang.org/x/sys/unix"
+	"github.com/docker/go-units"
 )
 
 const (
-	CgroupNamePrefix = "name="
+	cgroupNamePrefix = "name="
 	CgroupProcesses  = "cgroup.procs"
 )
 
 // https://www.kernel.org/doc/Documentation/cgroup-v1/cgroups.txt
-func FindCgroupMountpoint(cgroupPath, subsystem string) (string, error) {
-	mnt, _, err := FindCgroupMountpointAndRoot(cgroupPath, subsystem)
+func FindCgroupMountpoint(subsystem string) (string, error) {
+	mnt, _, err := FindCgroupMountpointAndRoot(subsystem)
 	return mnt, err
 }
 
-func FindCgroupMountpointAndRoot(cgroupPath, subsystem string) (string, string, error) {
+func FindCgroupMountpointAndRoot(subsystem string) (string, string, error) {
 	// We are not using mount.GetMounts() because it's super-inefficient,
 	// parsing it directly sped up x10 times because of not using Sscanf.
 	// It was one of two major performance drawbacks in container start.
 	if !isSubsystemAvailable(subsystem) {
 		return "", "", NewNotFoundError(subsystem)
 	}
-
 	f, err := os.Open("/proc/self/mountinfo")
 	if err != nil {
 		return "", "", err
 	}
 	defer f.Close()
 
-	return findCgroupMountpointAndRootFromReader(f, cgroupPath, subsystem)
-}
-
-func findCgroupMountpointAndRootFromReader(reader io.Reader, cgroupPath, subsystem string) (string, string, error) {
-	scanner := bufio.NewScanner(reader)
+	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		txt := scanner.Text()
-		fields := strings.Fields(txt)
-		if len(fields) < 5 {
-			continue
-		}
-		if strings.HasPrefix(fields[4], cgroupPath) {
-			for _, opt := range strings.Split(fields[len(fields)-1], ",") {
-				if opt == subsystem {
-					return fields[4], fields[3], nil
-				}
+		fields := strings.Split(txt, " ")
+		for _, opt := range strings.Split(fields[len(fields)-1], ",") {
+			if opt == subsystem {
+				return fields[4], fields[3], nil
 			}
 		}
 	}
@@ -114,7 +103,7 @@ func FindCgroupMountpointDir() (string, error) {
 		}
 
 		if postSeparatorFields[0] == "cgroup" {
-			// Check that the mount is properly formatted.
+			// Check that the mount is properly formated.
 			if numPostFields < 3 {
 				return "", fmt.Errorf("Error found less than 3 fields post '-' in %q", text)
 			}
@@ -162,20 +151,19 @@ func getCgroupMountsHelper(ss map[string]bool, mi io.Reader, all bool) ([]Mount,
 			Root:       fields[3],
 		}
 		for _, opt := range strings.Split(fields[len(fields)-1], ",") {
-			seen, known := ss[opt]
-			if !known || (!all && seen) {
+			if !ss[opt] {
 				continue
 			}
-			ss[opt] = true
-			if strings.HasPrefix(opt, CgroupNamePrefix) {
-				opt = opt[len(CgroupNamePrefix):]
+			if strings.HasPrefix(opt, cgroupNamePrefix) {
+				m.Subsystems = append(m.Subsystems, opt[len(cgroupNamePrefix):])
+			} else {
+				m.Subsystems = append(m.Subsystems, opt)
 			}
-			m.Subsystems = append(m.Subsystems, opt)
-			numFound++
+			if !all {
+				numFound++
+			}
 		}
-		if len(m.Subsystems) > 0 || all {
-			res = append(res, m)
-		}
+		res = append(res, m)
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err
@@ -199,7 +187,7 @@ func GetCgroupMounts(all bool) ([]Mount, error) {
 
 	allMap := make(map[string]bool)
 	for s := range allSubsystems {
-		allMap[s] = false
+		allMap[s] = true
 	}
 	return getCgroupMountsHelper(allMap, f, all)
 }
@@ -268,13 +256,13 @@ func GetInitCgroupPath(subsystem string) (string, error) {
 }
 
 func getCgroupPathHelper(subsystem, cgroup string) (string, error) {
-	mnt, root, err := FindCgroupMountpointAndRoot("", subsystem)
+	mnt, root, err := FindCgroupMountpointAndRoot(subsystem)
 	if err != nil {
 		return "", err
 	}
 
 	// This is needed for nested containers, because in /proc/self/cgroup we
-	// see paths from host, which don't exist in container.
+	// see pathes from host, which don't exist in container.
 	relCgroup, err := filepath.Rel(root, cgroup)
 	if err != nil {
 		return "", err
@@ -354,7 +342,7 @@ func getControllerPath(subsystem string, cgroups map[string]string) (string, err
 		return p, nil
 	}
 
-	if p, ok := cgroups[CgroupNamePrefix+subsystem]; ok {
+	if p, ok := cgroups[cgroupNamePrefix+subsystem]; ok {
 		return p, nil
 	}
 
@@ -465,39 +453,10 @@ func WriteCgroupProc(dir string, pid int) error {
 	}
 
 	// Dont attach any pid to the cgroup if -1 is specified as a pid
-	if pid == -1 {
-		return nil
-	}
-
-	cgroupProcessesFile, err := os.OpenFile(filepath.Join(dir, CgroupProcesses), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0700)
-	if err != nil {
-		return fmt.Errorf("failed to write %v to %v: %v", pid, CgroupProcesses, err)
-	}
-	defer cgroupProcessesFile.Close()
-
-	for i := 0; i < 5; i++ {
-		_, err = cgroupProcessesFile.WriteString(strconv.Itoa(pid))
-		if err == nil {
-			return nil
+	if pid != -1 {
+		if err := ioutil.WriteFile(filepath.Join(dir, CgroupProcesses), []byte(strconv.Itoa(pid)), 0700); err != nil {
+			return fmt.Errorf("failed to write %v to %v: %v", pid, CgroupProcesses, err)
 		}
-
-		// EINVAL might mean that the task being added to cgroup.procs is in state
-		// TASK_NEW. We should attempt to do so again.
-		if isEINVAL(err) {
-			time.Sleep(30 * time.Millisecond)
-			continue
-		}
-
-		return fmt.Errorf("failed to write %v to %v: %v", pid, CgroupProcesses, err)
 	}
-	return err
-}
-
-func isEINVAL(err error) bool {
-	switch err := err.(type) {
-	case *os.PathError:
-		return err.Err == unix.EINVAL
-	default:
-		return false
-	}
+	return nil
 }

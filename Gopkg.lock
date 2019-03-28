@@ -2,14 +2,6 @@
 
 
 [[projects]]
-  digest = "1:b54ea408c3a0a82d6d644fbb4468d00b50b1368482abc337aec72b60a3ea7c12"
-  name = "github.com/checkpoint-restore/go-criu"
-  packages = ["rpc"]
-  pruneopts = "NUT"
-  revision = "17b0214f6c48980c45dc47ecb0cfd6d9e02df723"
-  version = "v3.11"
-
-[[projects]]
   branch = "master"
   digest = "1:8ecb89af7dfe3ac401bdb0c9390b134ef96a97e85f732d2b0604fb7b3977839f"
   name = "github.com/codahale/hdrhistogram"
@@ -141,7 +133,7 @@
   revision = "7d4729fb36185a7c1719923406c9d40e54fb93c7"
 
 [[projects]]
-  digest = "1:b2eb2cc22a636b636ed6f57847c37ca065bddbe456303930193083edd36f1203"
+  digest = "1:e9efda6418044c653a9d6051719196214dbdbe4fa50ebcc7975dde8932b6d2f5"
   name = "github.com/opencontainers/runc"
   packages = [
     "libcontainer",
@@ -151,6 +143,7 @@
     "libcontainer/cgroups/systemd",
     "libcontainer/configs",
     "libcontainer/configs/validate",
+    "libcontainer/criurpc",
     "libcontainer/intelrdt",
     "libcontainer/keys",
     "libcontainer/mount",
@@ -163,7 +156,7 @@
     "libcontainer/utils",
   ]
   pruneopts = "NUT"
-  revision = "f56b4cbeadc407e715d9b2ba49e62185bd81cef4"
+  revision = "cc4307ab6643668ce5abc6b524e1764a54c32550"
 
 [[projects]]
   digest = "1:0d447d4961f4f9270457fbc20d0261bba8d3056f395efd2e2480e2dfa4487a60"
