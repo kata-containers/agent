@@ -12,7 +12,6 @@ import (
 
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
-	"github.com/opencontainers/runtime-spec/specs-go"
 )
 
 type mockContainer struct {
@@ -31,10 +30,6 @@ func (m *mockContainer) Status() (libcontainer.Status, error) {
 }
 
 func (m *mockContainer) State() (*libcontainer.State, error) {
-	return nil, nil
-}
-
-func (m *mockContainer) OCIState() (*specs.State, error) {
 	return nil, nil
 }
 
