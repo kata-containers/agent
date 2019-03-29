@@ -118,11 +118,11 @@
   revision = "cc6d2ea263b2471faabce371255777a365bf8306"
 
 [[projects]]
-  digest = "1:f3e11773cc8a305f97b42c276f62d92899c9b0c1c3c584a667149b18f18a530a"
+  digest = "1:79062b1e6d284b7a41cf04ba20f5dbc371a4fdd5edaca748ddb827ab07846dbf"
   name = "github.com/mdlayher/vsock"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "676f733b747cd6406f297a51bd086ee8ec8abdbe"
+  revision = "a92c53d5dcabbf6aaaba8fe07983d4f10f812fa7"
 
 [[projects]]
   branch = "master"

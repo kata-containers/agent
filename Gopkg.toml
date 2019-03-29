@@ -8,7 +8,7 @@
 
 [[constraint]]
   name = "github.com/mdlayher/vsock"
-  revision = "676f733b747cd6406f297a51bd086ee8ec8abdbe"
+  revision = "a92c53d5dcabbf6aaaba8fe07983d4f10f812fa7"
 
 [[constraint]]
   name = "github.com/opencontainers/runc"
