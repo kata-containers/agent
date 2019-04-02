@@ -37,6 +37,12 @@ TRACE_DEV_MODE := no
 # Path to systemd unit directory if installed as not init.
 UNIT_DIR := /usr/lib/systemd/system
 
+HAVE_SYSTEMD := $(shell pkg-config --exists systemd 2>/dev/null && echo 'yes')
+
+ifeq ($(HAVE_SYSTEMD),yes)
+	UNIT_DIR := $(shell pkg-config --variable=systemdsystemunitdir systemd)
+endif
+
 # Path to systemd drop-in snippet directory used to override the agent's
 # service without having to modify the pristine agent service file.
 SNIPPET_DIR := /etc/systemd/system/$(AGENT_SERVICE).d/
