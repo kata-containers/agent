@@ -8,6 +8,7 @@ package main
 
 import (
 	"io/ioutil"
+	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -20,6 +21,7 @@ const (
 	logLevelFlag      = optionPrefix + "log"
 	devModeFlag       = optionPrefix + "devmode"
 	kernelCmdlineFile = "/proc/cmdline"
+	useVsockFlag      = optionPrefix + "use_vsock"
 )
 
 type agentConfig struct {
@@ -93,6 +95,18 @@ func (c *agentConfig) parseCmdlineOption(option string) error {
 		c.logLevel = level
 		if level == logrus.DebugLevel {
 			debug = true
+		}
+	case useVsockFlag:
+		flag, err := strconv.ParseBool(split[valuePosition])
+		if err != nil {
+			return err
+		}
+		if flag {
+			agentLog.Debug("Param passed to use vsock channel")
+			commCh = vsockCh
+		} else {
+			agentLog.Debug("Param passed to NOT use vsock channel")
+			commCh = serialCh
 		}
 	default:
 		if strings.HasPrefix(split[optionPosition], optionPrefix) {

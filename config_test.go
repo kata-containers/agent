@@ -208,3 +208,46 @@ func TestSetGrpcTrace(t *testing.T) {
 
 	assert.True(s.enableGrpcTrace, "grpc trace should be enabled")
 }
+
+func TestParseCmdlineOptionWrongOptionVsock(t *testing.T) {
+	t.Skip()
+	assert := assert.New(t)
+
+	a := &agentConfig{}
+
+	wrongOption := "use_vsockkk=true"
+
+	err := a.parseCmdlineOption(wrongOption)
+	assert.Errorf(err, "Parsing should fail because wrong option %q", wrongOption)
+}
+
+func TestParseCmdlineOptionsVsock(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentConfig{}
+
+	type testData struct {
+		val            string
+		shouldErr      bool
+		expectedCommCh commType
+	}
+
+	data := []testData{
+		{"true", false, vsockCh},
+		{"false", false, serialCh},
+		{"blah", true, unknownCh},
+	}
+
+	for _, d := range data {
+		commCh = unknownCh
+		option := useVsockFlag + "=" + d.val
+
+		err := a.parseCmdlineOption(option)
+		if d.shouldErr {
+			assert.Error(err)
+		} else {
+			assert.NoError(err)
+		}
+		assert.Equal(commCh, d.expectedCommCh)
+	}
+}
