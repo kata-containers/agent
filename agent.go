@@ -156,6 +156,22 @@ var collatedTrace = false
 // if true, coredump when an internal error occurs or a fatal signal is received
 var crashOnError = false
 
+// commType is used to denote the communication channel type used.
+type commType int
+
+const (
+	// virtio-serial channel
+	serialCh commType = iota
+
+	// vsock channel
+	vsockCh
+
+	// channel type not passed explicitly
+	unknownCh
+)
+
+var commCh = unknownCh
+
 // This is the list of file descriptors we can properly close after the process
 // has been started. When the new process is exec(), those file descriptors are
 // duplicated and it is our responsibility to close them since we have opened
