@@ -1052,7 +1052,7 @@ func (s *sandbox) startGRPC() {
 			// l is closed when Serve() returns
 			servErr = grpcServer.Serve(l)
 			if servErr != nil {
-				agentLog.WithError(err).Warn("agent grpc server quits")
+				agentLog.WithError(servErr).Warn("agent grpc server quits")
 			}
 
 			err = s.channel.teardown()
