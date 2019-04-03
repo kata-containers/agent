@@ -8,6 +8,7 @@ package main
 
 import (
 	"io/ioutil"
+	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -20,6 +21,7 @@ const (
 	logLevelFlag       = optionPrefix + "log"
 	devModeFlag        = optionPrefix + "devmode"
 	traceModeFlag      = optionPrefix + "trace"
+	useVsockFlag       = optionPrefix + "use_vsock"
 	kernelCmdlineFile  = "/proc/cmdline"
 	traceValueIsolated = "isolated"
 	traceValueCollated = "collated"
@@ -101,6 +103,18 @@ func (c *agentConfig) parseCmdlineOption(option string) error {
 			enableTracing(false)
 		case traceValueCollated:
 			enableTracing(true)
+		}
+	case useVsockFlag:
+		flag, err := strconv.ParseBool(split[valuePosition])
+		if err != nil {
+			return err
+		}
+		if flag {
+			agentLog.Debug("Param passed to use vsock channel")
+			commCh = vsockCh
+		} else {
+			agentLog.Debug("Param passed to NOT use vsock channel")
+			commCh = serialCh
 		}
 	default:
 		if strings.HasPrefix(split[optionPosition], optionPrefix) {
