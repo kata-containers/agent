@@ -48,6 +48,66 @@ func TestEphemeralStorageHandlerSuccessful(t *testing.T) {
 	assert.Nil(t, err, "ephemeralStorageHandler() failed: %v", err)
 }
 
+func TestLocalStorageHandlerSuccessful(t *testing.T) {
+	skipUnlessRoot(t)
+
+	storage, err := createSafeAndFakeStorage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Unmount(storage.MountPoint, 0)
+	defer os.RemoveAll(storage.MountPoint)
+
+	sbs := make(map[string]*sandboxStorage)
+	_, err = localStorageHandler(storage, &sandbox{storages: sbs})
+	assert.Nil(t, err, "localStorageHandler() failed: %v", err)
+}
+
+func TestLocalStorageHandlerPermModeSuccessful(t *testing.T) {
+	skipUnlessRoot(t)
+
+	storage, err := createSafeAndFakeStorage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Unmount(storage.MountPoint, 0)
+	defer os.RemoveAll(storage.MountPoint)
+
+	// Set the mode to be 0400 (ready only)
+	storage.Options = []string{
+		"mode=0400",
+	}
+
+	sbs := make(map[string]*sandboxStorage)
+	_, err = localStorageHandler(storage, &sandbox{storages: sbs})
+	assert.Nil(t, err, "localStorageHandler() failed: %v", err)
+
+	// Check the mode of the mountpoint
+	info, err := os.Stat(storage.MountPoint)
+	assert.Nil(t, err)
+	assert.Equal(t, 0400|os.ModeDir, info.Mode())
+}
+
+func TestLocalStorageHandlerPermModeFailure(t *testing.T) {
+	skipUnlessRoot(t)
+
+	storage, err := createSafeAndFakeStorage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	//defer syscall.Unmount(storage.MountPoint, 0)
+	//defer os.RemoveAll(storage.MountPoint)
+
+	// Set the mode to something invalid
+	storage.Options = []string{
+		"mode=abcde",
+	}
+
+	sbs := make(map[string]*sandboxStorage)
+	_, err = localStorageHandler(storage, &sandbox{storages: sbs})
+	assert.NotNil(t, err, "localStorageHandler() should have failed")
+}
+
 func TestVirtio9pStorageHandlerSuccessful(t *testing.T) {
 	skipUnlessRoot(t)
 

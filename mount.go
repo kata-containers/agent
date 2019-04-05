@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -176,6 +177,19 @@ func parseMountFlagsAndOptions(optionList []string) (int, string, error) {
 	return flags, strings.Join(options, ","), nil
 }
 
+func parseOptions(optionList []string) map[string]string {
+	options := make(map[string]string)
+	for _, opt := range optionList {
+		idx := strings.Index(opt, "=")
+		if idx < 1 {
+			continue
+		}
+		key, val := opt[:idx], opt[idx+1:]
+		options[key] = val
+	}
+	return options
+}
+
 func removeMounts(mounts []string) error {
 	for _, mount := range mounts {
 		if err := syscall.Unmount(mount, 0); err != nil {
@@ -198,6 +212,7 @@ var storageHandlerList = map[string]storageHandler{
 	driverMmioBlkType:   virtioMmioBlkStorageHandler,
 	driverSCSIType:      virtioSCSIStorageHandler,
 	driverEphemeralType: ephemeralStorageHandler,
+	driverLocalType:     localStorageHandler,
 }
 
 func ephemeralStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
@@ -211,6 +226,29 @@ func ephemeralStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
 			_, err = commonStorageHandler(storage)
 		}
 		return "", err
+	}
+	return "", nil
+}
+
+func localStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
+	s.Lock()
+	defer s.Unlock()
+	newStorage := s.setSandboxStorage(storage.MountPoint)
+	if newStorage {
+
+		// Extract and parse the mode out of the storage options.
+		// Default to os.ModePerm.
+		opts := parseOptions(storage.Options)
+		mode := os.ModePerm
+		if val, ok := opts["mode"]; ok {
+			m, err := strconv.ParseUint(val, 8, 32)
+			if err != nil {
+				return "", err
+			}
+			mode = os.FileMode(m)
+		}
+
+		return "", os.MkdirAll(storage.MountPoint, mode)
 	}
 	return "", nil
 }
