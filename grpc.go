@@ -7,6 +7,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -833,6 +834,16 @@ func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequ
 	if req.ExecId == "" || status == libcontainer.Paused {
 		return emptyResp, ctr.container.Signal(signal, true)
 	} else if ctr.initProcess.id == req.ExecId {
+		pid, err := ctr.initProcess.process.Pid()
+		if err != nil {
+			return emptyResp, err
+		}
+		// For container initProcess, if it hasn't installed handler for "SIGTERM" signal,
+		// it will ignore the "SIGTERM" signal sent to it, thus send it "SIGKILL" signal
+		// instead of "SIGTERM" to terminate it.
+		if signal == syscall.SIGTERM && !isSignalHandled(pid, syscall.SIGTERM) {
+			signal = syscall.SIGKILL
+		}
 		return emptyResp, ctr.container.Signal(signal, false)
 	}
 
@@ -846,6 +857,39 @@ func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequ
 	}
 
 	return emptyResp, nil
+}
+
+// Check is the container process installed the
+// handler for specific signal.
+func isSignalHandled(pid int, signum syscall.Signal) bool {
+	var sigMask uint64 = 1 << (uint(signum) - 1)
+	procFile := fmt.Sprintf("/proc/%d/status", pid)
+	file, err := os.Open(procFile)
+	if err != nil {
+		agentLog.WithField("procFile", procFile).Warn("Open proc file failed")
+		return false
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "SigCgt:") {
+			maskSlice := strings.Split(line, ":")
+			if len(maskSlice) != 2 {
+				agentLog.WithField("procFile", procFile).Warn("Parse the SigCgt field failed")
+				return false
+			}
+			sigCgtStr := strings.TrimSpace(maskSlice[1])
+			sigCgtMask, err := strconv.ParseUint(sigCgtStr, 16, 64)
+			if err != nil {
+				agentLog.WithField("sigCgt", sigCgtStr).Warn("parse the SigCgt to hex failed")
+				return false
+			}
+			return (sigCgtMask & sigMask) == sigMask
+		}
+	}
+	return false
 }
 
 func (a *agentGRPC) WaitProcess(ctx context.Context, req *pb.WaitProcessRequest) (*pb.WaitProcessResponse, error) {

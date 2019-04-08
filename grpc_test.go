@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"syscall"
 	"testing"
 	"time"
 
@@ -835,4 +836,24 @@ func TestCopyFile(t *testing.T) {
 	assert.NoError(err)
 	// check file's content
 	assert.Equal(content, append(part1, part2...))
+}
+
+func TestIsSignalHandled(t *testing.T) {
+	assert := assert.New(t)
+	pid := 1
+
+	// process will not handle SIGKILL signal
+	signum := syscall.SIGKILL
+	handled := isSignalHandled(pid, signum)
+	assert.False(handled)
+
+	// init process will not handle SIGTERM signal
+	signum = syscall.SIGTERM
+	handled = isSignalHandled(pid, signum)
+	assert.False(handled)
+
+	// init process will handle the SIGQUIT signal
+	signum = syscall.SIGQUIT
+	handled = isSignalHandled(pid, signum)
+	assert.True(handled)
 }
