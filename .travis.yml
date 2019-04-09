@@ -5,7 +5,7 @@
 #
 
 sudo: required
-dist: trusty
+dist: xenial
 
 os:
   - linux
@@ -15,7 +15,7 @@ language: go
 go_import_path: github.com/kata-containers/agent
 
 go:
-  - "1.10.x"
+  - "1.11.x"
 
 env:
   - target_branch=$TRAVIS_BRANCH
