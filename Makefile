@@ -79,7 +79,11 @@ else
     SECCOMP=no
 endif
 # go build common flags
-BUILDFLAGS := -buildmode=pie
+ifdef STATIC
+	LDFLAGS := -extldflags '-static'
+else
+	BUILDFLAGS := -buildmode=pie
+endif
 
 # args for building agent image
 BUILDARGS := $(if $(http_proxy), --build-arg http_proxy=$(http_proxy))
@@ -90,7 +94,7 @@ AGENT_TAG := $(if $(COMMIT_NO_SHORT),$(COMMIT_NO_SHORT),dev)
 
 $(TARGET): $(GENERATED_FILES) $(SOURCES) $(VERSION_FILE)
 	go build $(BUILDFLAGS) -tags "$(BUILDTAGS)" -o $@ \
-		-ldflags "-X main.version=$(VERSION_COMMIT) -X main.seccompSupport=$(SECCOMP)"
+		-ldflags "-X main.version=$(VERSION_COMMIT) -X main.seccompSupport=$(SECCOMP) $(LDFLAGS)"
 
 install:
 	install -D $(TARGET) $(DESTDIR)$(BINDIR)/$(TARGET)
