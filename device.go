@@ -31,6 +31,7 @@ const (
 	driverSCSIType      = "scsi"
 	driverNvdimmType    = "nvdimm"
 	driverEphemeralType = "ephemeral"
+	driverLocalType     = "local"
 )
 
 const (
