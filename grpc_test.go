@@ -23,6 +23,7 @@ import (
 
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/opencontainers/runc/libcontainer"
+	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/seccomp"
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -516,9 +517,17 @@ func TestStatsContainer(t *testing.T) {
 	assert.Error(err)
 	assert.Nil(r)
 
+	network := &libcontainer.NetworkInterface{}
+	interfaces := make([]*libcontainer.NetworkInterface, 0)
+	interfaces = append(interfaces, network)
+
 	a.sandbox.containers[containerID] = &container{
 		container: &mockContainer{
 			id: containerID,
+			stats: libcontainer.Stats{
+				CgroupStats: &cgroups.Stats{},
+				Interfaces:  interfaces,
+			},
 		},
 	}
 
@@ -526,6 +535,8 @@ func TestStatsContainer(t *testing.T) {
 	assert.NoError(err)
 	assert.NotNil(r)
 
+	assert.NotNil(r.CgroupStats)
+	assert.NotNil(r.NetworkStats)
 }
 
 func TestPauseContainer(t *testing.T) {
