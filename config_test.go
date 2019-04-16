@@ -206,11 +206,11 @@ func TestParseCmdlineOptionTracing(t *testing.T) {
 		{traceModeFlag + "=", false, false},
 
 		{traceModeFlag, true, false},
-		{traceModeFlag + "=" + traceValueIsolated, true, false},
-		{traceModeFlag + "=" + traceValueCollated, true, true},
+		{traceModeFlag + "=" + traceTypeIsolated, true, false},
+		{traceModeFlag + "=" + traceTypeCollated, true, true},
 
-		{traceModeFlag + "=" + traceValueIsolated + "x", false, false},
-		{traceModeFlag + "=" + traceValueCollated + "x", false, false},
+		{traceModeFlag + "=" + traceTypeIsolated + "x", false, false},
+		{traceModeFlag + "=" + traceTypeCollated + "x", false, false},
 	}
 
 	for i, d := range data {
@@ -259,12 +259,17 @@ func TestEnableTracing(t *testing.T) {
 	assert := assert.New(t)
 
 	type testData struct {
-		collatedTrace bool
+		traceMode           string
+		traceType           string
+		expectCollatedTrace bool
 	}
 
 	data := []testData{
-		{false},
-		{true},
+		{traceModeStatic, traceTypeIsolated, false},
+		{traceModeStatic, traceTypeCollated, true},
+
+		{traceModeDynamic, traceTypeIsolated, false},
+		{traceModeDynamic, traceTypeCollated, true},
 	}
 
 	for i, d := range data {
@@ -273,12 +278,12 @@ func TestEnableTracing(t *testing.T) {
 		collatedTrace = false
 		debug = false
 
-		enableTracing(d.collatedTrace)
+		enableTracing(d.traceMode, d.traceType)
 
 		assert.True(debug, "test %d (%+v)", i, d)
 		assert.True(tracing, "test %d (%+v)", i, d)
 
-		if d.collatedTrace {
+		if d.expectCollatedTrace {
 			assert.True(collatedTrace, "test %d (%+v)", i, d)
 		} else {
 			assert.False(collatedTrace, "test %d (%+v)", i, d)

@@ -1689,7 +1689,8 @@ func (a *agentGRPC) StartTracing(ctx context.Context, req *pb.StartTracingReques
 		return nil, grpcStatus.Error(codes.FailedPrecondition, "tracing already enabled")
 	}
 
-	enableTracing(false)
+	// The only trace type support for dynamic tracing is isolated.
+	enableTracing(traceModeDynamic, traceTypeIsolated)
 	startTracingCalled = true
 
 	var err error

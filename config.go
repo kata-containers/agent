@@ -17,14 +17,17 @@ import (
 )
 
 const (
-	optionPrefix       = "agent."
-	logLevelFlag       = optionPrefix + "log"
-	devModeFlag        = optionPrefix + "devmode"
-	traceModeFlag      = optionPrefix + "trace"
-	useVsockFlag       = optionPrefix + "use_vsock"
-	kernelCmdlineFile  = "/proc/cmdline"
-	traceValueIsolated = "isolated"
-	traceValueCollated = "collated"
+	optionPrefix      = "agent."
+	logLevelFlag      = optionPrefix + "log"
+	devModeFlag       = optionPrefix + "devmode"
+	traceModeFlag     = optionPrefix + "trace"
+	useVsockFlag      = optionPrefix + "use_vsock"
+	kernelCmdlineFile = "/proc/cmdline"
+	traceModeStatic   = "static"
+	traceModeDynamic  = "dynamic"
+	traceTypeIsolated = "isolated"
+	traceTypeCollated = "collated"
+	defaultTraceType  = traceTypeIsolated
 )
 
 type agentConfig struct {
@@ -77,7 +80,7 @@ func (c *agentConfig) parseCmdlineOption(option string) error {
 	}
 
 	if option == traceModeFlag {
-		enableTracing(false)
+		enableTracing(traceModeStatic, defaultTraceType)
 		return nil
 	}
 
@@ -99,10 +102,10 @@ func (c *agentConfig) parseCmdlineOption(option string) error {
 		}
 	case traceModeFlag:
 		switch split[valuePosition] {
-		case traceValueIsolated:
-			enableTracing(false)
-		case traceValueCollated:
-			enableTracing(true)
+		case traceTypeIsolated:
+			enableTracing(traceModeStatic, traceTypeIsolated)
+		case traceTypeCollated:
+			enableTracing(traceModeStatic, traceTypeCollated)
 		}
 	case useVsockFlag:
 		flag, err := strconv.ParseBool(split[valuePosition])
@@ -126,13 +129,16 @@ func (c *agentConfig) parseCmdlineOption(option string) error {
 
 }
 
-func enableTracing(enableCollatedTrace bool) {
-	agentLog.Info("enabling tracing")
-
+func enableTracing(traceMode, traceType string) {
 	tracing = true
 
 	// Enable in case this generates more trace spans
 	debug = true
 
-	collatedTrace = enableCollatedTrace
+	collatedTrace = traceType == traceTypeCollated
+
+	agentLog.WithFields(logrus.Fields{
+		"trace-mode": traceMode,
+		"trace-type": traceType,
+	}).Info("enabled tracing")
 }
