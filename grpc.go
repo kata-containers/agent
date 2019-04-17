@@ -7,6 +7,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -190,7 +191,7 @@ func updateCpusetPath(cgroupPath string, newCpuset string, cookies cookie) error
 		cgroupParentPath = filepath.Join(cgroupParentPath, path)
 
 		// check if the cgroup was already updated.
-		if cookies[cgroupParentPath] == true {
+		if cookies[cgroupParentPath] {
 			agentLog.WithField("path", cgroupParentPath).Debug("cpuset cgroup already updated")
 			continue
 		}
@@ -373,7 +374,7 @@ func (a *agentGRPC) Version(ctx context.Context, req *pb.CheckRequest) (*pb.Vers
 }
 
 func (a *agentGRPC) getContainer(cid string) (*container, error) {
-	if a.sandbox.running == false {
+	if !a.sandbox.running {
 		return nil, grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started")
 	}
 
@@ -793,7 +794,7 @@ func posixRlimitsToRlimits(posixRlimits []specs.POSIXRlimit) []configs.Rlimit {
 }
 
 func (a *agentGRPC) createContainerChecks(req *pb.CreateContainerRequest) (err error) {
-	if a.sandbox.running == false {
+	if !a.sandbox.running {
 		return grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started, impossible to run a new container")
 	}
 
@@ -887,7 +888,7 @@ func (a *agentGRPC) ExecProcess(ctx context.Context, req *pb.ExecProcessRequest)
 }
 
 func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequest) (*gpb.Empty, error) {
-	if a.sandbox.running == false {
+	if !a.sandbox.running {
 		return emptyResp, grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started, impossible to signal the container")
 	}
 
@@ -919,6 +920,16 @@ func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequ
 	if req.ExecId == "" || status == libcontainer.Paused {
 		return emptyResp, ctr.container.Signal(signal, true)
 	} else if ctr.initProcess.id == req.ExecId {
+		pid, err := ctr.initProcess.process.Pid()
+		if err != nil {
+			return emptyResp, err
+		}
+		// For container initProcess, if it hasn't installed handler for "SIGTERM" signal,
+		// it will ignore the "SIGTERM" signal sent to it, thus send it "SIGKILL" signal
+		// instead of "SIGTERM" to terminate it.
+		if signal == syscall.SIGTERM && !isSignalHandled(pid, syscall.SIGTERM) {
+			signal = syscall.SIGKILL
+		}
 		return emptyResp, ctr.container.Signal(signal, false)
 	}
 
@@ -932,6 +943,39 @@ func (a *agentGRPC) SignalProcess(ctx context.Context, req *pb.SignalProcessRequ
 	}
 
 	return emptyResp, nil
+}
+
+// Check is the container process installed the
+// handler for specific signal.
+func isSignalHandled(pid int, signum syscall.Signal) bool {
+	var sigMask uint64 = 1 << (uint(signum) - 1)
+	procFile := fmt.Sprintf("/proc/%d/status", pid)
+	file, err := os.Open(procFile)
+	if err != nil {
+		agentLog.WithField("procFile", procFile).Warn("Open proc file failed")
+		return false
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "SigCgt:") {
+			maskSlice := strings.Split(line, ":")
+			if len(maskSlice) != 2 {
+				agentLog.WithField("procFile", procFile).Warn("Parse the SigCgt field failed")
+				return false
+			}
+			sigCgtStr := strings.TrimSpace(maskSlice[1])
+			sigCgtMask, err := strconv.ParseUint(sigCgtStr, 16, 64)
+			if err != nil {
+				agentLog.WithField("sigCgt", sigCgtStr).Warn("parse the SigCgt to hex failed")
+				return false
+			}
+			return (sigCgtMask & sigMask) == sigMask
+		}
+	}
+	return false
 }
 
 func (a *agentGRPC) WaitProcess(ctx context.Context, req *pb.WaitProcessRequest) (*pb.WaitProcessResponse, error) {
@@ -1343,7 +1387,7 @@ func (a *agentGRPC) TtyWinResize(ctx context.Context, req *pb.TtyWinResizeReques
 }
 
 func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequest) (*gpb.Empty, error) {
-	if a.sandbox.running == true {
+	if a.sandbox.running {
 		return emptyResp, grpcStatus.Error(codes.AlreadyExists, "Sandbox already started, impossible to start again")
 	}
 
@@ -1392,7 +1436,7 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 }
 
 func (a *agentGRPC) DestroySandbox(ctx context.Context, req *pb.DestroySandboxRequest) (*gpb.Empty, error) {
-	if a.sandbox.running == false {
+	if !a.sandbox.running {
 		agentLog.Info("Sandbox not started, this is a no-op")
 		return emptyResp, nil
 	}

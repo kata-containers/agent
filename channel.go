@@ -171,7 +171,7 @@ func (c *serialChannel) wait() error {
 	var events [1]unix.EpollEvent
 
 	fd := c.serialConn.Fd()
-	if fd <= 0 {
+	if fd == 0 {
 		return fmt.Errorf("serial port IO closed")
 	}
 
@@ -339,7 +339,7 @@ func findVirtualSerialPath(serialName string) (string, error) {
 			return "", err
 		}
 
-		if strings.Contains(string(content), serialName) == true {
+		if strings.Contains(string(content), serialName) {
 			return filepath.Join(devRootPath, port), nil
 		}
 	}

@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"syscall"
 	"testing"
 	"time"
 
@@ -741,11 +742,11 @@ func testAgentDetails(assert *assert.Assertions, details *pb.AgentDetails, haveS
 		storages = append(storages, handler)
 	}
 
-	sort.Sort(sort.StringSlice(details.DeviceHandlers))
-	sort.Sort(sort.StringSlice(details.StorageHandlers))
+	sort.Strings(details.DeviceHandlers)
+	sort.Strings(details.StorageHandlers)
 
-	sort.Sort(sort.StringSlice(devices))
-	sort.Sort(sort.StringSlice(storages))
+	sort.Strings(devices)
+	sort.Strings(storages)
 
 	assert.Equal(details.DeviceHandlers, devices)
 	assert.Equal(details.StorageHandlers, storages)
@@ -869,42 +870,42 @@ func TestPosixRlimitsToRlimits(t *testing.T) {
 	assert := assert.New(t)
 
 	expectedRlimits := []configs.Rlimit{
-		{unix.RLIMIT_CPU, 100, 120},
-		{unix.RLIMIT_FSIZE, 100, 120},
-		{unix.RLIMIT_DATA, 100, 120},
-		{unix.RLIMIT_STACK, 100, 120},
-		{unix.RLIMIT_CORE, 100, 120},
-		{unix.RLIMIT_RSS, 100, 120},
-		{unix.RLIMIT_NPROC, 100, 120},
-		{unix.RLIMIT_NOFILE, 100, 120},
-		{unix.RLIMIT_MEMLOCK, 100, 120},
-		{unix.RLIMIT_AS, 100, 120},
-		{unix.RLIMIT_LOCKS, 100, 120},
-		{unix.RLIMIT_SIGPENDING, 100, 120},
-		{unix.RLIMIT_MSGQUEUE, 100, 120},
-		{unix.RLIMIT_NICE, 100, 120},
-		{unix.RLIMIT_RTPRIO, 100, 120},
-		{unix.RLIMIT_RTTIME, 100, 120},
+		{Type: unix.RLIMIT_CPU, Hard: 100, Soft: 120},
+		{Type: unix.RLIMIT_FSIZE, Hard: 100, Soft: 120},
+		{Type: unix.RLIMIT_DATA, Hard: 100, Soft: 120},
+		{Type: unix.RLIMIT_STACK, Hard: 100, Soft: 120},
+		{Type: unix.RLIMIT_CORE, Hard: 100, Soft: 120},
+		{Type: unix.RLIMIT_RSS, Hard: 100, Soft: 120},
+		{Type: unix.RLIMIT_NPROC, Hard: 100, Soft: 120},
+		{Type: unix.RLIMIT_NOFILE, Hard: 100, Soft: 120},
+		{Type: unix.RLIMIT_MEMLOCK, Hard: 100, Soft: 120},
+		{Type: unix.RLIMIT_AS, Hard: 100, Soft: 120},
+		{Type: unix.RLIMIT_LOCKS, Hard: 100, Soft: 120},
+		{Type: unix.RLIMIT_SIGPENDING, Hard: 100, Soft: 120},
+		{Type: unix.RLIMIT_MSGQUEUE, Hard: 100, Soft: 120},
+		{Type: unix.RLIMIT_NICE, Hard: 100, Soft: 120},
+		{Type: unix.RLIMIT_RTPRIO, Hard: 100, Soft: 120},
+		{Type: unix.RLIMIT_RTTIME, Hard: 100, Soft: 120},
 	}
 
 	posixRlimits := []specs.POSIXRlimit{
-		{"RLIMIT_CPU", 100, 120},
-		{"RLIMIT_FSIZE", 100, 120},
-		{"RLIMIT_DATA", 100, 120},
-		{"RLIMIT_STACK", 100, 120},
-		{"RLIMIT_CORE", 100, 120},
-		{"RLIMIT_RSS", 100, 120},
-		{"RLIMIT_NPROC", 100, 120},
-		{"RLIMIT_NOFILE", 100, 120},
-		{"RLIMIT_MEMLOCK", 100, 120},
-		{"RLIMIT_AS", 100, 120},
-		{"RLIMIT_LOCKS", 100, 120},
-		{"RLIMIT_SIGPENDING", 100, 120},
-		{"RLIMIT_MSGQUEUE", 100, 120},
-		{"RLIMIT_NICE", 100, 120},
-		{"RLIMIT_RTPRIO", 100, 120},
-		{"RLIMIT_RTTIME", 100, 120},
-		{"RLIMIT_UNSUPPORTED", 0, 0},
+		{Type: "RLIMIT_CPU", Hard: 100, Soft: 120},
+		{Type: "RLIMIT_FSIZE", Hard: 100, Soft: 120},
+		{Type: "RLIMIT_DATA", Hard: 100, Soft: 120},
+		{Type: "RLIMIT_STACK", Hard: 100, Soft: 120},
+		{Type: "RLIMIT_CORE", Hard: 100, Soft: 120},
+		{Type: "RLIMIT_RSS", Hard: 100, Soft: 120},
+		{Type: "RLIMIT_NPROC", Hard: 100, Soft: 120},
+		{Type: "RLIMIT_NOFILE", Hard: 100, Soft: 120},
+		{Type: "RLIMIT_MEMLOCK", Hard: 100, Soft: 120},
+		{Type: "RLIMIT_AS", Hard: 100, Soft: 120},
+		{Type: "RLIMIT_LOCKS", Hard: 100, Soft: 120},
+		{Type: "RLIMIT_SIGPENDING", Hard: 100, Soft: 120},
+		{Type: "RLIMIT_MSGQUEUE", Hard: 100, Soft: 120},
+		{Type: "RLIMIT_NICE", Hard: 100, Soft: 120},
+		{Type: "RLIMIT_RTPRIO", Hard: 100, Soft: 120},
+		{Type: "RLIMIT_RTTIME", Hard: 100, Soft: 120},
+		{Type: "RLIMIT_UNSUPPORTED", Hard: 0, Soft: 0},
 	}
 
 	rlimits := posixRlimitsToRlimits(posixRlimits)
@@ -960,4 +961,24 @@ func TestCopyFile(t *testing.T) {
 	assert.NoError(err)
 	// check file's content
 	assert.Equal(content, append(part1, part2...))
+}
+
+func TestIsSignalHandled(t *testing.T) {
+	assert := assert.New(t)
+	pid := 1
+
+	// process will not handle SIGKILL signal
+	signum := syscall.SIGKILL
+	handled := isSignalHandled(pid, signum)
+	assert.False(handled)
+
+	// init process will not handle SIGTERM signal
+	signum = syscall.SIGTERM
+	handled = isSignalHandled(pid, signum)
+	assert.False(handled)
+
+	// init process will handle the SIGQUIT signal
+	signum = syscall.SIGQUIT
+	handled = isSignalHandled(pid, signum)
+	assert.True(handled)
 }

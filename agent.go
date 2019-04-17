@@ -475,7 +475,7 @@ func (s *sandbox) deleteContainer(id string) {
 }
 
 func (s *sandbox) getProcess(cid, execID string) (*process, *container, error) {
-	if s.running == false {
+	if !s.running {
 		return nil, nil, grpcStatus.Error(codes.FailedPrecondition, "Sandbox not started")
 	}
 
@@ -967,7 +967,7 @@ func makeUnaryInterceptor() grpc.UnaryServerInterceptor {
 
 		if !tracing {
 			// Just log call details
-			elapsed = time.Now().Sub(start)
+			elapsed = time.Since(start)
 			message = resp.(proto.Message)
 
 			logger := agentLog.WithFields(logrus.Fields{
