@@ -1182,18 +1182,30 @@ func (a *agentGRPC) StatsContainer(ctx context.Context, req *pb.StatsContainerRe
 		return nil, err
 	}
 
-	data, err := json.Marshal(stats.CgroupStats)
+	cgroupData, err := json.Marshal(stats.CgroupStats)
+	if err != nil {
+		return nil, err
+	}
+
+	netData, err := json.Marshal(stats.Interfaces)
 	if err != nil {
 		return nil, err
 	}
 
 	var cgroupStats pb.CgroupStats
-	err = json.Unmarshal(data, &cgroupStats)
+	networkStats := make([]*pb.NetworkStats, 0)
+
+	err = json.Unmarshal(cgroupData, &cgroupStats)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(netData, &networkStats)
 	if err != nil {
 		return nil, err
 	}
 	resp := &pb.StatsContainerResponse{
-		CgroupStats: &cgroupStats,
+		CgroupStats:  &cgroupStats,
+		NetworkStats: networkStats,
 	}
 
 	return resp, nil
