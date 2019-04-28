@@ -187,7 +187,7 @@ following:
 
 1. Configure the runtime to set the correct kernel parameters for agent tracing. See:
 
-   - The [Tracing options](#tracing-options) section.
+   - The [Enabling tracing](#enabling-tracing) section.
 
    - If you also want full debug and guest journal redirection, see the
      [Enable full agent debug](#enable-full-agent-debug) section.
