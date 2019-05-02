@@ -213,6 +213,7 @@ var storageHandlerList = map[string]storageHandler{
 	driver9pType:        virtio9pStorageHandler,
 	driverVirtioFSType:  virtioFSStorageHandler,
 	driverBlkType:       virtioBlkStorageHandler,
+	driverBlkCCWType:    virtioBlkCCWStorageHandler,
 	driverMmioBlkType:   virtioMmioBlkStorageHandler,
 	driverSCSIType:      virtioSCSIStorageHandler,
 	driverEphemeralType: ephemeralStorageHandler,
@@ -265,6 +266,20 @@ func virtio9pStorageHandler(_ context.Context, storage pb.Storage, s *sandbox) (
 // virtioMmioBlkStorageHandler handles the storage for mmio blk driver.
 func virtioMmioBlkStorageHandler(_ context.Context, storage pb.Storage, s *sandbox) (string, error) {
 	//The source path is VmPath
+	return commonStorageHandler(storage)
+}
+
+// virtioBlkCCWStorageHandler handles the storage for blk ccw driver.
+func virtioBlkCCWStorageHandler(ctx context.Context, storage pb.Storage, s *sandbox) (string, error) {
+	devPath, err := getBlkCCWDevPath(ctx, storage.Source)
+	if err != nil {
+		return "", err
+	}
+	if devPath == "" {
+		return "", grpcStatus.Errorf(codes.InvalidArgument,
+			"Storage source is empty")
+	}
+	storage.Source = devPath
 	return commonStorageHandler(storage)
 }
 
