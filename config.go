@@ -22,6 +22,7 @@ const (
 	devModeFlag       = optionPrefix + "devmode"
 	traceModeFlag     = optionPrefix + "trace"
 	useVsockFlag      = optionPrefix + "use_vsock"
+	debugConsoleFlag  = optionPrefix + "debug_console"
 	kernelCmdlineFile = "/proc/cmdline"
 	traceModeStatic   = "static"
 	traceModeDynamic  = "dynamic"
@@ -76,6 +77,11 @@ func (c *agentConfig) parseCmdlineOption(option string) error {
 		crashOnError = true
 		debug = true
 
+		return nil
+	}
+
+	if option == debugConsoleFlag {
+		debugConsole = true
 		return nil
 	}
 

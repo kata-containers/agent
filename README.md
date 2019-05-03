@@ -6,6 +6,7 @@
 * [Debug mode](#debug-mode)
 * [Developer mode](#developer-mode)
 * [Enable trace support](#enable-trace-support)
+* [Enable debug console](#enable-debug-console)
 
 This project implements an agent called `kata-agent` that runs inside a virtual machine (VM).
 
@@ -27,3 +28,10 @@ enables [debug mode](#debug-mode).
 ## Enable trace support
 
 See [the tracing guide](TRACING.md).
+
+## Enable debug console
+
+Add `agent.debug_console` to the guest kernel command line to
+allow the agent process to start a debug console. Debug console is only available if `bash`
+or `sh` is installed in the rootfs or initrd image. Developers can [connect to the virtual
+machine using the debug console](https://github.com/kata-containers/documentation/blob/master/Developer-Guide.md#connect-to-the-virtual-machine-using-the-debug-console)

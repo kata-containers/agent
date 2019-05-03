@@ -43,6 +43,10 @@ import (
 const (
 	procCgroups = "/proc/cgroups"
 	meminfo     = "/proc/meminfo"
+
+	bashPath         = "/bin/bash"
+	shPath           = "/bin/sh"
+	debugConsolePath = "/dev/console"
 )
 
 var (
@@ -155,6 +159,9 @@ var collatedTrace = false
 
 // if true, coredump when an internal error occurs or a fatal signal is received
 var crashOnError = false
+
+// if true, a shell (bash or sh) is started only if it's available in the rootfs.
+var debugConsole = false
 
 // commType is used to denote the communication channel type used.
 type commType int
@@ -911,6 +918,8 @@ func (s *sandbox) initLogger() error {
 
 	agentLog.Logger.SetLevel(config.logLevel)
 
+	agentLog = agentLog.WithField("debug_console", debugConsole)
+
 	return announce()
 }
 
@@ -1196,6 +1205,56 @@ func cgroupsMount() error {
 	return ioutil.WriteFile(cgroupMemoryUseHierarchyPath, []byte{'1'}, cgroupMemoryUseHierarchyMode)
 }
 
+func setupDebugConsole() error {
+	if !debugConsole {
+		return nil
+	}
+
+	var shellPath string
+	for _, s := range []string{bashPath, shPath} {
+		var err error
+		if _, err = os.Stat(s); err == nil {
+			shellPath = s
+			break
+		}
+		agentLog.WithError(err).WithField("shell", s).Warn("Shell not found")
+	}
+
+	if shellPath == "" {
+		return errors.New("Shell not found")
+	}
+
+	cmd := exec.Command(shellPath)
+	cmd.Env = os.Environ()
+	f, err := os.OpenFile(debugConsolePath, os.O_RDWR, 0600)
+	if err != nil {
+		return err
+	}
+
+	cmd.Stdin = f
+	cmd.Stdout = f
+	cmd.Stderr = f
+
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		// Create Session
+		Setsid: true,
+		// Set Controlling terminal to Ctty
+		Setctty: true,
+		Ctty:    int(f.Fd()),
+	}
+
+	go func() {
+		for {
+			dcmd := *cmd
+			if err := dcmd.Run(); err != nil {
+				agentLog.WithError(err).Warn("failed to start debug console")
+			}
+		}
+	}()
+
+	return nil
+}
+
 // initAgentAsInit will do the initializations such as setting up the rootfs
 // when this agent has been run as the init process.
 func initAgentAsInit() error {
@@ -1269,6 +1328,10 @@ func realMain() error {
 
 	if err = s.initLogger(); err != nil {
 		return fmt.Errorf("failed to setup logger: %v", err)
+	}
+
+	if err := setupDebugConsole(); err != nil {
+		agentLog.WithError(err).Error("failed to setup debug console")
 	}
 
 	rootSpan, rootContext, err = setupTracing(agentName)
