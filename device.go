@@ -35,8 +35,7 @@ const (
 )
 
 const (
-	rootBusPath = "/devices/pci0000:00"
-	pciBusMode  = 0220
+	pciBusMode = 0220
 )
 
 var (
