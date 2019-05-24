@@ -39,4 +39,4 @@ machine using the debug console](https://github.com/kata-containers/documentatio
 
 ## `cpuset` cgroup details
 
-See the [cupset cgroup documentation](documentation/features/cpuset.md).
+See the [cpuset cgroup documentation](documentation/features/cpuset.md).

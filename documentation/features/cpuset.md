@@ -14,27 +14,31 @@ The cpuset CPU cgroup will be applied on two events:
 - container update
 
 When the runtime requests to apply cpuset cgroup to the agent, the amount of
-vcpus available might not be the same to the required vcpus in the request.
+VCPUs available might not be the same to the required VCPUs in the request.
 
 This is because the request from the agent client (i.e. the Kata runtime)
 passes cpusets that are requested to be placed on the host. This isolates the
 container workload on some specific host CPUs. The runtime passes the requested
 cpuset to the agent, which tries to apply the cgroup cpuset on the guest.
 
-The runtime only calculates and hot-plugs the CPUSs based on the container
+The runtime only calculates and hot-plugs the CPUs based on the container
 period and quota. This is why the VM will not have the same amount of CPUs as
 the host.
 
 Example:
 
-docker run -ti --cpus 2 --cpuset 0,1 busybox
+```sh
+$ docker run -ti --cpus 2 --cpuset 0,1 busybox
+```
  
 This should result with the container limited to the time of 2 CPUs, but is
 only allowed to be scheduled on CPUs 0 and 1.
 
 The following is an example of a similar case with a valid traditional container:
 
-docker run -ti --cpus 2 --cpuset 2,3,4 busybox
+```sh
+$ docker run -ti --cpus 2 --cpuset 2,3,4 busybox
+```
 
 Here, the container is limited to 2 CPUs and can be scheduled on CPU 2, 3, and
 4.
