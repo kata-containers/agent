@@ -993,3 +993,61 @@ func TestIsSignalHandled(t *testing.T) {
 	handled = isSignalHandled(pid, signum)
 	assert.True(handled)
 }
+
+func TestOnlineResources(t *testing.T) {
+	assert := assert.New(t)
+
+	cpusDir, err := ioutil.TempDir("", "cpu")
+	assert.NoError(err)
+	defer os.RemoveAll(cpusDir)
+
+	resource := onlineResource{
+		sysfsOnlinePath: cpusDir,
+		regexpPattern:   cpuRegexpPattern,
+	}
+
+	// cold plug CPU
+	cpu0Path := filepath.Join(cpusDir, "cpu0")
+	err = os.Mkdir(cpu0Path, 0755)
+	assert.NoError(err)
+
+	// readonly CPU
+	cpu1Path := filepath.Join(cpusDir, "cpu1")
+	err = os.Mkdir(cpu1Path, 0755)
+	assert.NoError(err)
+	f, err := os.Create(filepath.Join(cpu1Path, "online"))
+	assert.NoError(err)
+	_, err = f.Write([]byte("0"))
+	assert.NoError(err)
+	assert.NoError(f.Close())
+	err = os.Chmod(f.Name(), 0400)
+	assert.NoError(err)
+	err = os.Chmod(cpu1Path, 0400)
+	assert.NoError(err)
+
+	// Hot plug CPU
+	cpu2Path := filepath.Join(cpusDir, "cpu2")
+	err = os.Mkdir(cpu2Path, 0755)
+	assert.NoError(err)
+	f, err = os.Create(filepath.Join(cpu2Path, "online"))
+	assert.NoError(err)
+	_, err = f.Write([]byte("0"))
+	assert.NoError(err)
+	assert.NoError(f.Close())
+
+	// nothing related to CPUs
+	argbPath := filepath.Join(cpusDir, "argb")
+	err = os.Mkdir(argbPath, 0755)
+	assert.NoError(err)
+
+	expectedCpus := int32(1)
+	r, err := onlineResources(resource, expectedCpus)
+	assert.NoError(err)
+	assert.Equal(uint32(expectedCpus), r)
+
+	// Error: path doesn't exist
+	resource.sysfsOnlinePath = "/abc/123/rgb/:)"
+	r, err = onlineResources(resource, expectedCpus)
+	assert.Error(err)
+	assert.Equal(uint32(0), r)
+}
