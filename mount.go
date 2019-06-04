@@ -279,12 +279,28 @@ func mountStorage(storage pb.Storage) error {
 // associated operations such as waiting for the device to show up, and mount
 // it to a specific location, according to the type of handler chosen, and for
 // each storage.
-func addStorages(ctx context.Context, storages []*pb.Storage, s *sandbox) ([]string, error) {
+func addStorages(ctx context.Context, storages []*pb.Storage, s *sandbox) (mounts []string, err error) {
 	span, ctx := trace(ctx, "mount", "addStorages")
 	span.SetTag("sandbox", s.id)
 	defer span.Finish()
 
 	var mountList []string
+	var storageList []string
+
+	defer func() {
+		if err != nil {
+			s.Lock()
+			for _, path := range storageList {
+				if err := s.unsetAndRemoveSandboxStorage(path); err != nil {
+					agentLog.WithFields(logrus.Fields{
+						"error": err,
+						"path":  path,
+					}).Error("failed to roll back addStorages")
+				}
+			}
+			s.Unlock()
+		}
+	}()
 
 	for _, storage := range storages {
 		if storage == nil {
@@ -303,6 +319,10 @@ func addStorages(ctx context.Context, storages []*pb.Storage, s *sandbox) ([]str
 		handlerSpan, _ := trace(ctx, "mount", storage.Driver)
 		mountPoint, err := devHandler(*storage, s)
 		handlerSpan.Finish()
+
+		if _, ok := s.storages[storage.MountPoint]; ok {
+			storageList = append([]string{storage.MountPoint}, storageList...)
+		}
 
 		if err != nil {
 			return nil, err
