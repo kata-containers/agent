@@ -14,7 +14,7 @@ The cpuset CPU cgroup will be applied on two events:
 - container update
 
 When the runtime requests to apply cpuset cgroup to the agent, the amount of
-VCPUs available might not be the same to the required VCPUs in the request.
+vCPUs available might not be the same to the required vCPUs in the request.
 
 This is because the request from the agent client (i.e. the Kata runtime)
 passes cpusets that are requested to be placed on the host. This isolates the
@@ -44,7 +44,7 @@ Here, the container is limited to 2 CPUs and can be scheduled on CPU 2, 3, and
 4.
 
 The Kata runtime only hotplugs 2 CPUs, making it impossible to request that the
-guest kernel schedules the workload on vcpu 3 and 4.
+guest kernel schedules the workload on vCPU 3 and 4.
 
 ## cpuset best effort application.
 
