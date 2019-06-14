@@ -125,6 +125,30 @@ func TestVirtio9pStorageHandlerSuccessful(t *testing.T) {
 	assert.Nil(t, err, "storage9pDriverHandler() failed: %v", err)
 }
 
+func TestVirtioBlkStoragePathFailure(t *testing.T) {
+	s := &sandbox{}
+
+	storage := pb.Storage{
+		Source: "/home/developer/test",
+	}
+
+	_, err := virtioBlkStorageHandler(storage, s)
+	agentLog.WithError(err).Error("virtioBlkStorageHandler error")
+	assert.NotNil(t, err, "virtioBlkStorageHandler() should have failed")
+}
+
+func TestVirtioBlkStorageDeviceFailure(t *testing.T) {
+	s := &sandbox{}
+
+	storage := pb.Storage{
+		Source: "/dev/foo",
+	}
+
+	_, err := virtioBlkStorageHandler(storage, s)
+	agentLog.WithError(err).Error("virtioBlkStorageHandler error")
+	assert.NotNil(t, err, "virtioBlkStorageHandler() should have failed")
+}
+
 func TestVirtioBlkStorageHandlerSuccessful(t *testing.T) {
 	skipUnlessRoot(t)
 

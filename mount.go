@@ -271,13 +271,28 @@ func virtioFSStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
 
 // virtioBlkStorageHandler handles the storage for blk driver.
 func virtioBlkStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
-	// Get the device node path based on the PCI address provided
-	// in Storage Source
-	devPath, err := getPCIDeviceName(s, storage.Source)
-	if err != nil {
-		return "", err
+
+	// If hot-plugged, get the device node path based on the PCI address else
+	// use the virt path provided in Storage Source
+	if strings.HasPrefix(storage.Source, "/dev") {
+
+		FileInfo, err := os.Stat(storage.Source)
+		if err != nil {
+			return "", err
+		}
+		// Make sure the virt path is valid
+		if FileInfo.Mode()&os.ModeDevice == 0 {
+			return "", err
+		}
+
+	} else {
+		devPath, err := getPCIDeviceName(s, storage.Source)
+		if err != nil {
+			return "", err
+		}
+
+		storage.Source = devPath
 	}
-	storage.Source = devPath
 
 	return commonStorageHandler(storage)
 }
