@@ -325,6 +325,13 @@ func mountStorage(storage pb.Storage) error {
 		return err
 	}
 
+	if (storage.Driver == driverSCSIType || storage.Driver == driverBlkType) && !strings.Contains(storage.Fstype, "bind") {
+		// if the "bind" option is not specified, it means that the blk device needs to be mounted into a directory
+		// here we temporarily discard the bind option,
+		// in order to be able to mount the file system of the block device.
+		flags = flags &^ flagList["bind"]
+	}
+
 	return mount(storage.Source, storage.MountPoint, storage.Fstype, flags, options)
 }
 
