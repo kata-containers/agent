@@ -753,7 +753,18 @@ func (s *sandbox) listenToUdevEvents() {
 }
 
 // This loop is meant to be run inside a separate Go routine.
-func (s *sandbox) signalHandlerLoop(sigCh chan os.Signal) {
+func (s *sandbox) signalHandlerLoop(sigCh chan os.Signal, errCh chan error) {
+	// Lock OS thread as subreaper is a thread local capability
+	// and is not inherited by children created by fork(2) and clone(2).
+	runtime.LockOSThread()
+	// Set agent as subreaper
+	err := unix.Prctl(unix.PR_SET_CHILD_SUBREAPER, uintptr(1), 0, 0, 0)
+	if err != nil {
+		errCh <- err
+		return
+	}
+	close(errCh)
+
 	for sig := range sigCh {
 		logger := agentLog.WithField("signal", sig)
 
@@ -790,12 +801,6 @@ func (s *sandbox) setupSignalHandler() error {
 	span, _ := s.trace("setupSignalHandler")
 	defer span.Finish()
 
-	// Set agent as subreaper
-	err := unix.Prctl(unix.PR_SET_CHILD_SUBREAPER, uintptr(1), 0, 0, 0)
-	if err != nil {
-		return err
-	}
-
 	sigCh := make(chan os.Signal, 512)
 	signal.Notify(sigCh, unix.SIGCHLD)
 
@@ -803,9 +808,9 @@ func (s *sandbox) setupSignalHandler() error {
 		signal.Notify(sigCh, sig)
 	}
 
-	go s.signalHandlerLoop(sigCh)
-
-	return nil
+	errCh := make(chan error, 1)
+	go s.signalHandlerLoop(sigCh, errCh)
+	return <-errCh
 }
 
 // getMemory returns a string containing the total amount of memory reported
