@@ -126,6 +126,14 @@
   revision = "cc6d2ea263b2471faabce371255777a365bf8306"
 
 [[projects]]
+  digest = "1:58999a98719fddbac6303cb17e8d85b945f60b72f48e3a2df6b950b97fa926f1"
+  name = "github.com/konsorten/go-windows-terminal-sequences"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "f55edac94c9bbba5d6182a4be46d86a2c9b5b50e"
+  version = "v1.0.2"
+
+[[projects]]
   digest = "1:b09f78822be5d574e052d4e377b133bac445cdbcbfaf884e0704f870e509ef21"
   name = "github.com/mdlayher/vsock"
   packages = ["."]
@@ -141,7 +149,7 @@
   revision = "7d4729fb36185a7c1719923406c9d40e54fb93c7"
 
 [[projects]]
-  digest = "1:b2eb2cc22a636b636ed6f57847c37ca065bddbe456303930193083edd36f1203"
+  digest = "1:8d2b8396c6f94a08d06f43286ff0260c1c40e1b6a3797d6afaa35613cf27a967"
   name = "github.com/opencontainers/runc"
   packages = [
     "libcontainer",
@@ -153,6 +161,7 @@
     "libcontainer/configs/validate",
     "libcontainer/intelrdt",
     "libcontainer/keys",
+    "libcontainer/logs",
     "libcontainer/mount",
     "libcontainer/nsenter",
     "libcontainer/seccomp",
@@ -163,7 +172,7 @@
     "libcontainer/utils",
   ]
   pruneopts = "NUT"
-  revision = "f56b4cbeadc407e715d9b2ba49e62185bd81cef4"
+  revision = "f4982d86f7fde0b6f953cc62ccc4022c519a10a9"
 
 [[projects]]
   digest = "1:0d447d4961f4f9270457fbc20d0261bba8d3056f395efd2e2480e2dfa4487a60"
@@ -173,15 +182,15 @@
   revision = "5806c35637336642129d03657419829569abc5aa"
 
 [[projects]]
-  digest = "1:5c65c485fa22fdfd6937db07aaf879904a4745770ee416d8d1f2a1434dc2d8ce"
+  digest = "1:3e824b6fb758a8b021d30b613d84e7404d06d33c8f43f92baed633427836736c"
   name = "github.com/opencontainers/selinux"
   packages = [
     "go-selinux",
     "go-selinux/label",
   ]
   pruneopts = "NUT"
-  revision = "ba1aefe8057f1d0cfb8e88d0ec1dc85925ef987d"
-  version = "v1.0.0-rc1"
+  revision = "3a1f366feb7aecbf7a0e71ac4cea88b31597de9e"
+  version = "v1.2.2"
 
 [[projects]]
   digest = "1:7da29c22bcc5c2ffb308324377dc00b5084650348c2799e573ed226d8cc9faf0"
@@ -212,19 +221,19 @@
   version = "v1.0.0"
 
 [[projects]]
-  digest = "1:15427a47e05c87ec16a93f6dc53d8ce52043215ce3ebb4f4f0de1d774120644f"
+  digest = "1:7b02ff4e128026aee68ea968024f40e4030df0524d563c5b41d638bd791d1a3e"
   name = "github.com/seccomp/libseccomp-golang"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "e3496e3a417d1dc9ecdceca5af2513271fed37a0"
-  version = "v0.9.0"
+  revision = "689e3c1541a84461afc49c1c87352a6cedf72e9c"
+  version = "v0.9.1"
 
 [[projects]]
-  digest = "1:31c5d934770c8b0698c28eb8576cb39b14e2fcf3c5f2a6e8449116884cd92e3f"
+  digest = "1:f4aaa07a6c33f2b354726d0571acbc8ca118837c75709f6353203ae1a3f8eeab"
   name = "github.com/sirupsen/logrus"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "f006c2ac4710855cf0f916dd6b77acf6b048dc6e"
+  revision = "v1.4.2"
 
 [[projects]]
   digest = "1:20671b6c665af6f81a4378d1c9312f9a14b955da7b44c8ea56fc95522d4d4355"
@@ -292,14 +301,6 @@
   packages = ["."]
   pruneopts = "NUT"
   revision = "be1fbeda19366dea804f00efff2dd73a1642fdcc"
-
-[[projects]]
-  branch = "master"
-  digest = "1:707ec3bb6ccc1cd330b8789467fa6cd8dad40f63fed028ba777a6c2ca13a9838"
-  name = "golang.org/x/crypto"
-  packages = ["ssh/terminal"]
-  pruneopts = "NUT"
-  revision = "94eea52f7b742c7cbe0b03b22f0c4c8631ece122"
 
 [[projects]]
   digest = "1:b20c63a56900e442d5f435613fefc9392cbe8849467510fcc3869dbdad9441bb"
