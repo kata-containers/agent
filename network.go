@@ -12,6 +12,7 @@ import (
 	"os"
 	"reflect"
 	"sync"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 
@@ -24,11 +25,13 @@ import (
 )
 
 var (
-	errNoHandle = grpcStatus.Errorf(codes.InvalidArgument, "Need network handle")
-	errNoIF     = grpcStatus.Errorf(codes.InvalidArgument, "Need network interface")
-	errNoLink   = grpcStatus.Errorf(codes.InvalidArgument, "Need network link")
-	errNoMAC    = grpcStatus.Errorf(codes.InvalidArgument, "Need hardware address")
-	errNoRoutes = grpcStatus.Errorf(codes.InvalidArgument, "Need network routes")
+	errNoHandle            = grpcStatus.Errorf(codes.InvalidArgument, "Need network handle")
+	errNoIF                = grpcStatus.Errorf(codes.InvalidArgument, "Need network interface")
+	errNoLink              = grpcStatus.Errorf(codes.InvalidArgument, "Need network link")
+	errNoMAC               = grpcStatus.Errorf(codes.InvalidArgument, "Need hardware address")
+	errNoRoutes            = grpcStatus.Errorf(codes.InvalidArgument, "Need network routes")
+	kataGuestSharedFileDns = "/run/kata-containers/shared/containers/resolv.conf"
+	kataGuestFileDns       = "/etc/resolv.conf"
 )
 
 const (
@@ -574,9 +577,51 @@ func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *types.Route, add
 /////////
 // DNS //
 /////////
+func mountFile(source, destination, fsType string, flags int, options string) error {
+	agentLog.WithFields(logrus.Fields{
+		"mount-source":      source,
+		"mount-destination": destination,
+		"mount-fstype":      fsType,
+		"mount-flags":       flags,
+		"mount-options":     options,
+	}).Debug()
 
-func setupDNS(dns []string) error {
+	if source == "" {
+		return fmt.Errorf("need mount source")
+	}
+
+	if destination == "" {
+		return fmt.Errorf("need mount destination")
+	}
+
+	if fsType == "" {
+		return fmt.Errorf("need mount FS type")
+	}
+	var err error
+
+	_, err = os.Stat(destination)
+	if os.IsNotExist(err) {
+		logrus.Printf("June25 destination %s", destination)
+		os.Create(destination)
+	}
+
+	_, err = os.Stat(source)
+	if os.IsNotExist(err) {
+		logrus.Printf("June25 source: %s", source)
+	}
+	if err = syscall.Mount(source, destination,
+		fsType, uintptr(flags), options); err != nil {
+		return grpcStatus.Errorf(codes.Internal, "Could not mount %v to %v: %v",
+			source, destination, err)
+	}
+
 	return nil
+
+}
+
+func setupDNS() error {
+	err := mountFile(kataGuestSharedFileDns, kataGuestFileDns, "bind", syscall.MS_BIND, "")
+	return err
 }
 
 ////////////

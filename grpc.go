@@ -1441,7 +1441,7 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 
 	a.sandbox.mounts = mountList
 
-	if err := setupDNS(a.sandbox.network.dns); err != nil {
+	if err := setupDNS(); err != nil {
 		return emptyResp, err
 	}
 
