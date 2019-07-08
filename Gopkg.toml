@@ -12,7 +12,7 @@
 
 [[constraint]]
   name = "github.com/opencontainers/runc"
-  revision = "f56b4cbeadc407e715d9b2ba49e62185bd81cef4"
+  revision = "f4982d86f7fde0b6f953cc62ccc4022c519a10a9"
 
 [[constraint]]
   name = "github.com/opencontainers/runtime-spec"
@@ -20,7 +20,7 @@
 
 [[constraint]]
   name = "github.com/sirupsen/logrus"
-  revision = "f006c2ac4710855cf0f916dd6b77acf6b048dc6e"
+  revision = "v1.4.2"
 
 [[constraint]]
   name = "github.com/stretchr/testify"
