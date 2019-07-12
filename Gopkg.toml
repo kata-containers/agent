@@ -16,7 +16,7 @@
 
 [[constraint]]
   name = "github.com/opencontainers/runtime-spec"
-  revision = "a950415649c735f9fd9ec3b8869efef24b67cef4"
+  revision = "a1b50f621a48ad13f8f696a162f684a241307db0"
 
 [[constraint]]
   name = "github.com/sirupsen/logrus"
