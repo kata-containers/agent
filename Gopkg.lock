@@ -175,11 +175,11 @@
   revision = "f4982d86f7fde0b6f953cc62ccc4022c519a10a9"
 
 [[projects]]
-  digest = "1:87ce99b0c7c54a10c8d7ec55885e37efc81a6bff1fd8435d39badeb9934c9043"
+  digest = "1:7a58202c5cdf3d2c1eb0621fe369315561cea7f036ad10f0f0479ac36bcc95eb"
   name = "github.com/opencontainers/runtime-spec"
   packages = ["specs-go"]
   pruneopts = "NUT"
-  revision = "a950415649c735f9fd9ec3b8869efef24b67cef4"
+  revision = "a1b50f621a48ad13f8f696a162f684a241307db0"
 
 [[projects]]
   digest = "1:3e824b6fb758a8b021d30b613d84e7404d06d33c8f43f92baed633427836736c"
