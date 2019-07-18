@@ -7,6 +7,7 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
@@ -25,7 +26,16 @@ import (
 const (
 	testExecID      = "testExecID"
 	testContainerID = "testContainerID"
+	testFileMode    = os.FileMode(0640)
 )
+
+func createFileWithPerms(file, contents string, perms os.FileMode) error {
+	return ioutil.WriteFile(file, []byte(contents), perms)
+}
+
+func createFile(file, contents string) error {
+	return createFileWithPerms(file, contents, testFileMode)
+}
 
 func skipUnlessRoot(t *testing.T) {
 	if os.Getuid() != 0 {
@@ -486,4 +496,128 @@ func TestAddGuestHooks(t *testing.T) {
 	s.addGuestHooks(spec)
 	assert.True(len(spec.Hooks.Poststop) == 1)
 	assert.True(strings.Contains(spec.Hooks.Poststop[0].Path, "executable"))
+}
+
+func TestGetMemory(t *testing.T) {
+	assert := assert.New(t)
+
+	dir, err := ioutil.TempDir("", "")
+	assert.NoError(err)
+	defer os.RemoveAll(dir)
+
+	file := filepath.Join(dir, "meminfo")
+
+	savedMeminfo := meminfo
+	defer func() {
+		meminfo = savedMeminfo
+	}()
+
+	// Override the file
+	meminfo = file
+
+	type testData struct {
+		contents       string
+		expectedResult string
+		createFile     bool
+		expectError    bool
+	}
+
+	memKB := 13
+	memKBStr := fmt.Sprintf("%d", memKB)
+
+	entry := fmt.Sprintf("MemTotal:      %d\n", memKB)
+	tooManyFieldsEntry := fmt.Sprintf("MemTotal: foo:     %d\n", memKB)
+	noNumericEntry := fmt.Sprintf("MemTotal: \n")
+
+	data := []testData{
+		{
+			"",
+			"",
+			false,
+			true,
+		},
+		{
+			"",
+			"",
+			true,
+			true,
+		},
+		{
+			"hello",
+			"",
+			true,
+			true,
+		},
+		{
+			"hello:",
+			"",
+			true,
+			true,
+		},
+		{
+			"hello: world",
+			"",
+			true,
+			true,
+		},
+		{
+			"hello: world:",
+			"",
+			true,
+			true,
+		},
+		{
+			"MemTotal:      ",
+			"",
+			true,
+			true,
+		},
+		{
+			"MemTotal:",
+			"",
+			true,
+			true,
+		},
+		{
+			tooManyFieldsEntry,
+			"",
+			true,
+			true,
+		},
+		{
+			noNumericEntry,
+			"",
+			true,
+			true,
+		},
+		{
+			entry,
+			memKBStr,
+			true,
+			false,
+		},
+	}
+
+	for i, d := range data {
+		msg := fmt.Sprintf("test[%d]: %+v\n", i, d)
+
+		if d.createFile {
+			err := createFile(file, d.contents)
+			assert.NoError(err, msg)
+			defer os.Remove(file)
+		} else {
+			// Ensure it does not exist
+			os.Remove(file)
+		}
+
+		mem, err := getMemory()
+		if d.expectError {
+			assert.Error(err, msg)
+			continue
+		}
+
+		assert.NoError(err, msg)
+
+		assert.Equal(d.expectedResult, mem, msg)
+	}
 }

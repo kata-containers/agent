@@ -42,7 +42,6 @@ import (
 
 const (
 	procCgroups = "/proc/cgroups"
-	meminfo     = "/proc/meminfo"
 
 	bashPath         = "/bin/bash"
 	shPath           = "/bin/sh"
@@ -50,6 +49,8 @@ const (
 )
 
 var (
+	meminfo = "/proc/meminfo"
+
 	// cgroup fs is mounted at /sys/fs when systemd is the init process
 	sysfsDir                     = "/sys"
 	cgroupPath                   = sysfsDir + "/fs/cgroup"
