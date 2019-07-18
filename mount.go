@@ -158,7 +158,7 @@ func ensureDestinationExists(source, destination string, fsType string) error {
 	return nil
 }
 
-func parseMountFlagsAndOptions(optionList []string) (int, string, error) {
+func parseMountFlagsAndOptions(optionList []string) (int, string) {
 	var (
 		flags   int
 		options []string
@@ -174,7 +174,7 @@ func parseMountFlagsAndOptions(optionList []string) (int, string, error) {
 		options = append(options, opt)
 	}
 
-	return flags, strings.Join(options, ","), nil
+	return flags, strings.Join(options, ",")
 }
 
 func parseOptions(optionList []string) map[string]string {
@@ -320,10 +320,7 @@ func commonStorageHandler(storage pb.Storage) (string, error) {
 
 // mountStorage performs the mount described by the storage structure.
 func mountStorage(storage pb.Storage) error {
-	flags, options, err := parseMountFlagsAndOptions(storage.Options)
-	if err != nil {
-		return err
-	}
+	flags, options := parseMountFlagsAndOptions(storage.Options)
 
 	return mount(storage.Source, storage.MountPoint, storage.Fstype, flags, options)
 }

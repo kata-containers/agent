@@ -308,3 +308,43 @@ func TestMount(t *testing.T) {
 		}
 	}
 }
+
+func TestMountParseMountFlagsAndOptions(t *testing.T) {
+	assert := assert.New(t)
+
+	type testData struct {
+		options []string
+
+		expectedFlags   int
+		expectedOptions string
+	}
+
+	// Start with some basic tests
+	data := []testData{
+		{[]string{}, 0, ""},
+		{[]string{"moo"}, 0, "moo"},
+		{[]string{"moo", "foo"}, 0, "moo,foo"},
+		{[]string{"foo", "moo"}, 0, "foo,moo"},
+	}
+
+	// Add the expected flag handling tests
+	for name, value := range flagList {
+		td := testData{
+			options:         []string{"foo", name, "bar"},
+			expectedFlags:   value,
+			expectedOptions: "foo,bar",
+		}
+
+		data = append(data, td)
+	}
+
+	for i, d := range data {
+		msg := fmt.Sprintf("test[%d]: %+v\n", i, d)
+
+		flags, options := parseMountFlagsAndOptions(d.options)
+
+		assert.Equal(d.expectedFlags, flags, msg)
+		assert.Equal(d.expectedOptions, options, msg)
+
+	}
+}
