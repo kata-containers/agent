@@ -37,6 +37,14 @@ func createFile(file, contents string) error {
 	return createFileWithPerms(file, contents, testFileMode)
 }
 
+func createEmptyFile(file string) error {
+	return createFile(file, "")
+}
+
+func createEmptyFileWithPerms(file string, perms os.FileMode) error {
+	return createFileWithPerms(file, "", perms)
+}
+
 func skipUnlessRoot(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skip("Test disabled as requires root user")
@@ -619,5 +627,80 @@ func TestGetMemory(t *testing.T) {
 		assert.NoError(err, msg)
 
 		assert.Equal(d.expectedResult, mem, msg)
+	}
+}
+
+func TestSetupDebugConsole(t *testing.T) {
+	assert := assert.New(t)
+
+	dir, err := ioutil.TempDir("", "")
+	assert.NoError(err)
+	defer os.RemoveAll(dir)
+
+	sh := filepath.Join(dir, "sh")
+	console := filepath.Join(dir, "console")
+
+	savedDebugConsole := debugConsole
+	savedSupportedShells := supportedShells
+
+	defer func() {
+		debugConsole = savedDebugConsole
+		supportedShells = savedSupportedShells
+	}()
+
+	type testData struct {
+		consolePath   string
+		shells        []string
+		debugConsole  bool
+		createConsole bool
+		createShells  bool
+		expectError   bool
+	}
+
+	data := []testData{
+		{"", []string{}, false, false, false, false},
+		{"", []string{}, true, false, false, true},
+		{"", []string{sh}, true, false, false, true},
+		{"", []string{sh}, true, false, true, true},
+		{console, []string{sh}, true, false, true, true},
+		{console, []string{}, true, true, false, true},
+
+		{console, []string{sh}, true, true, true, false},
+	}
+
+	for i, d := range data {
+		msg := fmt.Sprintf("test[%d]: %+v\n", i, d)
+
+		// override
+		debugConsole = d.debugConsole
+		supportedShells = d.shells
+
+		if d.createConsole {
+			err = createEmptyFile(d.consolePath)
+			assert.NoError(err, msg)
+		} else {
+			os.Remove(d.consolePath)
+		}
+
+		for _, shell := range d.shells {
+			if d.createShells {
+				err = createEmptyFile(shell)
+				assert.NoError(err, msg)
+			} else {
+				os.Remove(shell)
+			}
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		err := setupDebugConsole(ctx, d.consolePath)
+
+		if d.expectError {
+			assert.Error(err, msg)
+			continue
+		}
+
+		assert.NoError(err, msg)
 	}
 }
