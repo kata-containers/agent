@@ -282,7 +282,7 @@ func virtioBlkStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
 		}
 		// Make sure the virt path is valid
 		if FileInfo.Mode()&os.ModeDevice == 0 {
-			return "", err
+			return "", fmt.Errorf("invalid device %s", storage.Source)
 		}
 
 	} else {
