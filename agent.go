@@ -1177,9 +1177,9 @@ func mountToRootfs(m initMount) error {
 		return err
 	}
 
-	if flags, options, err := parseMountFlagsAndOptions(m.options); err != nil {
-		return grpcStatus.Errorf(codes.Internal, "Could not parseMountFlagsAndOptions(%v)", m.options)
-	} else if err := syscall.Mount(m.src, m.dest, m.fstype, uintptr(flags), options); err != nil {
+	flags, options := parseMountFlagsAndOptions(m.options)
+
+	if err := syscall.Mount(m.src, m.dest, m.fstype, uintptr(flags), options); err != nil {
 		return grpcStatus.Errorf(codes.Internal, "Could not mount %v to %v: %v", m.src, m.dest, err)
 	}
 	return nil
