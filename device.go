@@ -7,6 +7,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -288,6 +289,18 @@ func updateSpecDeviceList(device pb.Device, spec *pb.Spec) error {
 type checkUeventCb func(uEv *uevent.Uevent) bool
 
 func waitForDevice(devicePath, deviceName string, checkUevent checkUeventCb) error {
+	if devicePath == "" {
+		return errors.New("need device path")
+	}
+
+	if deviceName == "" {
+		return errors.New("need device name")
+	}
+
+	if checkUevent == nil {
+		return errors.New("invalid uevent handler")
+	}
+
 	uEvHandler, err := uevent.NewHandler()
 	if err != nil {
 		return err
