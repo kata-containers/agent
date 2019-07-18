@@ -183,17 +183,17 @@ const (
 	// PIDNamespace for isolating process IDs
 	PIDNamespace LinuxNamespaceType = "pid"
 	// NetworkNamespace for isolating network devices, stacks, ports, etc
-	NetworkNamespace LinuxNamespaceType = "network"
+	NetworkNamespace = "network"
 	// MountNamespace for isolating mount points
-	MountNamespace LinuxNamespaceType = "mount"
+	MountNamespace = "mount"
 	// IPCNamespace for isolating System V IPC, POSIX message queues
-	IPCNamespace LinuxNamespaceType = "ipc"
+	IPCNamespace = "ipc"
 	// UTSNamespace for isolating hostname and NIS domain name
-	UTSNamespace LinuxNamespaceType = "uts"
+	UTSNamespace = "uts"
 	// UserNamespace for isolating user and group IDs
-	UserNamespace LinuxNamespaceType = "user"
+	UserNamespace = "user"
 	// CgroupNamespace for isolating cgroup hierarchies
-	CgroupNamespace LinuxNamespaceType = "cgroup"
+	CgroupNamespace = "cgroup"
 )
 
 // LinuxIDMapping specifies UID/GID mappings
@@ -219,7 +219,6 @@ type POSIXRlimit struct {
 // LinuxHugepageLimit structure corresponds to limiting kernel hugepages
 type LinuxHugepageLimit struct {
 	// Pagesize is the hugepage size
-	// Format: "<size><unit-prefix>B' (e.g. 64KB, 2MB, 1GB, etc.)
 	Pagesize string `json:"pageSize"`
 	// Limit is the limit of "hugepagesize" hugetlb usage
 	Limit uint64 `json:"limit"`
