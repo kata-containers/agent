@@ -391,11 +391,11 @@ func (s *sandbox) removeSandboxStorage(path string) error {
 
 	err := removeMounts([]string{path})
 	if err != nil {
-		return grpcStatus.Errorf(codes.Unknown, "Unable to unmount sandbox storage path %s", path)
+		return grpcStatus.Errorf(codes.Unknown, "Unable to unmount sandbox storage path %s: %v", path, err)
 	}
 	err = os.RemoveAll(path)
 	if err != nil {
-		return grpcStatus.Errorf(codes.Unknown, "Unable to delete sandbox storage path %s", path)
+		return grpcStatus.Errorf(codes.Unknown, "Unable to delete sandbox storage path %s: %v", path, err)
 	}
 	return nil
 }
