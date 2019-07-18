@@ -475,6 +475,36 @@ func TestMountParseMountFlagsAndOptions(t *testing.T) {
 	}
 }
 
+func TestMountParseOptions(t *testing.T) {
+	assert := assert.New(t)
+
+	type testData struct {
+		options []string
+
+		result map[string]string
+	}
+
+	data := []testData{
+		{[]string{}, map[string]string{}},
+		{[]string{" "}, map[string]string{}},
+		{[]string{"="}, map[string]string{}},
+		{[]string{"moo"}, map[string]string{}},
+		{[]string{"foo", "moo"}, map[string]string{}},
+		{[]string{"=bar"}, map[string]string{}},
+		{[]string{"foo=bar"}, map[string]string{
+			"foo": "bar",
+		}},
+	}
+
+	for i, d := range data {
+		msg := fmt.Sprintf("test[%d]: %+v\n", i, d)
+
+		result := parseOptions(d.options)
+
+		assert.Equal(d.result, result, msg)
+	}
+}
+
 func TestCommonStorageHandler(t *testing.T) {
 	skipIfRoot(t)
 
@@ -512,5 +542,66 @@ func TestStorageHandlers(t *testing.T) {
 		assert.Empty(mountPoint, msg)
 		assert.Error(err, msg)
 		cancel()
+	}
+}
+
+func TestMountEnsureDestinationExists(t *testing.T) {
+	skipIfRoot(t)
+
+	assert := assert.New(t)
+
+	tmpdir, err := ioutil.TempDir("", "")
+	assert.NoError(err)
+
+	type testData struct {
+		source string
+		dest   string
+		fsType string
+
+		expectError bool
+	}
+
+	existsFile := filepath.Join(tmpdir, "exists-file")
+	err = createEmptyFile(existsFile)
+	assert.NoError(err)
+
+	existsDir := filepath.Join(tmpdir, "exists-dir")
+	err = os.Mkdir(existsDir, os.FileMode(0755))
+	assert.NoError(err)
+
+	noExistsDir := filepath.Join(tmpdir, "does-not-exist")
+
+	dir := filepath.Join(tmpdir, "dir")
+
+	// make directory unreadable by non-root user
+	err = os.Mkdir(dir, os.FileMode(0000))
+	assert.NoError(err)
+
+	existingNonCreatableFile := filepath.Join(tmpdir, "uncreatable")
+	err = createEmptyFileWithPerms(existingNonCreatableFile, 0000)
+	assert.NoError(err)
+
+	uncreatableDir := filepath.Join(dir, "invalid-dir", "another-invalid-dir")
+
+	data := []testData{
+		{"", "", "", true},
+		{noExistsDir, "", "", true},
+		{"", noExistsDir, "", true},
+		{existsDir, uncreatableDir, "", true},
+		{existsDir, uncreatableDir, "bind", true},
+		{existsFile, uncreatableDir, "moo", true},
+		{existsFile, existingNonCreatableFile, "bind", true},
+	}
+
+	for i, d := range data {
+		msg := fmt.Sprintf("test[%d]: %+v\n", i, d)
+
+		err := ensureDestinationExists(d.source, d.dest, d.fsType)
+
+		if d.expectError {
+			assert.Error(err, msg)
+		} else {
+			assert.NoError(err, msg)
+		}
 	}
 }

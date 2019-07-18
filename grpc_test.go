@@ -9,6 +9,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -292,6 +293,11 @@ func TestOnlineCPUMem(t *testing.T) {
 
 	_, err = a.OnlineCPUMem(context.TODO(), req)
 	assert.NoError(err)
+
+	req.NbCpus = 0
+	req.CpuOnly = true
+	_, err = a.OnlineCPUMem(context.TODO(), req)
+	assert.Error(err)
 }
 
 func TestGetPIDIndex(t *testing.T) {
@@ -627,6 +633,17 @@ func TestUpdateContainerCpuset(t *testing.T) {
 	cookies := make(cookie)
 	cgroupPath += "///"
 
+	savedFunc := getCpusetGuest
+
+	getCpusetGuest = func() (string, error) {
+		return "", errors.New("an error")
+	}
+
+	err = updateCpusetPath(cgroupPath, "", cookies)
+	assert.Error(err)
+
+	getCpusetGuest = savedFunc
+
 	err = updateCpusetPath(cgroupPath, "0-7", cookies)
 	assert.NoError(err)
 
@@ -673,6 +690,11 @@ func TestSingleWaitProcess(t *testing.T) {
 		id:        containerID,
 		processes: make(map[string]*process),
 	}
+
+	_, err := a.WaitProcess(context.TODO(), req)
+
+	// No sandbox processes
+	assert.Error(err)
 
 	a.sandbox.containers[containerID].processes[containerID] = &process{
 		id:         containerID,
@@ -972,6 +994,10 @@ func TestCopyFile(t *testing.T) {
 	assert.NoError(err)
 	// check file's content
 	assert.Equal(content, append(part1, part2...))
+
+	req.Path = "/does/not/exist/foo/bar"
+	_, err = a.CopyFile(context.Background(), req)
+	assert.Error(err)
 }
 
 func TestIsSignalHandled(t *testing.T) {
@@ -992,6 +1018,9 @@ func TestIsSignalHandled(t *testing.T) {
 	signum = syscall.SIGQUIT
 	handled = isSignalHandled(pid, signum)
 	assert.True(handled)
+
+	handled = isSignalHandled(-1, signum)
+	assert.False(handled)
 }
 
 func TestOnlineResources(t *testing.T) {
@@ -1000,11 +1029,6 @@ func TestOnlineResources(t *testing.T) {
 	cpusDir, err := ioutil.TempDir("", "cpu")
 	assert.NoError(err)
 	defer os.RemoveAll(cpusDir)
-
-	resource := onlineResource{
-		sysfsOnlinePath: cpusDir,
-		regexpPattern:   cpuRegexpPattern,
-	}
 
 	// cold plug CPU
 	cpu0Path := filepath.Join(cpusDir, "cpu0")
@@ -1040,6 +1064,16 @@ func TestOnlineResources(t *testing.T) {
 	err = os.Mkdir(argbPath, 0755)
 	assert.NoError(err)
 
+	resource := onlineResource{
+		sysfsOnlinePath: cpusDir,
+		regexpPattern:   "[invalid.regex",
+	}
+
+	_, err = onlineResources(resource, 0)
+	assert.Error(err)
+
+	resource.regexpPattern = cpuRegexpPattern
+
 	expectedCpus := int32(1)
 	r, err := onlineResources(resource, expectedCpus)
 	assert.NoError(err)
@@ -1050,4 +1084,673 @@ func TestOnlineResources(t *testing.T) {
 	r, err = onlineResources(resource, expectedCpus)
 	assert.Error(err)
 	assert.Equal(uint32(0), r)
+}
+
+func TestSetConsoleCarriageReturn(t *testing.T) {
+	assert := assert.New(t)
+
+	err := setConsoleCarriageReturn(-1)
+	assert.Error(err)
+}
+
+func TestCheck(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	req := &pb.CheckRequest{}
+	ctx := context.Background()
+
+	resp, err := a.Check(ctx, req)
+	assert.NoError(err)
+	assert.Equal(resp.Status, pb.HealthCheckResponse_SERVING)
+}
+
+func TestVersion(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	req := &pb.CheckRequest{}
+	ctx := context.Background()
+
+	resp, err := a.Version(ctx, req)
+	assert.NoError(err)
+	assert.Equal(resp.GrpcVersion, pb.APIVersion)
+	assert.Equal(resp.AgentVersion, a.version)
+}
+
+func TestGetContainer(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	a.sandbox.running = false
+	_, err := a.getContainer("")
+	assert.Error(err)
+
+	a.sandbox.running = true
+	_, err = a.getContainer("")
+	assert.Error(err)
+
+	ctr := &container{}
+	a.sandbox.containers["foo"] = ctr
+	_, err = a.getContainer("foo")
+	assert.NoError(err)
+}
+
+func TestPrivateExecProcess(t *testing.T) {
+	assert := assert.New(t)
+
+	type testData struct {
+		nilContainer bool
+		nilProc      bool
+		expectError  bool
+	}
+
+	data := []testData{
+		{true, false, true},
+		{false, true, true},
+		{true, true, true},
+	}
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	testCtr := &container{}
+
+	testProc := &process{}
+
+	for i, d := range data {
+		var ctr *container
+		var proc *process
+
+		msg := fmt.Sprintf("test[%d]: %+v\n", i, d)
+
+		if d.nilContainer {
+			ctr = nil
+		} else {
+			ctr = testCtr
+		}
+
+		if d.nilProc {
+			proc = nil
+		} else {
+			proc = testProc
+		}
+
+		err := a.execProcess(ctr, proc, true)
+		if d.expectError {
+			assert.Error(err, msg)
+			continue
+		}
+
+		assert.NoError(err, msg)
+	}
+}
+
+func TestPostExecProcess(t *testing.T) {
+	assert := assert.New(t)
+
+	type testData struct {
+		nilContainer bool
+		nilProc      bool
+		expectError  bool
+	}
+
+	data := []testData{
+		{true, false, true},
+		{false, true, true},
+		{true, true, true},
+	}
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	testCtr := &container{}
+
+	testProc := &process{}
+
+	for i, d := range data {
+		var ctr *container
+		var proc *process
+
+		msg := fmt.Sprintf("test[%d]: %+v\n", i, d)
+
+		if d.nilContainer {
+			ctr = nil
+		} else {
+			ctr = testCtr
+		}
+
+		if d.nilProc {
+			proc = nil
+		} else {
+			proc = testProc
+		}
+
+		err := a.postExecProcess(ctr, proc)
+		if d.expectError {
+			assert.Error(err, msg)
+			continue
+		}
+
+		assert.NoError(err, msg)
+	}
+}
+
+func TestPidNsExists(t *testing.T) {
+	assert := assert.New(t)
+
+	type testData struct {
+		spec           *pb.Spec
+		expectNSexists bool
+	}
+
+	data := []testData{
+		{
+			&pb.Spec{
+				Linux: nil,
+			},
+			false,
+		},
+		{
+			&pb.Spec{
+				Linux: &pb.Linux{
+					Namespaces: []pb.LinuxNamespace{
+						{
+							Type: "NEWPID",
+							Path: "foo",
+						},
+					},
+				},
+			},
+			true,
+		},
+	}
+
+	for i, d := range data {
+		msg := fmt.Sprintf("test[%d]: %+v\n", i, d)
+
+		a := &agentGRPC{}
+
+		result := a.pidNsExists(d.spec)
+
+		if d.expectNSexists {
+			assert.True(result, msg)
+		} else {
+			assert.False(result, msg)
+		}
+	}
+}
+
+func TestCreateContainerChecks(t *testing.T) {
+	assert := assert.New(t)
+
+	type testData struct {
+		sandbox     *sandbox
+		req         *pb.CreateContainerRequest
+		expectError bool
+	}
+
+	data := []testData{
+		{
+			&sandbox{
+				containers: make(map[string]*container),
+				running:    false,
+			},
+			&pb.CreateContainerRequest{},
+			true,
+		},
+		{
+			&sandbox{
+				containers: map[string]*container{
+					"foo": {
+						id: "foo",
+					},
+				},
+				running: true,
+			},
+			&pb.CreateContainerRequest{
+				ContainerId: "foo",
+			},
+			true,
+		},
+		{
+			&sandbox{
+				containers: make(map[string]*container),
+				running:    true,
+			},
+			&pb.CreateContainerRequest{
+				ContainerId: "foo",
+				OCI: &pb.Spec{
+					Linux: &pb.Linux{
+						Namespaces: []pb.LinuxNamespace{
+							{
+								Type: "NEWPID",
+								Path: "foo",
+							},
+						},
+					},
+				},
+			},
+			true,
+		},
+		{
+			&sandbox{
+				containers: make(map[string]*container),
+				running:    true,
+			},
+			&pb.CreateContainerRequest{
+				ContainerId: "foo",
+				OCI: &pb.Spec{
+					Linux: &pb.Linux{
+						Namespaces: []pb.LinuxNamespace{},
+					},
+				},
+			},
+			false,
+		},
+	}
+
+	for i, d := range data {
+		msg := fmt.Sprintf("test[%d]: %+v\n", i, d)
+
+		a := &agentGRPC{
+			sandbox: d.sandbox,
+		}
+
+		err := a.createContainerChecks(d.req)
+
+		if d.expectError {
+			assert.Error(err, msg)
+			continue
+		}
+
+		assert.NoError(err, msg)
+	}
+}
+
+func TestCreateContainer(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+			running:    false,
+		},
+	}
+
+	req := &pb.CreateContainerRequest{}
+
+	_, err := a.CreateContainer(context.Background(), req)
+	assert.Error(err)
+}
+
+func TestRemoveContainer(t *testing.T) {
+	assert := assert.New(t)
+
+	req := &pb.RemoveContainerRequest{
+		ContainerId: "foo",
+	}
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+			running:    true,
+		},
+	}
+
+	_, err := a.RemoveContainer(context.Background(), req)
+	assert.Error(err)
+}
+
+func TestCreateSandbox(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+			running:    true,
+		},
+	}
+
+	req := &pb.CreateSandboxRequest{}
+
+	_, err := a.CreateSandbox(context.Background(), req)
+	assert.Error(err)
+}
+
+func TestDestroySandbox(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+			running:    false,
+		},
+	}
+
+	req := &pb.DestroySandboxRequest{}
+
+	result, err := a.DestroySandbox(context.Background(), req)
+	assert.NoError(err)
+	assert.Equal(result, emptyResp)
+}
+
+func TestStartContainer(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+			running:    false,
+		},
+	}
+
+	req := &pb.StartContainerRequest{}
+
+	_, err := a.StartContainer(context.Background(), req)
+	assert.Error(err)
+}
+
+func TestExecProcess(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+			running:    false,
+		},
+	}
+
+	req := &pb.ExecProcessRequest{}
+
+	_, err := a.ExecProcess(context.Background(), req)
+	assert.Error(err)
+}
+
+func TestSignalProcess(t *testing.T) {
+	assert := assert.New(t)
+
+	type testData struct {
+		sandbox     *sandbox
+		req         *pb.SignalProcessRequest
+		expectError bool
+	}
+
+	basicReq := &pb.SignalProcessRequest{
+		ContainerId: "foo",
+	}
+
+	execReq := &pb.SignalProcessRequest{
+		ContainerId: "foo",
+		ExecId:      "1",
+	}
+
+	data := []testData{
+		{
+			&sandbox{
+				containers: make(map[string]*container),
+				running:    false,
+			},
+			basicReq,
+			true,
+		},
+		{
+			&sandbox{
+				containers: make(map[string]*container),
+				running:    true,
+			},
+			basicReq,
+			true,
+		},
+		{
+			&sandbox{
+				containers: map[string]*container{
+					"foo": {
+						id: "foo",
+						container: &mockContainer{
+							processes: []int{1},
+						},
+					},
+				},
+				running: true,
+			},
+			basicReq,
+			false,
+		},
+		{
+			&sandbox{
+				containers: map[string]*container{
+					"foo": {
+						id: "foo",
+						container: &mockContainer{
+							processes: []int{1},
+							status:    libcontainer.Stopped,
+						},
+					},
+				},
+				running: true,
+			},
+			basicReq,
+			false,
+		},
+		{
+			&sandbox{
+				containers: map[string]*container{
+					"foo": {
+						id: "foo",
+						container: &mockContainer{
+							processes: []int{1},
+						},
+						initProcess: &process{
+							id: "1",
+						},
+					},
+				},
+				running: true,
+			},
+			execReq,
+			true,
+		},
+	}
+
+	for i, d := range data {
+		msg := fmt.Sprintf("test[%d]: %+v\n", i, d)
+
+		a := &agentGRPC{
+			sandbox: d.sandbox,
+		}
+
+		_, err := a.SignalProcess(context.Background(), d.req)
+		if d.expectError {
+			assert.Error(err, msg)
+			continue
+		}
+		assert.NoError(err, msg)
+	}
+}
+
+func TestHandleCPUSet(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	linuxSpec := &specs.Linux{
+		Resources: &specs.LinuxResources{},
+	}
+
+	spec := &specs.Spec{
+		Linux: linuxSpec,
+	}
+
+	err := a.handleCPUSet(spec)
+	assert.NoError(err)
+
+	linuxCPU := &specs.LinuxCPU{}
+
+	spec.Linux.Resources.CPU = linuxCPU
+	err = a.handleCPUSet(spec)
+	assert.NoError(err)
+
+	spec.Linux.Resources.CPU.Cpus = "foo"
+	err = a.handleCPUSet(spec)
+	assert.Error(err)
+}
+
+func TestMemHotplugByProbe(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	req := &pb.MemHotplugByProbeRequest{}
+
+	_, err := a.MemHotplugByProbe(context.Background(), req)
+	assert.NoError(err)
+}
+
+func TestSetGuestDateTime(t *testing.T) {
+	// Ensure a non-priv users runs the test to guarantee a failure
+	skipIfRoot(t)
+
+	assert := assert.New(t)
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	req := &pb.SetGuestDateTimeRequest{}
+
+	_, err := a.SetGuestDateTime(context.Background(), req)
+	assert.Error(err)
+}
+
+func TestFinishCreateContainer(t *testing.T) {
+	skipIfRoot(t)
+
+	assert := assert.New(t)
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			id:         "foo",
+			containers: make(map[string]*container),
+		},
+	}
+
+	_, err := a.finishCreateContainer(nil, nil, nil)
+
+	// EPERM
+	assert.Error(err)
+}
+
+func TestUpdateSharedPidNs(t *testing.T) {
+	assert := assert.New(t)
+
+	ctr := &container{
+		id: "foo",
+		container: &mockContainer{
+			processes: []int{1},
+		},
+		initProcess: &process{
+			id:      "1",
+			process: libcontainer.Process{},
+		},
+	}
+
+	s := &sandbox{
+		sandboxPidNs: false,
+		containers: map[string]*container{
+			"foo": ctr,
+		},
+	}
+
+	a := &agentGRPC{
+		sandbox: s,
+	}
+
+	err := a.updateSharedPidNs(ctr)
+	assert.Error(err)
+}
+
+func TestWriteStdin(t *testing.T) {
+	assert := assert.New(t)
+
+	req := &pb.WriteStreamRequest{
+		ContainerId: "foo",
+		ExecId:      "foo",
+	}
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	_, err := a.WriteStdin(context.Background(), req)
+	assert.Error(err)
+}
+
+func TestCloseStdin(t *testing.T) {
+	assert := assert.New(t)
+
+	req := &pb.CloseStdinRequest{
+		ContainerId: "foo",
+		ExecId:      "foo",
+	}
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	_, err := a.CloseStdin(context.Background(), req)
+	assert.Error(err)
+}
+
+func TestTtyWinResize(t *testing.T) {
+	assert := assert.New(t)
+
+	req := &pb.TtyWinResizeRequest{
+		ContainerId: "foo",
+		ExecId:      "foo",
+	}
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			containers: make(map[string]*container),
+		},
+	}
+
+	_, err := a.TtyWinResize(context.Background(), req)
+	assert.Error(err)
 }
