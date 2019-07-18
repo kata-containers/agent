@@ -411,21 +411,18 @@ func (s *sandbox) unsetAndRemoveSandboxStorage(path string) error {
 	span.SetTag("path", path)
 	defer span.Finish()
 
-	if _, ok := s.storages[path]; ok {
-		removeSbs, err := s.unSetSandboxStorage(path)
-		if err != nil {
+	removeSbs, err := s.unSetSandboxStorage(path)
+	if err != nil {
+		return err
+	}
+
+	if removeSbs {
+		if err := s.removeSandboxStorage(path); err != nil {
 			return err
 		}
-
-		if removeSbs {
-			if err := s.removeSandboxStorage(path); err != nil {
-				return err
-			}
-		}
-
-		return nil
 	}
-	return grpcStatus.Errorf(codes.NotFound, "Sandbox storage with path %s not found", path)
+
+	return nil
 }
 
 func (s *sandbox) getContainer(id string) (*container, error) {
