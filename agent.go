@@ -843,6 +843,9 @@ func getMemory() (string, error) {
 		}
 
 		memTotal := strings.TrimSpace(fields[1])
+		if memTotal == "" {
+			return "", fmt.Errorf("cannot determine total memory from line %q", line)
+		}
 
 		return memTotal, nil
 	}
