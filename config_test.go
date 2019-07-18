@@ -333,3 +333,36 @@ func TestParseCmdlineOptionsVsock(t *testing.T) {
 		assert.Equal(commCh, d.expectedCommCh)
 	}
 }
+
+func TestParseCmdlineOptionDebugConsole(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentConfig{}
+
+	type testData struct {
+		option                    string
+		expectDebugConsoleEnabled bool
+	}
+
+	data := []testData{
+		{"", false},
+		{"debug_console", false},
+		{"debug_console=true", false},
+		{"debug_console=1", false},
+
+		{"agent.debug_console", true},
+	}
+
+	for i, d := range data {
+		debugConsole = false
+
+		err := a.parseCmdlineOption(d.option)
+		assert.NoError(err)
+
+		if !d.expectDebugConsoleEnabled {
+			continue
+		}
+
+		assert.True(debugConsole, "test %d (%+v)", i, d)
+	}
+}
