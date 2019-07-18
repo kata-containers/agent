@@ -49,6 +49,9 @@ const (
 )
 
 var (
+	// List of shells that are tried (in order) to setup a debug console
+	supportedShells = []string{bashPath, shPath}
+
 	meminfo = "/proc/meminfo"
 
 	// cgroup fs is mounted at /sys/fs when systemd is the init process
@@ -1211,13 +1214,13 @@ func cgroupsMount() error {
 	return ioutil.WriteFile(cgroupMemoryUseHierarchyPath, []byte{'1'}, cgroupMemoryUseHierarchyMode)
 }
 
-func setupDebugConsole() error {
+func setupDebugConsole(ctx context.Context, debugConsolePath string) error {
 	if !debugConsole {
 		return nil
 	}
 
 	var shellPath string
-	for _, s := range []string{bashPath, shPath} {
+	for _, s := range supportedShells {
 		var err error
 		if _, err = os.Stat(s); err == nil {
 			shellPath = s
@@ -1227,7 +1230,7 @@ func setupDebugConsole() error {
 	}
 
 	if shellPath == "" {
-		return errors.New("Shell not found")
+		return fmt.Errorf("No available shells (checked %v)", supportedShells)
 	}
 
 	cmd := exec.Command(shellPath)
@@ -1251,9 +1254,15 @@ func setupDebugConsole() error {
 
 	go func() {
 		for {
-			dcmd := *cmd
-			if err := dcmd.Run(); err != nil {
-				agentLog.WithError(err).Warn("failed to start debug console")
+			select {
+			case <-ctx.Done():
+				// stop the thread
+				return
+			default:
+				dcmd := *cmd
+				if err := dcmd.Run(); err != nil {
+					agentLog.WithError(err).Warn("failed to start debug console")
+				}
 			}
 		}
 	}()
@@ -1336,13 +1345,13 @@ func realMain() error {
 		return fmt.Errorf("failed to setup logger: %v", err)
 	}
 
-	if err := setupDebugConsole(); err != nil {
-		agentLog.WithError(err).Error("failed to setup debug console")
-	}
-
 	rootSpan, rootContext, err = setupTracing(agentName)
 	if err != nil {
 		return fmt.Errorf("failed to setup tracing: %v", err)
+	}
+
+	if err := setupDebugConsole(rootContext, debugConsolePath); err != nil {
+		agentLog.WithError(err).Error("failed to setup debug console")
 	}
 
 	// Set the sandbox context now that the context contains the tracing
