@@ -736,7 +736,7 @@ func (s *sandbox) listenToUdevEvents() {
 				if ch != nil && strings.HasPrefix(uEv.DevPath, filepath.Join(rootBusPath, devPCIAddress)) {
 					ch <- uEv.DevName
 					close(ch)
-					delete(s.deviceWatchers, uEv.DevName)
+					delete(s.deviceWatchers, devPCIAddress)
 				}
 			}
 
