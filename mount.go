@@ -7,15 +7,18 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
 
 	pb "github.com/kata-containers/agent/protocols/grpc"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
@@ -23,11 +26,13 @@ import (
 )
 
 const (
-	type9pFs     = "9p"
-	typeVirtioFS = "virtio_fs"
-	typeTmpFs    = "tmpfs"
-	devPrefix    = "/dev/"
-	mountPerm    = os.FileMode(0755)
+	type9pFs       = "9p"
+	typeVirtioFS   = "virtio_fs"
+	typeRootfs     = "rootfs"
+	typeTmpFs      = "tmpfs"
+	devPrefix      = "/dev/"
+	procMountStats = "/proc/self/mountstats"
+	mountPerm      = os.FileMode(0755)
 )
 
 var flagList = map[string]int{
@@ -384,4 +389,37 @@ func addStorages(ctx context.Context, storages []*pb.Storage, s *sandbox) (mount
 	}
 
 	return mountList, nil
+}
+
+// getMountFSType returns the FS type corresponding to the passed mount point and
+// any error ecountered.
+func getMountFSType(mountPoint string) (string, error) {
+	if mountPoint == "" {
+		return "", errors.Errorf("Invalid mount point '%s'", mountPoint)
+	}
+
+	mountstats, err := os.Open(procMountStats)
+	if err != nil {
+		return "", errors.Wrapf(err, "Failed to open file '%s'", procMountStats)
+	}
+	defer mountstats.Close()
+
+	// Refer to fs/proc_namespace.c:show_vfsstat() for
+	// the file format.
+	re := regexp.MustCompile(fmt.Sprintf(`device .+ mounted on %s with fstype (.+)`, mountPoint))
+
+	scanner := bufio.NewScanner(mountstats)
+	for scanner.Scan() {
+		line := scanner.Text()
+		matches := re.FindStringSubmatch(line)
+		if len(matches) > 1 {
+			return matches[1], nil
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return "", errors.Wrapf(err, "Failed to parse proc mount stats file %s", procMountStats)
+	}
+
+	return "", errors.Errorf("Failed to find FS type for mount point '%s'", mountPoint)
 }

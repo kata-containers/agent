@@ -1327,13 +1327,18 @@ func realMain() error {
 	r := &agentReaper{}
 	r.init()
 
+	fsType, err := getMountFSType("/")
+	if err != nil {
+		return err
+	}
+
 	// Initialize unique sandbox structure.
 	s := &sandbox{
 		containers: make(map[string]*container),
 		running:    false,
-		// pivot_root won't work for init, see
-		// Documention/filesystem/ramfs-rootfs-initramfs.txt
-		noPivotRoot:    os.Getpid() == 1,
+		// pivot_root won't work for initramfs, see
+		// Documentation/filesystem/ramfs-rootfs-initramfs.txt
+		noPivotRoot:    (fsType == typeRootfs),
 		subreaper:      r,
 		pciDeviceMap:   make(map[string]string),
 		deviceWatchers: make(map[string](chan string)),
