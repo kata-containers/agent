@@ -96,7 +96,7 @@ $(TARGET): $(GENERATED_FILES) $(SOURCES) $(VERSION_FILE)
 	go build $(BUILDFLAGS) -tags "$(BUILDTAGS)" -o $@ \
 		-ldflags "-X main.version=$(VERSION_COMMIT) -X main.seccompSupport=$(SECCOMP) $(LDFLAGS)"
 
-install:
+install: $(TARGET)
 	install -D $(TARGET) $(DESTDIR)$(BINDIR)/$(TARGET)
 ifeq ($(INIT),no)
 	@echo "Installing systemd unit files..."
