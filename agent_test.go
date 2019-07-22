@@ -7,6 +7,8 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
@@ -17,6 +19,8 @@ import (
 	"testing"
 
 	"github.com/opencontainers/runc/libcontainer"
+	"github.com/opencontainers/runc/libcontainer/configs"
+	"github.com/opencontainers/runc/libcontainer/specconv"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
@@ -25,11 +29,35 @@ import (
 const (
 	testExecID      = "testExecID"
 	testContainerID = "testContainerID"
+	testFileMode    = os.FileMode(0640)
+	testDirMode     = os.FileMode(0750)
 )
+
+func createFileWithPerms(file, contents string, perms os.FileMode) error {
+	return ioutil.WriteFile(file, []byte(contents), perms)
+}
+
+func createFile(file, contents string) error {
+	return createFileWithPerms(file, contents, testFileMode)
+}
+
+func createEmptyFile(file string) error {
+	return createFile(file, "")
+}
+
+func createEmptyFileWithPerms(file string, perms os.FileMode) error {
+	return createFileWithPerms(file, "", perms)
+}
 
 func skipUnlessRoot(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skip("Test disabled as requires root user")
+	}
+}
+
+func skipIfRoot(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("Test disabled as requires non-root user")
 	}
 }
 
@@ -198,25 +226,107 @@ func TestSetSandboxStorage(t *testing.T) {
 	assert.Equal(t, 2, refCount, "Invalid refcount, got %d expected 2", refCount)
 }
 
+func bindMount(src, dest string) error {
+	return mount(src, dest, "bind", syscall.MS_BIND, "")
+}
+
 func TestRemoveSandboxStorage(t *testing.T) {
+	skipUnlessRoot(t)
+
 	s := &sandbox{
 		containers: make(map[string]*container),
 	}
 
+	tmpDir, err := ioutil.TempDir("", "")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	src, err := ioutil.TempDir(tmpDir, "src")
+	assert.NoError(t, err)
+
+	dest, err := ioutil.TempDir(tmpDir, "dest")
+	assert.NoError(t, err)
+
+	emptyDir, err := ioutil.TempDir(tmpDir, "empty")
+	assert.NoError(t, err)
+
+	err = s.removeSandboxStorage(emptyDir)
+	assert.Error(t, err, "expect failure as directory is not a mountpoint")
+
+	err = s.removeSandboxStorage("")
+	assert.Error(t, err)
+
+	invalidDir := filepath.Join(emptyDir, "invalid")
+
+	err = s.removeSandboxStorage(invalidDir)
+	assert.Error(t, err)
+
+	// Now, create a double mount as this guarantees the directory cannot
+	// be deleted after the first unmount
+	for range []int{0, 1} {
+		err = bindMount(src, dest)
+		assert.NoError(t, err)
+	}
+
+	err = s.removeSandboxStorage(dest)
+	assert.Error(t, err, "expect fail as deletion cannot happen due to the second mount")
+
+	// This time it should work as the previous two calls have undone the double mount.
+	err = s.removeSandboxStorage(dest)
+	assert.NoError(t, err)
+
 	s.storages = make(map[string]*sandboxStorage)
-	err := s.removeSandboxStorage("/tmp/testEphePath/")
+	err = s.removeSandboxStorage("/tmp/testEphePath/")
 
 	assert.Error(t, err, "Should fail because sandbox storage doesn't exist")
 }
+
 func TestUnsetAndRemoveSandboxStorage(t *testing.T) {
+	skipUnlessRoot(t)
+
 	s := &sandbox{
 		containers: make(map[string]*container),
+		storages:   make(map[string]*sandboxStorage),
 	}
 
-	s.storages = make(map[string]*sandboxStorage)
-	err := s.unsetAndRemoveSandboxStorage("/tmp/testEphePath/")
+	path := "/tmp/testEphePath"
+	err := s.unsetAndRemoveSandboxStorage(path)
 
 	assert.Error(t, err, "Should fail because sandbox storage doesn't exist")
+
+	tmpDir, err := ioutil.TempDir("", "")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	src, err := ioutil.TempDir(tmpDir, "src")
+	assert.NoError(t, err)
+
+	dest, err := ioutil.TempDir(tmpDir, "dest")
+	assert.NoError(t, err)
+
+	err = bindMount(src, dest)
+	assert.NoError(t, err)
+
+	newPath := s.setSandboxStorage(dest)
+	assert.True(t, newPath)
+
+	err = s.unsetAndRemoveSandboxStorage(dest)
+	assert.NoError(t, err)
+
+	// Create another directory
+	dir, err := ioutil.TempDir(tmpDir, "dir")
+	assert.NoError(t, err)
+
+	// Register it
+	newPath = s.setSandboxStorage(dir)
+	assert.True(t, newPath)
+
+	// Now, delete the directory to ensure the following call fails
+	err = os.RemoveAll(dir)
+	assert.NoError(t, err)
+
+	err = s.unsetAndRemoveSandboxStorage(dir)
+	assert.Error(t, err, "should fail as path has been deleted")
 }
 
 func TestUnSetSandboxStorage(t *testing.T) {
@@ -324,7 +434,7 @@ func TestDeleteContainer(t *testing.T) {
 
 func TestGetProcessFromSandbox(t *testing.T) {
 	s := &sandbox{
-		running:    true,
+		running:    false,
 		containers: make(map[string]*container),
 	}
 
@@ -339,6 +449,17 @@ func TestGetProcessFromSandbox(t *testing.T) {
 
 	c.processes[testExecID] = p
 	s.containers[testContainerID] = c
+
+	_, _, err := s.getProcess(testContainerID, testExecID)
+	assert.Error(t, err, "sandbox not running")
+
+	s.running = true
+
+	_, _, err = s.getProcess("invalidCID", testExecID)
+	assert.Error(t, err, "invalid container ID")
+
+	_, _, err = s.getProcess(testContainerID, "invalidExecID")
+	assert.Error(t, err, "invalid exec ID")
 
 	proc, _, err := s.getProcess(testContainerID, testExecID)
 	assert.Nil(t, err, "%v", err)
@@ -409,6 +530,38 @@ func TestMountToRootfs(t *testing.T) {
 	}
 }
 
+func TestMountToRootfsFailed(t *testing.T) {
+	assert := assert.New(t)
+
+	if os.Geteuid() == 0 {
+		t.Skip("need non-root")
+	}
+
+	tmpDir, err := ioutil.TempDir("", "")
+	assert.NoError(err)
+	defer os.RemoveAll(tmpDir)
+
+	existingDir := filepath.Join(tmpDir, "exists")
+	err = os.Mkdir(existingDir, 0750)
+	assert.NoError(err)
+
+	dir := filepath.Join(tmpDir, "dir")
+
+	mounts := []initMount{
+		{"", "", "", []string{}},
+		{"", "", existingDir, []string{}},
+		{"", "", dir, []string{}},
+	}
+
+	for i, m := range mounts {
+		msg := fmt.Sprintf("test[%d]: %+v\n", i, m)
+
+		err := mountToRootfs(m)
+		assert.Error(err, msg)
+	}
+
+}
+
 func TestGetCgroupMountsFailed(t *testing.T) {
 	cgprocDir, err := ioutil.TempDir("", "proc-cgroup")
 	assert.Nil(t, err, "%v", err)
@@ -471,6 +624,9 @@ func TestAddGuestHooks(t *testing.T) {
 	s.scanGuestHooks(hookPath)
 	assert.False(s.guestHooksPresent)
 
+	// No test to perform but this does check the function doesn't panic.
+	s.addGuestHooks(nil)
+
 	spec := &specs.Spec{}
 	s.addGuestHooks(spec)
 	assert.True(len(spec.Hooks.Poststop) == 0)
@@ -486,4 +642,315 @@ func TestAddGuestHooks(t *testing.T) {
 	s.addGuestHooks(spec)
 	assert.True(len(spec.Hooks.Poststop) == 1)
 	assert.True(strings.Contains(spec.Hooks.Poststop[0].Path, "executable"))
+}
+
+type myPostStopHook struct {
+}
+
+const hookErrorMsg = "hook always fails"
+
+func (h *myPostStopHook) Run(_ *specs.State) error {
+	return errors.New(hookErrorMsg)
+}
+
+func TestContainerRemoveContainer(t *testing.T) {
+	skipUnlessRoot(t)
+
+	assert := assert.New(t)
+
+	cid := "foo"
+
+	dir, err := ioutil.TempDir("", "")
+	assert.NoError(err)
+	defer os.RemoveAll(dir)
+
+	containerPath := filepath.Join(dir, "container")
+
+	invalidMountDir := filepath.Join(dir, "bad-mount-dir")
+
+	containerFactory, err := libcontainer.New(containerPath)
+	assert.NoError(err)
+
+	spec := &specs.Spec{
+		Root: &specs.Root{
+			Path:     containerPath,
+			Readonly: false,
+		},
+	}
+
+	hooks := &configs.Hooks{
+		Poststop: []configs.Hook{
+			&myPostStopHook{},
+		},
+	}
+
+	mounts := []string{invalidMountDir}
+
+	type testData struct {
+		withBadMount bool
+		withBadHook  bool
+		expectError  bool
+	}
+
+	data := []testData{
+		{false, false, false},
+		{true, false, true},
+		{false, true, true},
+		{true, true, true},
+	}
+
+	for i, d := range data {
+		msg := fmt.Sprintf("test[%d]: %+v\n", i, d)
+
+		config, err := specconv.CreateLibcontainerConfig(&specconv.CreateOpts{
+			CgroupName:   cid,
+			NoNewKeyring: true,
+			Spec:         spec,
+			NoPivotRoot:  true,
+		})
+		assert.NoError(err, msg)
+
+		if d.withBadHook {
+			config.Hooks = hooks
+		}
+
+		libContainerContainer, err := containerFactory.Create(cid, config)
+		assert.NoError(err, msg)
+
+		c := container{
+			ctx:       context.Background(),
+			id:        cid,
+			processes: make(map[string]*process),
+			container: libContainerContainer,
+		}
+
+		if d.withBadMount {
+			c.mounts = mounts
+		}
+
+		err = c.removeContainer()
+		if d.expectError {
+			assert.Error(err, msg)
+
+			if d.withBadHook {
+				assert.Equal(err.Error(), hookErrorMsg, msg)
+			}
+
+			continue
+		}
+
+		assert.NoError(err, msg)
+	}
+}
+
+func TestGetGRPCContext(t *testing.T) {
+	assert := assert.New(t)
+
+	grpcContext = nil
+	ctx := getGRPCContext()
+	assert.NotNil(ctx)
+
+	grpcContext = context.Background()
+	ctx = getGRPCContext()
+	assert.NotNil(ctx)
+	assert.Equal(ctx, grpcContext)
+}
+
+func TestGetMemory(t *testing.T) {
+	assert := assert.New(t)
+
+	dir, err := ioutil.TempDir("", "")
+	assert.NoError(err)
+	defer os.RemoveAll(dir)
+
+	file := filepath.Join(dir, "meminfo")
+
+	savedMeminfo := meminfo
+	defer func() {
+		meminfo = savedMeminfo
+	}()
+
+	// Override the file
+	meminfo = file
+
+	type testData struct {
+		contents       string
+		expectedResult string
+		createFile     bool
+		expectError    bool
+	}
+
+	memKB := 13
+	memKBStr := fmt.Sprintf("%d", memKB)
+
+	entry := fmt.Sprintf("MemTotal:      %d\n", memKB)
+	tooManyFieldsEntry := fmt.Sprintf("MemTotal: foo:     %d\n", memKB)
+	noNumericEntry := fmt.Sprintf("MemTotal: \n")
+
+	data := []testData{
+		{
+			"",
+			"",
+			false,
+			true,
+		},
+		{
+			"",
+			"",
+			true,
+			true,
+		},
+		{
+			"hello",
+			"",
+			true,
+			true,
+		},
+		{
+			"hello:",
+			"",
+			true,
+			true,
+		},
+		{
+			"hello: world",
+			"",
+			true,
+			true,
+		},
+		{
+			"hello: world:",
+			"",
+			true,
+			true,
+		},
+		{
+			"MemTotal:      ",
+			"",
+			true,
+			true,
+		},
+		{
+			"MemTotal:",
+			"",
+			true,
+			true,
+		},
+		{
+			tooManyFieldsEntry,
+			"",
+			true,
+			true,
+		},
+		{
+			noNumericEntry,
+			"",
+			true,
+			true,
+		},
+		{
+			entry,
+			memKBStr,
+			true,
+			false,
+		},
+	}
+
+	for i, d := range data {
+		msg := fmt.Sprintf("test[%d]: %+v\n", i, d)
+
+		if d.createFile {
+			err := createFile(file, d.contents)
+			assert.NoError(err, msg)
+			defer os.Remove(file)
+		} else {
+			// Ensure it does not exist
+			os.Remove(file)
+		}
+
+		mem, err := getMemory()
+		if d.expectError {
+			assert.Error(err, msg)
+			continue
+		}
+
+		assert.NoError(err, msg)
+
+		assert.Equal(d.expectedResult, mem, msg)
+	}
+}
+
+func TestSetupDebugConsole(t *testing.T) {
+	assert := assert.New(t)
+
+	dir, err := ioutil.TempDir("", "")
+	assert.NoError(err)
+	defer os.RemoveAll(dir)
+
+	sh := filepath.Join(dir, "sh")
+	console := filepath.Join(dir, "console")
+
+	savedDebugConsole := debugConsole
+	savedSupportedShells := supportedShells
+
+	defer func() {
+		debugConsole = savedDebugConsole
+		supportedShells = savedSupportedShells
+	}()
+
+	type testData struct {
+		consolePath   string
+		shells        []string
+		debugConsole  bool
+		createConsole bool
+		createShells  bool
+		expectError   bool
+	}
+
+	data := []testData{
+		{"", []string{}, false, false, false, false},
+		{"", []string{}, true, false, false, true},
+		{"", []string{sh}, true, false, false, true},
+		{"", []string{sh}, true, false, true, true},
+		{console, []string{sh}, true, false, true, true},
+		{console, []string{}, true, true, false, true},
+
+		{console, []string{sh}, true, true, true, false},
+	}
+
+	for i, d := range data {
+		msg := fmt.Sprintf("test[%d]: %+v\n", i, d)
+
+		// override
+		debugConsole = d.debugConsole
+		supportedShells = d.shells
+
+		if d.createConsole {
+			err = createEmptyFile(d.consolePath)
+			assert.NoError(err, msg)
+		} else {
+			os.Remove(d.consolePath)
+		}
+
+		for _, shell := range d.shells {
+			if d.createShells {
+				err = createEmptyFile(shell)
+				assert.NoError(err, msg)
+			} else {
+				os.Remove(shell)
+			}
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		err := setupDebugConsole(ctx, d.consolePath)
+
+		if d.expectError {
+			assert.Error(err, msg)
+			continue
+		}
+
+		assert.NoError(err, msg)
+	}
 }

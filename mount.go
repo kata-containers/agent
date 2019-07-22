@@ -23,12 +23,11 @@ import (
 )
 
 const (
-	type9pFs       = "9p"
-	typeVirtioFS   = "virtio_fs"
-	typeTmpFs      = "tmpfs"
-	devPrefix      = "/dev/"
-	timeoutHotplug = 3
-	mountPerm      = os.FileMode(0755)
+	type9pFs     = "9p"
+	typeVirtioFS = "virtio_fs"
+	typeTmpFs    = "tmpfs"
+	devPrefix    = "/dev/"
+	mountPerm    = os.FileMode(0755)
 )
 
 var flagList = map[string]int{
@@ -158,7 +157,7 @@ func ensureDestinationExists(source, destination string, fsType string) error {
 	return nil
 }
 
-func parseMountFlagsAndOptions(optionList []string) (int, string, error) {
+func parseMountFlagsAndOptions(optionList []string) (int, string) {
 	var (
 		flags   int
 		options []string
@@ -174,7 +173,7 @@ func parseMountFlagsAndOptions(optionList []string) (int, string, error) {
 		options = append(options, opt)
 	}
 
-	return flags, strings.Join(options, ","), nil
+	return flags, strings.Join(options, ",")
 }
 
 func parseOptions(optionList []string) map[string]string {
@@ -202,7 +201,7 @@ func removeMounts(mounts []string) error {
 
 // storageHandler is the type of callback to be defined to handle every
 // type of storage driver.
-type storageHandler func(storage pb.Storage, s *sandbox) (string, error)
+type storageHandler func(ctx context.Context, storage pb.Storage, s *sandbox) (string, error)
 
 // storageHandlerList lists the supported drivers.
 var storageHandlerList = map[string]storageHandler{
@@ -215,7 +214,7 @@ var storageHandlerList = map[string]storageHandler{
 	driverLocalType:     localStorageHandler,
 }
 
-func ephemeralStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
+func ephemeralStorageHandler(_ context.Context, storage pb.Storage, s *sandbox) (string, error) {
 	s.Lock()
 	defer s.Unlock()
 	newStorage := s.setSandboxStorage(storage.MountPoint)
@@ -230,7 +229,7 @@ func ephemeralStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
 	return "", nil
 }
 
-func localStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
+func localStorageHandler(_ context.Context, storage pb.Storage, s *sandbox) (string, error) {
 	s.Lock()
 	defer s.Unlock()
 	newStorage := s.setSandboxStorage(storage.MountPoint)
@@ -254,23 +253,23 @@ func localStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
 }
 
 // virtio9pStorageHandler handles the storage for 9p driver.
-func virtio9pStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
+func virtio9pStorageHandler(_ context.Context, storage pb.Storage, s *sandbox) (string, error) {
 	return commonStorageHandler(storage)
 }
 
 // virtioMmioBlkStorageHandler handles the storage for mmio blk driver.
-func virtioMmioBlkStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
+func virtioMmioBlkStorageHandler(_ context.Context, storage pb.Storage, s *sandbox) (string, error) {
 	//The source path is VmPath
 	return commonStorageHandler(storage)
 }
 
 // virtioFSStorageHandler handles the storage for virtio-fs.
-func virtioFSStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
+func virtioFSStorageHandler(_ context.Context, storage pb.Storage, s *sandbox) (string, error) {
 	return commonStorageHandler(storage)
 }
 
 // virtioBlkStorageHandler handles the storage for blk driver.
-func virtioBlkStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
+func virtioBlkStorageHandler(_ context.Context, storage pb.Storage, s *sandbox) (string, error) {
 
 	// If hot-plugged, get the device node path based on the PCI address else
 	// use the virt path provided in Storage Source
@@ -282,7 +281,7 @@ func virtioBlkStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
 		}
 		// Make sure the virt path is valid
 		if FileInfo.Mode()&os.ModeDevice == 0 {
-			return "", err
+			return "", fmt.Errorf("invalid device %s", storage.Source)
 		}
 
 	} else {
@@ -298,9 +297,9 @@ func virtioBlkStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
 }
 
 // virtioSCSIStorageHandler handles the storage for scsi driver.
-func virtioSCSIStorageHandler(storage pb.Storage, s *sandbox) (string, error) {
+func virtioSCSIStorageHandler(ctx context.Context, storage pb.Storage, s *sandbox) (string, error) {
 	// Retrieve the device path from SCSI address.
-	devPath, err := getSCSIDevPath(storage.Source)
+	devPath, err := getSCSIDevPath(ctx, storage.Source)
 	if err != nil {
 		return "", err
 	}
@@ -320,10 +319,7 @@ func commonStorageHandler(storage pb.Storage) (string, error) {
 
 // mountStorage performs the mount described by the storage structure.
 func mountStorage(storage pb.Storage) error {
-	flags, options, err := parseMountFlagsAndOptions(storage.Options)
-	if err != nil {
-		return err
-	}
+	flags, options := parseMountFlagsAndOptions(storage.Options)
 
 	return mount(storage.Source, storage.MountPoint, storage.Fstype, flags, options)
 }
@@ -370,7 +366,7 @@ func addStorages(ctx context.Context, storages []*pb.Storage, s *sandbox) (mount
 		// the handler interface but also to avoid having to add trace
 		// code to each driver.
 		handlerSpan, _ := trace(ctx, "mount", storage.Driver)
-		mountPoint, err := devHandler(*storage, s)
+		mountPoint, err := devHandler(ctx, *storage, s)
 		handlerSpan.Finish()
 
 		if _, ok := s.storages[storage.MountPoint]; ok {
