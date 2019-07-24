@@ -605,3 +605,46 @@ func TestMountEnsureDestinationExists(t *testing.T) {
 		}
 	}
 }
+
+func TestGetMountFSType(t *testing.T) {
+	assert := assert.New(t)
+
+	// Type used to hold function parameters and expected results.
+	type testData struct {
+		param1         string
+		expectedResult string
+		expectError    bool
+	}
+
+	// List of tests to run including the expected results
+	data := []testData{
+		// failure scenarios
+		{"/thisPathShouldNotBeAMountPoint", "", true},
+
+		// success scenarios
+		{"/proc", "proc", false},
+		{"/sys", "sysfs", false},
+		{"/run", "tmpfs", false},
+	}
+
+	// Run the tests
+	for i, d := range data {
+		// Create a test-specific string that is added to each assert
+		// call. It will be displayed if any assert test fails.
+		msg := fmt.Sprintf("test[%d]: %+v", i, d)
+
+		// Call the function under test
+		result, err := getMountFSType(d.param1)
+
+		if d.expectError {
+			assert.Error(err, msg)
+
+			// If an error is expected, there is no point
+			// performing additional checks.
+			continue
+		}
+
+		assert.NoError(err, msg)
+		assert.Equal(d.expectedResult, result, msg)
+	}
+}
