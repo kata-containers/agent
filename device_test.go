@@ -779,3 +779,45 @@ func TestGetSCSIDevPath(t *testing.T) {
 	cancel()
 
 }
+
+func TestFindBlkCCWDevPath(t *testing.T) {
+	bus := "0.0.0005"
+	assert := assert.New(t)
+	expectDev := "vdb"
+	dir := fmt.Sprintf("/tmp/sys/bus/ccw/devices/%s/virtio5/block/%s", bus, expectDev)
+	busPath := fmt.Sprintf("/tmp/sys/bus/ccw/devices/%s", bus)
+	err := os.MkdirAll(dir, mountPerm)
+	assert.Nil(err)
+
+	dev, err := findBlkCCWDevPath(busPath)
+	assert.Nil(err)
+
+	if dev != expectDev {
+		t.Errorf("Expected value %s got %s", expectDev, dev)
+	}
+
+	bus = "../dev"
+	busPath = fmt.Sprintf("/tmp/sys/bus/ccw/devices/%s", bus)
+	err = os.MkdirAll(dir, mountPerm)
+	assert.Nil(err)
+	_, err = findBlkCCWDevPath(busPath)
+	assert.NotNil(err, fmt.Sprintf("findBlkCCWDevPath() should have been failed with bus %s", bus))
+
+}
+
+func TestCheckCCWBusFormat(t *testing.T) {
+	assert := assert.New(t)
+
+	wrongBuses := []string{"", "fe.0.0000", "0.5.0000", "some_wrong_path", "0.1.fffff", "0.0.0"}
+	rightBuses := []string{"0.3.abcd", "0.0.0000", "0.1.0000"}
+
+	for _, bus := range wrongBuses {
+		err := checkCCWBusFormat(bus)
+		assert.NotNil(err, fmt.Sprintf("checkCCWBusFormat() should have been failed with bus %s", bus))
+	}
+
+	for _, bus := range rightBuses {
+		err := checkCCWBusFormat(bus)
+		assert.Nil(err)
+	}
+}

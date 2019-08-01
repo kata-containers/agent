@@ -13,6 +13,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -29,6 +30,7 @@ const (
 	driver9pType        = "9p"
 	driverVirtioFSType  = "virtio-fs"
 	driverBlkType       = "blk"
+	driverBlkCCWType    = "blk-ccw"
 	driverMmioBlkType   = "mmioblk"
 	driverSCSIType      = "scsi"
 	driverNvdimmType    = "nvdimm"
@@ -52,6 +54,15 @@ var (
 	scanSCSIBus         = scanSCSIBusImpl
 )
 
+// CCW variables
+var (
+	channelSubSystem = "/devices/css0"
+	sysCCWBusDir     = sysfsDir + "/bus/ccw/devices"
+	blkCCWSuffix     = "virtio"
+)
+
+const maxDeviceIDValue = 3
+
 // SCSI variables
 var (
 	// Here in "0:0", the first number is the SCSI host number because
@@ -70,6 +81,7 @@ type deviceHandler func(ctx context.Context, device pb.Device, spec *pb.Spec, s 
 var deviceHandlerList = map[string]deviceHandler{
 	driverMmioBlkType: virtioMmioBlkDeviceHandler,
 	driverBlkType:     virtioBlkDeviceHandler,
+	driverBlkCCWType:  virtioBlkCCWDeviceHandler,
 	driverSCSIType:    virtioSCSIDeviceHandler,
 	driverNvdimmType:  nvdimmDeviceHandler,
 }
@@ -185,6 +197,21 @@ func virtioMmioBlkDeviceHandler(_ context.Context, device pb.Device, spec *pb.Sp
 		return fmt.Errorf("Invalid path for virtioMmioBlkDevice")
 	}
 
+	return updateSpecDeviceList(device, spec)
+}
+
+func virtioBlkCCWDeviceHandler(ctx context.Context, device pb.Device, spec *pb.Spec, _ *sandbox) error {
+	devPath, err := getBlkCCWDevPath(ctx, device.Id)
+	if err != nil {
+		return err
+	}
+
+	if devPath == "" {
+		return grpcStatus.Errorf(codes.InvalidArgument,
+			"Storage source is empty")
+	}
+
+	device.VmPath = devPath
 	return updateSpecDeviceList(device, spec)
 }
 
@@ -445,6 +472,92 @@ func getSCSIDevPathImpl(ctx context.Context, scsiAddr string) (string, error) {
 	}
 
 	return filepath.Join(devPrefix, scsiDiskName), nil
+}
+
+// checkCCWBusFormat checks the format for the ccw bus. It needs to be in the form 0.<n>.<dddd>
+// n is the subchannel set ID - integer from 0 up to 3
+// dddd is the device id - integer in hex up to 0xffff
+// See https://www.ibm.com/support/knowledgecenter/en/linuxonibm/com.ibm.linux.z.ldva/ldva_r_XML_Address.html
+func checkCCWBusFormat(bus string) error {
+	busFormat := strings.Split(bus, ".")
+	if len(busFormat) != 3 {
+		return fmt.Errorf("Wrong bus format. It needs to be in the form 0.<n>.<dddd>, got %s", bus)
+	}
+
+	bus0, err := strconv.ParseInt(busFormat[0], 10, 32)
+	if err != nil {
+		return err
+	}
+	if bus0 != 0 {
+		return fmt.Errorf("Wrong bus format. First digit needs to be 0 instead is %d", bus0)
+	}
+
+	bus1, err := strconv.ParseInt(busFormat[1], 10, 32)
+	if err != nil {
+		return err
+	}
+	if bus1 > maxDeviceIDValue {
+		return fmt.Errorf("Wrong bus format. Second digit must be lower than %d instead is %d", maxDeviceIDValue, bus1)
+	}
+
+	if len(busFormat[2]) != 4 {
+		return fmt.Errorf("Wrong bus format. Third digit must be in the form <dddd>, got %s", bus)
+	}
+	busFormat[2] = "0x" + busFormat[2]
+	_, err = strconv.ParseInt(busFormat[2], 0, 32)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// findBlkCCWDevPath finds the CCW block disk name associated with the given CCW block path.
+func findBlkCCWDevPath(blkCCWpath string) (string, error) {
+	files, err := ioutil.ReadDir(blkCCWpath)
+	if err != nil {
+		return "", err
+	}
+
+	for _, f := range files {
+		if strings.Contains(f.Name(), blkCCWSuffix) {
+			subPath := filepath.Join(blkCCWpath, f.Name(), "block")
+			files2, err := ioutil.ReadDir(subPath)
+			if err != nil {
+				return "", err
+			}
+			if len(files2) != 1 {
+				return "", grpcStatus.Errorf(codes.Internal,
+					"Expecting a single blk CCW device in %s found %v",
+					subPath, files2)
+			}
+			return files2[0].Name(), nil
+		}
+	}
+	return "", grpcStatus.Errorf(codes.Internal, "Path %s for blk CCW not found", blkCCWpath)
+}
+
+// getBlkCCWDevPath returns the CCW block path based on the bus ID
+func getBlkCCWDevPath(ctx context.Context, bus string) (string, error) {
+	if err := checkCCWBusFormat(bus); err != nil {
+		return "", err
+	}
+	devPath := filepath.Join(sysCCWBusDir, bus)
+
+	checkUevent := func(uEv *uevent.Uevent) bool {
+		return (uEv.Action == "add" &&
+			strings.Contains(uEv.DevPath, channelSubSystem))
+	}
+	if err := waitForDevice(ctx, devPath, bus, checkUevent); err != nil {
+		return "", err
+	}
+
+	blkCCWDiskName, err := findBlkCCWDevPath(devPath)
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(devPrefix, blkCCWDiskName), nil
 }
 
 func addDevices(ctx context.Context, devices []*pb.Device, spec *pb.Spec, s *sandbox) error {
