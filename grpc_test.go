@@ -1754,3 +1754,22 @@ func TestTtyWinResize(t *testing.T) {
 	_, err := a.TtyWinResize(context.Background(), req)
 	assert.Error(err)
 }
+
+func TestLoadKernelModule(t *testing.T) {
+	assert := assert.New(t)
+
+	err := loadKernelModule(nil)
+	assert.Error(err)
+
+	m := &pb.KernelModule{
+		Name:       "",
+		Parameters: []string{"opt"},
+	}
+	err = loadKernelModule(m)
+	assert.Error(err)
+
+	modprobePath = "/bin/echo"
+	m.Name = "fake"
+	err = loadKernelModule(m)
+	assert.NoError(err)
+}

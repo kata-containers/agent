@@ -62,6 +62,8 @@ var (
 
 	// set when StopTracing() is called.
 	stopTracingCalled = false
+
+	modprobePath = "/sbin/modprobe"
 )
 
 type onlineResource struct {
@@ -1399,6 +1401,35 @@ func (a *agentGRPC) TtyWinResize(ctx context.Context, req *pb.TtyWinResizeReques
 	return emptyResp, nil
 }
 
+func loadKernelModule(module *pb.KernelModule) error {
+	if module == nil {
+		return fmt.Errorf("Kernel module is nil")
+	}
+
+	if module.Name == "" {
+		return fmt.Errorf("Kernel module name is empty")
+	}
+
+	log := agentLog.WithFields(logrus.Fields{
+		"module-name":   module.Name,
+		"module-params": module.Parameters,
+	})
+
+	log.Debug("loading module")
+	cmd := exec.Command(modprobePath, "-v", module.Name)
+
+	if len(module.Parameters) > 0 {
+		cmd.Args = append(cmd.Args, module.Parameters...)
+	}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("could not load module: %v: %v", err, string(output))
+	}
+
+	return nil
+}
+
 func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequest) (*gpb.Empty, error) {
 	if a.sandbox.running {
 		return emptyResp, grpcStatus.Error(codes.AlreadyExists, "Sandbox already started, impossible to start again")
@@ -1413,6 +1444,12 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 	a.sandbox.storages = make(map[string]*sandboxStorage)
 	a.sandbox.guestHooks = &specs.Hooks{}
 	a.sandbox.guestHooksPresent = false
+
+	for _, m := range req.KernelModules {
+		if err := loadKernelModule(m); err != nil {
+			return emptyResp, err
+		}
+	}
 
 	if req.GuestHookPath != "" {
 		a.sandbox.scanGuestHooks(req.GuestHookPath)
