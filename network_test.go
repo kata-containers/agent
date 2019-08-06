@@ -307,6 +307,11 @@ func TestListRoutes(t *testing.T) {
 	//Test a simple route setup:
 	inputRoutesSimple := []*types.Route{
 		{Dest: "", Gateway: "192.168.0.1", Source: "", Scope: 0, Device: "ifc-name"},
+	}
+
+	expectedRoutes := []*types.Route{
+		{Dest: "", Gateway: "192.168.0.1", Source: "", Scope: 0, Device: "ifc-name"},
+		// This route is auto-added by kernel, and we no longer delete kernel proto routes
 		{Dest: "192.168.0.0/16", Gateway: "", Source: "192.168.0.2", Scope: 253, Device: "ifc-name"},
 	}
 
@@ -314,9 +319,31 @@ func TestListRoutes(t *testing.T) {
 		Routes: inputRoutesSimple,
 	}
 
-	s.updateRoutes(netHandle, testRoutes)
+	_, err := s.updateRoutes(netHandle, testRoutes)
+	assert.Nil(err)
 	results, err := s.listRoutes(nil)
 	assert.Nil(err, "Expected to list all routes")
+
+	assert.True(reflect.DeepEqual(results.Routes[0], expectedRoutes[0]),
+		"Route listed didn't match: got %+v, expecting %+v", results.Routes[0], expectedRoutes[0])
+	assert.True(reflect.DeepEqual(results.Routes[1], expectedRoutes[1]),
+		"Route listed didn't match: got %+v, expecting %+v", results.Routes[1], expectedRoutes[1])
+
+	inputRoutesSimple = []*types.Route{
+		{Dest: "", Gateway: "192.168.0.1", Source: "", Scope: 0, Device: "ifc-name"},
+		// This works too, in case a duplicate route added by kernel exists, this route will over-ride it
+		{Dest: "192.168.0.0/16", Gateway: "", Source: "192.168.0.2", Scope: 253, Device: "ifc-name"},
+	}
+
+	testRoutes = &pb.Routes{
+		Routes: inputRoutesSimple,
+	}
+
+	_, err = s.updateRoutes(netHandle, testRoutes)
+	assert.Nil(err)
+	results, err = s.listRoutes(nil)
+	assert.Nil(err, "Expected to list all routes")
+
 	assert.True(reflect.DeepEqual(results.Routes[0], inputRoutesSimple[0]),
 		"Route listed didn't match: got %+v, expecting %+v", results.Routes[0], inputRoutesSimple[0])
 	assert.True(reflect.DeepEqual(results.Routes[1], inputRoutesSimple[1]),
