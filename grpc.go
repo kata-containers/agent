@@ -606,6 +606,11 @@ func (a *agentGRPC) finishCreateContainer(ctr *container, req *pb.CreateContaine
 }
 
 func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainerRequest) (resp *gpb.Empty, err error) {
+
+	if err := setupDNS(a.sandbox.id); err != nil {
+		return emptyResp, err
+	}
+
 	if err := a.createContainerChecks(req); err != nil {
 		return emptyResp, err
 	}
@@ -1477,10 +1482,6 @@ func (a *agentGRPC) CreateSandbox(ctx context.Context, req *pb.CreateSandboxRequ
 	}
 
 	a.sandbox.mounts = mountList
-
-	if err := setupDNS(a.sandbox.network.dns); err != nil {
-		return emptyResp, err
-	}
 
 	return emptyResp, nil
 }

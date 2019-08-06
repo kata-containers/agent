@@ -10,8 +10,12 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 
@@ -24,11 +28,13 @@ import (
 )
 
 var (
-	errNoHandle = grpcStatus.Errorf(codes.InvalidArgument, "Need network handle")
-	errNoIF     = grpcStatus.Errorf(codes.InvalidArgument, "Need network interface")
-	errNoLink   = grpcStatus.Errorf(codes.InvalidArgument, "Need network link")
-	errNoMAC    = grpcStatus.Errorf(codes.InvalidArgument, "Need hardware address")
-	errNoRoutes = grpcStatus.Errorf(codes.InvalidArgument, "Need network routes")
+	errNoHandle        = grpcStatus.Errorf(codes.InvalidArgument, "Need network handle")
+	errNoIF            = grpcStatus.Errorf(codes.InvalidArgument, "Need network interface")
+	errNoLink          = grpcStatus.Errorf(codes.InvalidArgument, "Need network link")
+	errNoMAC           = grpcStatus.Errorf(codes.InvalidArgument, "Need hardware address")
+	errNoRoutes        = grpcStatus.Errorf(codes.InvalidArgument, "Need network routes")
+	kataGuestSharedDir = "/run/kata-containers/shared/containers"
+	kataGuestFileDNS   = "/etc/resolv.conf"
 )
 
 const (
@@ -574,9 +580,91 @@ func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *types.Route, add
 /////////
 // DNS //
 /////////
+func mountFile(source, destination, fsType string, flags int, options string) error {
+	agentLog.WithFields(logrus.Fields{
+		"mount-source":      source,
+		"mount-destination": destination,
+		"mount-fstype":      fsType,
+		"mount-flags":       flags,
+		"mount-options":     options,
+	}).Debug()
 
-func setupDNS(dns []string) error {
+	if source == "" {
+		return fmt.Errorf("need mount source")
+	}
+
+	if destination == "" {
+		return fmt.Errorf("need mount destination")
+	}
+
+	if fsType == "" {
+		return fmt.Errorf("need mount FS type")
+	}
+	var err error
+
+	_, err = os.Stat(destination)
+	if os.IsNotExist(err) {
+		os.Create(destination)
+	}
+
+	_, err = os.Stat(source)
+	if os.IsNotExist(err) {
+		return grpcStatus.Errorf(codes.Internal, "Mount source %v does not exist. Error: %v",
+			source, err)
+	}
+	if err = syscall.Mount(source, destination,
+		fsType, uintptr(flags), options); err != nil {
+		return grpcStatus.Errorf(codes.Internal, "Could not mount %v to %v: %v",
+			source, destination, err)
+	}
+
 	return nil
+
+}
+
+func traverseFiles(files *[]string) filepath.WalkFunc {
+	return func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		*files = append(*files, path)
+		return nil
+	}
+}
+
+func getSandboxDNSFile(sandboxID string) (string, error) {
+
+	var files []string
+	err := filepath.Walk(kataGuestSharedDir, traverseFiles(&files))
+	if err != nil {
+		return "", err
+	}
+	for _, file := range files {
+		logrus.Printf("Files are %v", file)
+		if strings.Contains(file, sandboxID) && strings.Contains(file, "resolv.conf") {
+			return file, nil
+		}
+	}
+
+	return "", nil
+}
+
+func Mounted(mountpoint string) bool {
+	res, _ := exec.Command("sh", "-c", "mount | grep /etc/resolv.conf").Output()
+	return (len(res) > 0)
+}
+
+func setupDNS(id string) error {
+	if mounted := Mounted(kataGuestFileDNS); mounted {
+		return nil
+	}
+	kataGuestSharedFileDNS, err := getSandboxDNSFile(id)
+	if err != nil {
+		return grpcStatus.Errorf(codes.Internal, "Could not find sandbox dns file: %v", err)
+	}
+
+	err = mountFile(kataGuestSharedFileDNS, kataGuestFileDNS, "bind", syscall.MS_BIND, "")
+	return err
 }
 
 ////////////
