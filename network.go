@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"strings"
 	"sync"
 
 	"golang.org/x/sys/unix"
@@ -356,6 +357,11 @@ func (s *sandbox) deleteRoutes(netHandle *netlink.Handle) error {
 			continue
 		}
 
+		// If route is installed by kernel, do not delete
+		if initRoute.Protocol == unix.RTPROT_KERNEL {
+			continue
+		}
+
 		err = netHandle.RouteDel(&initRoute)
 		if err != nil {
 			//If there was an error deleting some of the initial routes,
@@ -528,6 +534,14 @@ func (s *sandbox) processRoute(netHandle *netlink.Handle, route *types.Route) (*
 	return netRoute, nil
 }
 
+func checkDuplicateRoute(rt, netRoute *netlink.Route) bool {
+	if rt.Dst == nil {
+		return netRoute.Dst == nil && rt.Gw.Equal(netRoute.Gw)
+	}
+
+	return netRoute.Dst != nil && (rt.Dst.String() == netRoute.Dst.String()) && rt.Src.Equal(netRoute.Src)
+}
+
 func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *types.Route, add bool) (err error) {
 	s.network.routesLock.Lock()
 	defer s.network.routesLock.Unlock()
@@ -547,10 +561,30 @@ func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *types.Route, add
 
 	if add {
 		if err := netHandle.RouteAdd(netRoute); err != nil {
-			return grpcStatus.Errorf(codes.Internal, "Could not add route dest(%s)/gw(%s)/dev(%s): %v",
+			// Doing a string comparison here for lack of error codes from upstream
+			if strings.Contains(err.Error(), "file exists") {
+				agentLog.Infof("Route exists, will try to delete duplicate route first")
+
+				rts, _ := netHandle.RouteList(nil, netlink.FAMILY_ALL)
+				for _, rt := range rts {
+					if checkDuplicateRoute(&rt, netRoute) {
+						// Delete route first
+						if err := netHandle.RouteDel(&rt); err != nil {
+							return grpcStatus.Errorf(codes.Internal, "Could not add route dest(%s)/gw(%s)/dev(%s), duplicate route exists, error deleting existing route: %v", route.Dest, route.Gateway, route.Device, err)
+						}
+
+						if err := netHandle.RouteAdd(netRoute); err != nil {
+							break
+						}
+
+						s.network.routes = append(s.network.routes, *route)
+						return nil
+					}
+				}
+			}
+			return grpcStatus.Errorf(codes.Internal, "Could not add/replace route dest(%s)/gw(%s)/dev(%s): %v",
 				route.Dest, route.Gateway, route.Device, err)
 		}
-
 		// Add route to sandbox route list.
 		s.network.routes = append(s.network.routes, *route)
 	} else {

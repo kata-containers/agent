@@ -307,6 +307,11 @@ func TestListRoutes(t *testing.T) {
 	//Test a simple route setup:
 	inputRoutesSimple := []*types.Route{
 		{Dest: "", Gateway: "192.168.0.1", Source: "", Scope: 0, Device: "ifc-name"},
+	}
+
+	expectedRoutes := []*types.Route{
+		{Dest: "", Gateway: "192.168.0.1", Source: "", Scope: 0, Device: "ifc-name"},
+		// This route is auto-added by kernel, and we no longer delete kernel proto routes
 		{Dest: "192.168.0.0/16", Gateway: "", Source: "192.168.0.2", Scope: 253, Device: "ifc-name"},
 	}
 
@@ -314,11 +319,106 @@ func TestListRoutes(t *testing.T) {
 		Routes: inputRoutesSimple,
 	}
 
-	s.updateRoutes(netHandle, testRoutes)
+	_, err := s.updateRoutes(netHandle, testRoutes)
+	assert.Nil(err)
 	results, err := s.listRoutes(nil)
 	assert.Nil(err, "Expected to list all routes")
+
+	assert.True(reflect.DeepEqual(results.Routes[0], expectedRoutes[0]),
+		"Route listed didn't match: got %+v, expecting %+v", results.Routes[0], expectedRoutes[0])
+	assert.True(reflect.DeepEqual(results.Routes[1], expectedRoutes[1]),
+		"Route listed didn't match: got %+v, expecting %+v", results.Routes[1], expectedRoutes[1])
+
+	inputRoutesSimple = []*types.Route{
+		{Dest: "", Gateway: "192.168.0.1", Source: "", Scope: 0, Device: "ifc-name"},
+		// This works too, in case a duplicate route added by kernel exists, this route will over-ride it
+		{Dest: "192.168.0.0/16", Gateway: "", Source: "192.168.0.2", Scope: 253, Device: "ifc-name"},
+	}
+
+	testRoutes = &pb.Routes{
+		Routes: inputRoutesSimple,
+	}
+
+	_, err = s.updateRoutes(netHandle, testRoutes)
+	assert.Nil(err)
+	results, err = s.listRoutes(nil)
+	assert.Nil(err, "Expected to list all routes")
+
 	assert.True(reflect.DeepEqual(results.Routes[0], inputRoutesSimple[0]),
 		"Route listed didn't match: got %+v, expecting %+v", results.Routes[0], inputRoutesSimple[0])
 	assert.True(reflect.DeepEqual(results.Routes[1], inputRoutesSimple[1]),
 		"Route listed didn't match: got %+v, expecting %+v", results.Routes[1], inputRoutesSimple[1])
+}
+
+func TestListRoutesWithTwoInterfacesSameSubnet(t *testing.T) {
+	tearDown := setupNetworkTest(t)
+	defer tearDown()
+
+	assert := assert.New(t)
+
+	s := sandbox{}
+
+	// create a dummy link which we'll play with
+	macAddr := net.HardwareAddr{0x02, 0x00, 0xCA, 0xFE, 0x00, 0x48}
+	linkOne := &netlink.Dummy{
+		LinkAttrs: netlink.LinkAttrs{
+			MTU:          1500,
+			TxQLen:       -1,
+			Name:         "ifc-name",
+			HardwareAddr: macAddr,
+		},
+	}
+	netHandle, _ := netlink.NewHandle()
+	defer netHandle.Delete()
+
+	netHandle.LinkAdd(linkOne)
+	if err := netHandle.LinkSetUp(linkOne); err != nil {
+		t.Fatal(err)
+	}
+	netlinkAddr, _ := netlink.ParseAddr("192.168.0.2/16")
+	netHandle.AddrAdd(linkOne, netlinkAddr)
+
+	linkTwo := &netlink.Dummy{
+		LinkAttrs: netlink.LinkAttrs{
+			MTU:          1500,
+			TxQLen:       -1,
+			Name:         "ifc-name2",
+			HardwareAddr: macAddr,
+		},
+	}
+
+	netHandle.LinkAdd(linkTwo)
+	if err := netHandle.LinkSetUp(linkTwo); err != nil {
+		t.Fatal(err)
+	}
+	netlinkAddr, _ = netlink.ParseAddr("192.168.0.3/16")
+	netHandle.AddrAdd(linkTwo, netlinkAddr)
+
+	//Test a simple route setup:
+	inputRoutesSimple := []*types.Route{
+		{Dest: "", Gateway: "192.168.0.1", Source: "", Scope: 0, Device: "ifc-name"},
+	}
+
+	expectedRoutes := []*types.Route{
+		{Dest: "", Gateway: "192.168.0.1", Source: "", Scope: 0, Device: "ifc-name"},
+		{Dest: "192.168.0.0/16", Gateway: "", Source: "192.168.0.2", Scope: 253, Device: "ifc-name"},
+		{Dest: "192.168.0.0/16", Gateway: "", Source: "192.168.0.3", Scope: 253, Device: "ifc-name2"},
+	}
+
+	testRoutes := &pb.Routes{
+		Routes: inputRoutesSimple,
+	}
+
+	_, err := s.updateRoutes(netHandle, testRoutes)
+	assert.Nil(err)
+	results, err := s.listRoutes(nil)
+	assert.Nil(err, "Expected to list all routes")
+
+	assert.True(reflect.DeepEqual(results.Routes[0], expectedRoutes[0]),
+		"Route listed didn't match: got %+v, expecting %+v", results.Routes[0], expectedRoutes[0])
+	assert.True(reflect.DeepEqual(results.Routes[1], expectedRoutes[1]),
+		"Route listed didn't match: got %+v, expecting %+v", results.Routes[1], expectedRoutes[1])
+	assert.True(reflect.DeepEqual(results.Routes[2], expectedRoutes[2]),
+		"Route listed didn't match: got %+v, expecting %+v", results.Routes[2], expectedRoutes[2])
+
 }
