@@ -23,7 +23,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/kata-containers/agent/pkg/uevent"
 	pb "github.com/kata-containers/agent/protocols/grpc"
@@ -948,9 +947,6 @@ func (s *sandbox) initChannel() error {
 
 func makeUnaryInterceptor() grpc.UnaryServerInterceptor {
 	return func(origCtx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
-		var start time.Time
-		var elapsed time.Duration
-		var message proto.Message
 
 		grpcCall := info.FullMethod
 		var ctx context.Context
@@ -969,32 +965,12 @@ func makeUnaryInterceptor() grpc.UnaryServerInterceptor {
 				// without the "noise" of these calls.
 				span.SetTag("api-category", "interactive")
 			}
-		} else {
-			// Just log call details
-			message = req.(proto.Message)
-
-			agentLog.WithFields(logrus.Fields{
-				"request": grpcCall,
-				"req":     message.String()}).Debug("new request")
-			start = time.Now()
 		}
 
 		// Use the context which will provide the correct trace
 		// ordering, *NOT* the context provided to the function
 		// returned by this function.
 		resp, err = handler(getGRPCContext(), req)
-
-		if !tracing {
-			// Just log call details
-			elapsed = time.Since(start)
-			message = resp.(proto.Message)
-
-			logger := agentLog.WithFields(logrus.Fields{
-				"request":  info.FullMethod,
-				"duration": elapsed.String(),
-				"resp":     message.String()})
-			logger.Debug("request end")
-		}
 
 		// Handle the following scenarios:
 		//
