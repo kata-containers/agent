@@ -194,13 +194,10 @@ func updateCpusetPath(cgroupPath string, newCpuset string, cookies cookie) error
 
 		// check if the cgroup was already updated.
 		if cookies[cgroupParentPath] {
-			agentLog.WithField("path", cgroupParentPath).Debug("cpuset cgroup already updated")
 			continue
 		}
 
 		cpusetCpusParentPath := filepath.Join(cgroupParentPath, "cpuset.cpus")
-
-		agentLog.WithField("path", cpusetCpusParentPath).Debug("updating cpuset parent cgroup")
 
 		if err := ioutil.WriteFile(cpusetCpusParentPath, []byte(cpusetGuest), cpusetMode); err != nil {
 			return fmt.Errorf("Could not update parent cpuset cgroup (%s) cpuset:'%s': %v", cpusetCpusParentPath, cpusetGuest, err)
@@ -212,8 +209,6 @@ func updateCpusetPath(cgroupPath string, newCpuset string, cookies cookie) error
 
 	// Finally update group path with requested value.
 	cpusetCpusPath := filepath.Join(cgroupCpusetPath, cgroupPath, "cpuset.cpus")
-
-	agentLog.WithField("path", cpusetCpusPath).Debug("updating cpuset cgroup")
 
 	if err := ioutil.WriteFile(cpusetCpusPath, []byte(newCpuset), cpusetMode); err != nil {
 		return fmt.Errorf("Could not update parent cpuset cgroup (%s) cpuset:'%s': %v", cpusetCpusPath, cpusetGuest, err)
@@ -232,7 +227,6 @@ func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
 	defer a.sandbox.Unlock()
 
 	if req.NbCpus > 0 {
-		agentLog.WithField("vcpus-to-connect", req.NbCpus).Debug("connecting vCPUs")
 		if err := onlineCPUResources(req.NbCpus); err != nil {
 			return handleError(req.Wait, err)
 		}
@@ -250,7 +244,6 @@ func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
 	if err != nil {
 		return handleError(req.Wait, fmt.Errorf("Could not get the actual range of connected CPUs: %v", err))
 	}
-	agentLog.WithField("range-of-vcpus", connectedCpus).Debug("connecting vCPUs")
 
 	cookies := make(cookie)
 
@@ -258,7 +251,6 @@ func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
 	// all containers an update each cpuset cgroup. This is not required in docker
 	// containers since they don't hot add/remove CPUs.
 	for _, c := range a.sandbox.containers {
-		agentLog.WithField("container", c.container.ID()).Debug("updating cpuset cgroup")
 		contConfig := c.container.Config()
 		cgroupPath := contConfig.Cgroups.Path
 
@@ -271,7 +263,6 @@ func (a *agentGRPC) onlineCPUMem(req *pb.OnlineCPUMemRequest) error {
 
 		// cpuset assinged containers are not updated, only we update its parents.
 		if contConfig.Cgroups.Resources.CpusetCpus != "" {
-			agentLog.WithField("cpuset", contConfig.Cgroups.Resources.CpusetCpus).Debug("updating container cpuset cgroup parents")
 			// remove container cgroup directory
 			cgroupPath = filepath.Dir(cgroupPath)
 		}

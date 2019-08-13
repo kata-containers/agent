@@ -48,11 +48,6 @@ func getAvailableCpusetList(cpusetReq string) (string, error) {
 
 	for k := range cpusetListReq {
 		if !cpusetGuestList[k] {
-			agentLog.WithFields(logrus.Fields{
-				"cpuset":     cpusetReq,
-				"cpu":        k,
-				"guest-cpus": cpusetGuest,
-			}).Warnf("cpu is not in guest cpu list, using guest cpus")
 			return cpusetGuest, nil
 		}
 	}
