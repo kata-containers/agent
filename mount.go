@@ -30,7 +30,6 @@ const (
 	typeVirtioFS   = "virtio_fs"
 	typeRootfs     = "rootfs"
 	typeTmpFs      = "tmpfs"
-	devPrefix      = "/dev/"
 	procMountStats = "/proc/self/mountstats"
 	mountPerm      = os.FileMode(0755)
 )
@@ -271,7 +270,7 @@ func virtioMmioBlkStorageHandler(_ context.Context, storage pb.Storage, s *sandb
 
 // virtioBlkCCWStorageHandler handles the storage for blk ccw driver.
 func virtioBlkCCWStorageHandler(ctx context.Context, storage pb.Storage, s *sandbox) (string, error) {
-	devPath, err := getBlkCCWDevPath(ctx, storage.Source)
+	devPath, err := getBlkCCWDevPath(s, storage.Source)
 	if err != nil {
 		return "", err
 	}
@@ -319,7 +318,7 @@ func virtioBlkStorageHandler(_ context.Context, storage pb.Storage, s *sandbox) 
 // virtioSCSIStorageHandler handles the storage for scsi driver.
 func virtioSCSIStorageHandler(ctx context.Context, storage pb.Storage, s *sandbox) (string, error) {
 	// Retrieve the device path from SCSI address.
-	devPath, err := getSCSIDevPath(ctx, storage.Source)
+	devPath, err := getSCSIDevPath(s, storage.Source)
 	if err != nil {
 		return "", err
 	}

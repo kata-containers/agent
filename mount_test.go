@@ -242,7 +242,7 @@ func TestVirtioSCSIStorageHandlerFailure(t *testing.T) {
 	const expectedDevPath = "/dev/some/where"
 
 	savedSCSIDevPathFunc := getSCSIDevPath
-	getSCSIDevPath = func(_ context.Context, scsiAddr string) (string, error) {
+	getSCSIDevPath = func(s *sandbox, scsiAddr string) (string, error) {
 		return expectedDevPath, nil
 	}
 
