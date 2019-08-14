@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/kata-containers/agent/pkg/uevent"
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/stretchr/testify/assert"
 )
@@ -574,7 +573,7 @@ func TestVirtioSCSIDeviceHandler(t *testing.T) {
 	cancel()
 
 	savedFunc := getSCSIDevPath
-	getSCSIDevPath = func(_ context.Context, scsiAddr string) (string, error) {
+	getSCSIDevPath = func(s *sandbox, scsiAddr string) (string, error) {
 		return "foo", nil
 	}
 
@@ -600,120 +599,6 @@ func TestNvdimmDeviceHandler(t *testing.T) {
 
 	err := nvdimmDeviceHandler(ctx, device, spec, sb)
 	assert.Error(err)
-}
-
-func TestWaitForDevice(t *testing.T) {
-	assert := assert.New(t)
-
-	type testData struct {
-		devicePath  string
-		deviceName  string
-		cb          checkUeventCb
-		expectError bool
-	}
-
-	existingDevice := "/dev/null"
-
-	invalidDevice := "/dev/silly-invalid-device-name"
-	_, err := os.Stat(invalidDevice)
-	assert.Error(err)
-	assert.True(os.IsNotExist(err))
-
-	cb := func(uEv *uevent.Uevent) bool {
-		return true
-	}
-
-	savedTimeout := timeoutHotplug
-	timeoutHotplug = 0
-	defer func() {
-		timeoutHotplug = savedTimeout
-	}()
-
-	data := []testData{
-		{"", "", nil, true},
-		{"foo", "", nil, true},
-		{"", "foo", nil, true},
-		{"foo", "bar", nil, true},
-		{"foo", "bar", cb, true},
-		{existingDevice, "", nil, true},
-		{existingDevice, "", cb, true},
-		{invalidDevice, "bar", cb, true},
-
-		{existingDevice, "bar", cb, false},
-	}
-
-	for i, d := range data {
-		msg := fmt.Sprintf("test[%d]: %+v\n", i, d)
-
-		ctx, cancel := context.WithCancel(context.Background())
-		err := waitForDevice(ctx, d.devicePath, d.deviceName, d.cb)
-		cancel()
-
-		if d.expectError {
-			assert.Error(err, msg)
-			continue
-		}
-
-		assert.NoError(err)
-	}
-}
-
-func TestFindSCSIDisk(t *testing.T) {
-	assert := assert.New(t)
-
-	dir, err := ioutil.TempDir("", "")
-	assert.NoError(err)
-	defer os.RemoveAll(dir)
-
-	goodDir := filepath.Join(dir, "correct-number-of-files")
-	emptyDir := filepath.Join(dir, "empty")
-	badDir := filepath.Join(dir, "too-many-files")
-
-	dirs := []string{goodDir, emptyDir, badDir}
-
-	for _, dir := range dirs {
-		err = os.MkdirAll(dir, testDirMode)
-		assert.NoError(err)
-	}
-
-	goodFileName := "good-file"
-	goodFile := filepath.Join(goodDir, goodFileName)
-	err = createEmptyFile(goodFile)
-	assert.NoError(err)
-
-	for i := 0; i < 3; i++ {
-		name := fmt.Sprintf("file-%d", i+1)
-		fullPath := filepath.Join(badDir, name)
-		err := createEmptyFile(fullPath)
-		assert.NoError(err)
-	}
-
-	type testData struct {
-		scsiPath     string
-		expectedName string
-		expectError  bool
-	}
-
-	data := []testData{
-		{"", "", true},
-		{emptyDir, "", true},
-		{badDir, "", true},
-		{goodDir, goodFileName, false},
-	}
-
-	for i, d := range data {
-		msg := fmt.Sprintf("test[%d]: %+v\n", i, d)
-
-		name, err := findSCSIDisk(d.scsiPath)
-
-		if d.expectError {
-			assert.Error(err, msg)
-			continue
-		}
-
-		assert.NoError(err, msg)
-		assert.Equal(d.expectedName, name, msg)
-	}
 }
 
 func TestGetPCIDeviceName(t *testing.T) {
@@ -771,11 +656,8 @@ func TestGetSCSIDevPath(t *testing.T) {
 		return nil
 	}
 
-	timeoutHotplug = 0
+	sb := sandbox{deviceWatchers: make(map[string](chan string))}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	_, err := getSCSIDevPathImpl(ctx, "")
+	_, err := getSCSIDevPathImpl(&sb, "")
 	assert.Error(err)
-	cancel()
-
 }

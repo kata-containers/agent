@@ -733,12 +733,32 @@ func (s *sandbox) listenToUdevEvents() {
 
 			// Notify watchers that are interested in the udev event.
 			// Close the channel after watcher has been notified.
-			for devPCIAddress, ch := range s.deviceWatchers {
-				if ch != nil && strings.HasPrefix(uEv.DevPath, filepath.Join(rootBusPath, devPCIAddress)) {
-					ch <- uEv.DevName
-					close(ch)
-					delete(s.deviceWatchers, devPCIAddress)
+			for devAddress, ch := range s.deviceWatchers {
+				if ch == nil {
+					continue
 				}
+
+				fieldLogger.Infof("Got a wait channel for device %s", devAddress)
+
+				// blk driver case
+				if strings.HasPrefix(uEv.DevPath, filepath.Join(rootBusPath, devAddress)) {
+					goto OUT
+				}
+
+				if strings.Contains(uEv.DevPath, devAddress) {
+					// scsi driver case
+					if strings.HasSuffix(devAddress, scsiBlockSuffix) {
+						goto OUT
+					}
+				}
+
+				continue
+
+			OUT:
+				ch <- uEv.DevName
+				close(ch)
+				delete(s.deviceWatchers, devAddress)
+
 			}
 
 			s.Unlock()
