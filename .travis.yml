@@ -18,13 +18,13 @@ env:
   - target_branch=$TRAVIS_BRANCH
 
 before_script:
-  - ".ci/install_go.sh"
   - ".ci/static-checks.sh"
 
 before_install:
   - sudo apt-get update -qq
   - sudo apt-get install -y -qq automake
   - sudo apt-get install -y moreutils
+  - ".ci/install_go.sh"
 
 install:
   - cd ${TRAVIS_BUILD_DIR} && make
