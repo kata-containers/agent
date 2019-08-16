@@ -8,5 +8,5 @@
 package main
 
 const (
-	rootBusPath = "/devices/pci0000:00"
+	rootBusPath = "/devices/css0"
 )
