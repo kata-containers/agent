@@ -73,6 +73,11 @@ func TestLocalStorageHandlerSuccessful(t *testing.T) {
 	_, err = localStorageHandler(ctx, storage, &sandbox{storages: sbs})
 	assert.Nil(t, err, "localStorageHandler() failed: %v", err)
 
+	// Check the default mode of the mountpoint
+	info, err := os.Stat(storage.MountPoint)
+	assert.Nil(t, err)
+	assert.Equal(t, os.ModePerm|os.ModeDir, info.Mode())
+
 	// Try again. This time the storage won't be new
 	result, err := localStorageHandler(ctx, storage, &sandbox{storages: sbs})
 	assert.NoError(t, err)
@@ -82,28 +87,54 @@ func TestLocalStorageHandlerSuccessful(t *testing.T) {
 func TestLocalStorageHandlerPermModeSuccessful(t *testing.T) {
 	skipUnlessRoot(t)
 
-	storage, err := createSafeAndFakeStorage()
-	if err != nil {
-		t.Fatal(err)
+	// Test a set of different modes for the mount point
+	tests := []struct {
+		requested string
+		expected  os.FileMode
+	}{
+		{
+			"0400",
+			os.FileMode(0400),
+		},
+		{
+			"0600",
+			os.FileMode(0600),
+		},
+		{
+			"0755",
+			os.FileMode(0755),
+		},
+		{
+			"0777",
+			os.FileMode(0777),
+		},
 	}
-	defer syscall.Unmount(storage.MountPoint, 0)
-	defer os.RemoveAll(storage.MountPoint)
 
-	// Set the mode to be 0400 (ready only)
-	storage.Options = []string{
-		"mode=0400",
+	for _, tt := range tests {
+		t.Run(tt.requested, func(t *testing.T) {
+			storage, err := createSafeAndFakeStorage()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer syscall.Unmount(storage.MountPoint, 0)
+			defer os.RemoveAll(storage.MountPoint)
+
+			storage.Options = []string{
+				"mode=" + tt.requested,
+			}
+
+			ctx := context.Background()
+
+			sbs := make(map[string]*sandboxStorage)
+			_, err = localStorageHandler(ctx, storage, &sandbox{storages: sbs})
+			assert.Nil(t, err, "localStorageHandler() failed: %v", err)
+
+			// Check the mode of the mountpoint
+			info, err := os.Stat(storage.MountPoint)
+			assert.Nil(t, err)
+			assert.Equal(t, tt.expected|os.ModeDir, info.Mode())
+		})
 	}
-
-	ctx := context.Background()
-
-	sbs := make(map[string]*sandboxStorage)
-	_, err = localStorageHandler(ctx, storage, &sandbox{storages: sbs})
-	assert.Nil(t, err, "localStorageHandler() failed: %v", err)
-
-	// Check the mode of the mountpoint
-	info, err := os.Stat(storage.MountPoint)
-	assert.Nil(t, err)
-	assert.Equal(t, 0400|os.ModeDir, info.Mode())
 }
 
 func TestLocalStorageHandlerPermModeFailure(t *testing.T) {

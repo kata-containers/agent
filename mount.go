@@ -252,7 +252,13 @@ func localStorageHandler(_ context.Context, storage pb.Storage, s *sandbox) (str
 			mode = os.FileMode(m)
 		}
 
-		return "", os.MkdirAll(storage.MountPoint, mode)
+		if err := os.MkdirAll(storage.MountPoint, mode); err != nil {
+			return "", err
+		}
+
+		// We chmod the permissions for the mount point, as we can't rely on os.MkdirAll to set the
+		// desired permissions.
+		return "", os.Chmod(storage.MountPoint, mode)
 	}
 	return "", nil
 }
