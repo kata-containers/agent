@@ -7,6 +7,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -40,8 +41,22 @@ func testVirtioBlkDeviceHandlerFailure(t *testing.T, device pb.Device, spec *pb.
 	device.VmPath = devPath
 	device.ContainerPath = "some-not-empty-path"
 
-	err = virtioBlkDeviceHandler(device, spec, &sandbox{})
+	ctx := context.Background()
+
+	err = virtioBlkDeviceHandler(ctx, device, spec, &sandbox{})
 	assert.NotNil(t, err, "blockDeviceHandler() should have failed")
+
+	savedFunc := getPCIDeviceName
+	getPCIDeviceName = func(s *sandbox, pciID string) (string, error) {
+		return "foo", nil
+	}
+
+	defer func() {
+		getPCIDeviceName = savedFunc
+	}()
+
+	err = virtioBlkDeviceHandler(ctx, device, spec, &sandbox{})
+	assert.Error(t, err)
 }
 
 func TestVirtioBlkDeviceHandlerEmptyContainerPath(t *testing.T) {
@@ -123,6 +138,11 @@ func TestScanSCSIBus(t *testing.T) {
 	}
 	defer os.RemoveAll(testDir)
 
+	savedSCSIHostPath := scsiHostPath
+	defer func() {
+		scsiHostPath = savedSCSIHostPath
+	}()
+
 	scsiHostPath = filepath.Join(testDir, "scsi_host")
 	os.RemoveAll(scsiHostPath)
 
@@ -149,13 +169,26 @@ func TestScanSCSIBus(t *testing.T) {
 	err = scanSCSIBus(scsiAddr)
 	assert.Nil(t, err, "scanSCSIBus() failed: %v", err)
 
+	err = scanSCSIBus("foo:bar:baz")
+	assert.Error(t, err)
+
 	scanPath := filepath.Join(host, "scan")
 	_, err = os.Stat(scanPath)
 	assert.Nil(t, err, "os.Stat() %s failed: %v", scanPath, err)
+
+	// The following test only works as a non-root user
+	skipIfRoot(t)
+
+	err = os.Chmod(scanPath, os.FileMode(0000))
+	assert.NoError(t, err)
+
+	err = scanSCSIBus("foo:bar")
+	assert.Error(t, err)
 }
 
 func testAddDevicesSuccessful(t *testing.T, devices []*pb.Device, spec *pb.Spec) {
-	err := addDevices(devices, spec, &sandbox{})
+	ctx := context.Background()
+	err := addDevices(ctx, devices, spec, &sandbox{})
 	assert.Nil(t, err, "addDevices() failed: %v", err)
 }
 
@@ -176,11 +209,11 @@ func TestAddDevicesNilMountsSuccessful(t *testing.T) {
 	testAddDevicesSuccessful(t, devices, spec)
 }
 
-func noopDeviceHandlerReturnNil(device pb.Device, spec *pb.Spec, s *sandbox) error {
+func noopDeviceHandlerReturnNil(_ context.Context, device pb.Device, spec *pb.Spec, s *sandbox) error {
 	return nil
 }
 
-func noopDeviceHandlerReturnError(device pb.Device, spec *pb.Spec, s *sandbox) error {
+func noopDeviceHandlerReturnError(_ context.Context, device pb.Device, spec *pb.Spec, s *sandbox) error {
 	return fmt.Errorf("Noop handler failure")
 }
 
@@ -202,7 +235,10 @@ func TestAddDevicesNoopHandlerSuccessful(t *testing.T) {
 }
 
 func testAddDevicesFailure(t *testing.T, devices []*pb.Device, spec *pb.Spec) {
-	err := addDevices(devices, spec, &sandbox{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := addDevices(ctx, devices, spec, &sandbox{})
 	assert.NotNil(t, err, "addDevices() should have failed")
 }
 
@@ -263,6 +299,11 @@ func TestAddDevice(t *testing.T) {
 		},
 		{
 			device:      &pb.Device{},
+			spec:        nil,
+			expectError: true,
+		},
+		{
+			device:      &pb.Device{},
 			spec:        emptySpec,
 			expectError: true,
 		},
@@ -303,6 +344,16 @@ func TestAddDevice(t *testing.T) {
 				// Missing ContainerPath
 				Type:   noopHandlerTag,
 				VmPath: "/foo",
+			},
+			spec:        emptySpec,
+			expectError: true,
+		},
+		{
+			device: &pb.Device{
+				Id:            "foo",
+				Type:          "invalid-type",
+				VmPath:        "/foo",
+				ContainerPath: "/foo",
 			},
 			spec:        emptySpec,
 			expectError: true,
@@ -365,12 +416,18 @@ func TestAddDevice(t *testing.T) {
 	s := &sandbox{}
 
 	for i, d := range data {
-		err := addDevice(d.device, d.spec, s)
+		msg := fmt.Sprintf("test[%d]: %+v\n", i, d)
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		err := addDevice(ctx, d.device, d.spec, s)
 		if d.expectError {
-			assert.Errorf(err, "test %d (%+v)", i, d)
+			assert.Error(err, msg)
 		} else {
-			assert.NoErrorf(err, "test %d (%+v)", i, d)
+			assert.NoError(err, msg)
 		}
+
+		cancel()
 	}
 }
 
@@ -451,4 +508,156 @@ func TestRescanPciBus(t *testing.T) {
 
 	err := rescanPciBus()
 	assert.Nil(err)
+
+}
+
+func TestRescanPciBusSubverted(t *testing.T) {
+	assert := assert.New(t)
+
+	dir, err := ioutil.TempDir("", "")
+	assert.NoError(err)
+	defer os.RemoveAll(dir)
+
+	rescanDir := filepath.Join(dir, "rescan-dir")
+
+	err = os.MkdirAll(rescanDir, testDirMode)
+	assert.NoError(err)
+
+	rescan := filepath.Join(rescanDir, "rescan")
+
+	savedFile := pciBusRescanFile
+	defer func() {
+		pciBusRescanFile = savedFile
+	}()
+
+	pciBusRescanFile = rescan
+
+	err = rescanPciBus()
+	assert.NoError(err)
+
+	os.RemoveAll(rescanDir)
+	err = rescanPciBus()
+	assert.Error(err)
+}
+
+func TestVirtioMmioBlkDeviceHandler(t *testing.T) {
+	assert := assert.New(t)
+
+	device := pb.Device{}
+	spec := &pb.Spec{}
+	sb := &sandbox{}
+
+	ctx := context.Background()
+
+	err := virtioMmioBlkDeviceHandler(ctx, device, spec, sb)
+	assert.Error(err)
+
+	device.VmPath = "foo"
+	device.ContainerPath = ""
+
+	err = virtioMmioBlkDeviceHandler(ctx, device, spec, sb)
+	assert.Error(err)
+}
+
+func TestVirtioSCSIDeviceHandler(t *testing.T) {
+	assert := assert.New(t)
+
+	device := pb.Device{}
+	spec := &pb.Spec{}
+	sb := &sandbox{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	err := virtioSCSIDeviceHandler(ctx, device, spec, sb)
+	assert.Error(err)
+	cancel()
+
+	savedFunc := getSCSIDevPath
+	getSCSIDevPath = func(s *sandbox, scsiAddr string) (string, error) {
+		return "foo", nil
+	}
+
+	defer func() {
+		getSCSIDevPath = savedFunc
+	}()
+
+	ctx, cancel = context.WithCancel(context.Background())
+
+	err = virtioSCSIDeviceHandler(ctx, device, spec, sb)
+	assert.Error(err)
+	cancel()
+}
+
+func TestNvdimmDeviceHandler(t *testing.T) {
+	assert := assert.New(t)
+
+	device := pb.Device{}
+	spec := &pb.Spec{}
+	sb := &sandbox{}
+
+	ctx := context.Background()
+
+	err := nvdimmDeviceHandler(ctx, device, spec, sb)
+	assert.Error(err)
+}
+
+func TestGetPCIDeviceName(t *testing.T) {
+	assert := assert.New(t)
+
+	dir, err := ioutil.TempDir("", "")
+	assert.NoError(err)
+	defer os.RemoveAll(dir)
+
+	testSysfsDir := filepath.Join(dir, "sysfs")
+
+	savedDir := sysfsDir
+	defer func() {
+		sysfsDir = savedDir
+	}()
+
+	sysfsDir = testSysfsDir
+
+	savedFunc := getDevicePCIAddress
+	defer func() {
+		getDevicePCIAddress = savedFunc
+	}()
+
+	getDevicePCIAddress = func(pciID string) (string, error) {
+		return "", nil
+	}
+
+	sb := sandbox{
+		deviceWatchers: make(map[string](chan string)),
+	}
+
+	_, err = getPCIDeviceNameImpl(&sb, "")
+	assert.Error(err)
+
+	rescanDir := filepath.Dir(pciBusRescanFile)
+	err = os.MkdirAll(rescanDir, testDirMode)
+	assert.NoError(err)
+
+	_, err = getPCIDeviceNameImpl(&sb, "")
+	assert.Error(err)
+}
+
+func TestGetSCSIDevPath(t *testing.T) {
+	assert := assert.New(t)
+
+	savedFunc := scanSCSIBus
+	savedTimeout := timeoutHotplug
+
+	defer func() {
+		scanSCSIBus = savedFunc
+		timeoutHotplug = savedTimeout
+	}()
+
+	scanSCSIBus = func(_ string) error {
+		return nil
+	}
+
+	sb := sandbox{deviceWatchers: make(map[string](chan string))}
+
+	_, err := getSCSIDevPathImpl(&sb, "")
+	assert.Error(err)
 }

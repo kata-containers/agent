@@ -619,7 +619,7 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 	// updates the devices listed in the OCI spec, so that they actually
 	// match real devices inside the VM. This step is necessary since we
 	// cannot predict everything from the caller.
-	if err = addDevices(req.Devices, req.OCI, a.sandbox); err != nil {
+	if err = addDevices(ctx, req.Devices, req.OCI, a.sandbox); err != nil {
 		return emptyResp, err
 	}
 
