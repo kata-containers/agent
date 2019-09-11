@@ -160,3 +160,20 @@ func TestNewAgentClientWithYamux(t *testing.T) {
 	mock.Stop()
 	<-waitCh
 }
+
+func TestParseGrpcHybridVSockAddr(t *testing.T) {
+	assert := assert.New(t)
+
+	a, err := parseGrpcHybridVSockAddr("/abc/xyz")
+	assert.Error(err)
+	assert.Empty(a)
+
+	a, err = parseGrpcHybridVSockAddr("sss:/abc/xyz")
+	assert.Error(err)
+	assert.Empty(a)
+
+	path := "/abc/xyz"
+	a, err = parseGrpcHybridVSockAddr(hybridVSockScheme + ":" + path)
+	assert.NoError(err)
+	assert.Equal(a, path)
+}
