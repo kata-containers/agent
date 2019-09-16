@@ -291,7 +291,7 @@ to a `socat(1)` instance running on the host:
 |-|-|-|-|-|
 | `kata-journald-host-redirect.service` | systemd service | Guest | Guest `UDP:514` to host `VSOCK:5140` | Redirects data sent to the syslog port to a VSOCK socket port. |
 | `kata-redirect-agent-output-to-journal.conf` | systemd snippet | Guest | Capture agent output | Redirects all agent output to the journal, required to observe agent output on host as no `kata-proxy` is running. |
-| `vsock-to-udp-server.sh` | shell script | Host | Host `VSOCK:5140` to stdout | Redirects all host context VSOCK data on port `5140` to standard output for easy viewing. |
+| `vsock-to-text-server.sh` | shell script | Host | Host `VSOCK:5140` to stdout | Redirects all host context VSOCK data on port `5140` to standard output for easy viewing. |
 
 ## Enable full agent debug
 
