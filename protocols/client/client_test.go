@@ -164,16 +164,22 @@ func TestNewAgentClientWithYamux(t *testing.T) {
 func TestParseGrpcHybridVSockAddr(t *testing.T) {
 	assert := assert.New(t)
 
-	a, err := parseGrpcHybridVSockAddr("/abc/xyz")
+	a, _, err := parseGrpcHybridVSockAddr("/abc/xyz")
 	assert.Error(err)
 	assert.Empty(a)
 
-	a, err = parseGrpcHybridVSockAddr("sss:/abc/xyz")
+	a, _, err = parseGrpcHybridVSockAddr("sss:/abc/xyz")
 	assert.Error(err)
 	assert.Empty(a)
 
 	path := "/abc/xyz"
-	a, err = parseGrpcHybridVSockAddr(hybridVSockScheme + ":" + path)
+	a, _, err = parseGrpcHybridVSockAddr(HybridVSockScheme + ":" + path)
 	assert.NoError(err)
 	assert.Equal(a, path)
+
+	port := uint32(512)
+	a, p, err := parseGrpcHybridVSockAddr(fmt.Sprintf("%s:%s:%d", HybridVSockScheme, path, port))
+	assert.NoError(err)
+	assert.Equal(a, path)
+	assert.Equal(p, port)
 }

@@ -297,16 +297,26 @@ func parseGrpcVsockAddr(sock string) (uint32, uint32, error) {
 	return uint32(cid), uint32(port), nil
 }
 
-func parseGrpcHybridVSockAddr(sock string) (string, error) {
+func parseGrpcHybridVSockAddr(sock string) (string, uint32, error) {
 	sp := strings.Split(sock, ":")
-	if len(sp) != 2 {
-		return "", grpcStatus.Errorf(codes.InvalidArgument, "Invalid hybrid vsock address: %s", sock)
+	// scheme and host are required
+	if len(sp) < 2 {
+		return "", 0, grpcStatus.Errorf(codes.InvalidArgument, "Invalid hybrid vsock address: %s", sock)
 	}
-	if sp[0] != hybridVSockScheme {
-		return "", grpcStatus.Errorf(codes.InvalidArgument, "Invalid hybrid vsock URL scheme: %s", sock)
+	if sp[0] != HybridVSockScheme {
+		return "", 0, grpcStatus.Errorf(codes.InvalidArgument, "Invalid hybrid vsock URL scheme: %s", sock)
 	}
 
-	return sp[1], nil
+	port := uint32(0)
+	// the third is the port
+	if len(sp) == 3 {
+		p, err := strconv.ParseUint(sp[2], 10, 32)
+		if err == nil {
+			port = uint32(p)
+		}
+	}
+
+	return sp[1], port, nil
 }
 
 // This would bypass the grpc dialer backoff strategy and handle dial timeout
@@ -373,7 +383,7 @@ func vsockDialer(sock string, timeout time.Duration) (net.Conn, error) {
 
 // HybridVSockDialer dials to a hybrid virtio socket
 func HybridVSockDialer(sock string, timeout time.Duration) (net.Conn, error) {
-	udsPath, err := parseGrpcHybridVSockAddr(sock)
+	udsPath, port, err := parseGrpcHybridVSockAddr(sock)
 	if err != nil {
 		return nil, err
 	}
@@ -383,10 +393,16 @@ func HybridVSockDialer(sock string, timeout time.Duration) (net.Conn, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		if port == 0 {
+			// use the port read at parse()
+			port = hybridVSockPort
+		}
+
 		// Once the connection is opened, the following command MUST BE sent,
 		// the hypervisor needs to know the port number where the agent is listening in order to
 		// create the connection
-		if _, err = conn.Write([]byte(fmt.Sprintf("CONNECT %d\n", hybridVSockPort))); err != nil {
+		if _, err = conn.Write([]byte(fmt.Sprintf("CONNECT %d\n", port))); err != nil {
 			conn.Close()
 			return nil, err
 		}
