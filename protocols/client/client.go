@@ -27,9 +27,9 @@ import (
 )
 
 const (
-	unixSocketScheme  = "unix"
-	vsockSocketScheme = "vsock"
-	hybridVSockScheme = "hvsock"
+	UnixSocketScheme  = "unix"
+	VSockSocketScheme = "vsock"
+	HybridVSockScheme = "hvsock"
 )
 
 var defaultDialTimeout = 15 * time.Second
@@ -142,7 +142,7 @@ func parse(sock string) (string, *url.URL, error) {
 	var grpcAddr string
 	// validate more
 	switch addr.Scheme {
-	case vsockSocketScheme:
+	case VSockSocketScheme:
 		if addr.Hostname() == "" || addr.Port() == "" || addr.Path != "" {
 			return "", nil, grpcStatus.Errorf(codes.InvalidArgument, "Invalid vsock scheme: %s", sock)
 		}
@@ -152,19 +152,19 @@ func parse(sock string) (string, *url.URL, error) {
 		if _, err := strconv.ParseUint(addr.Port(), 10, 32); err != nil {
 			return "", nil, grpcStatus.Errorf(codes.InvalidArgument, "Invalid vsock port: %s", sock)
 		}
-		grpcAddr = vsockSocketScheme + ":" + addr.Host
-	case unixSocketScheme:
+		grpcAddr = VSockSocketScheme + ":" + addr.Host
+	case UnixSocketScheme:
 		fallthrough
 	case "":
 		if (addr.Host == "" && addr.Path == "") || addr.Port() != "" {
 			return "", nil, grpcStatus.Errorf(codes.InvalidArgument, "Invalid unix scheme: %s", sock)
 		}
 		if addr.Host == "" {
-			grpcAddr = unixSocketScheme + ":///" + addr.Path
+			grpcAddr = UnixSocketScheme + ":///" + addr.Path
 		} else {
-			grpcAddr = unixSocketScheme + ":///" + addr.Host + "/" + addr.Path
+			grpcAddr = UnixSocketScheme + ":///" + addr.Host + "/" + addr.Path
 		}
-	case hybridVSockScheme:
+	case HybridVSockScheme:
 		if addr.Path == "" {
 			return "", nil, grpcStatus.Errorf(codes.InvalidArgument, "Invalid hybrid vsock scheme: %s", sock)
 		}
@@ -178,7 +178,7 @@ func parse(sock string) (string, *url.URL, error) {
 			return "", nil, grpcStatus.Errorf(codes.InvalidArgument, "Invalid hybrid vsock port %s: %v", sock, err)
 		}
 		hybridVSockPort = uint32(port)
-		grpcAddr = hybridVSockScheme + ":" + hvsocket[0]
+		grpcAddr = HybridVSockScheme + ":" + hvsocket[0]
 	default:
 		return "", nil, grpcStatus.Errorf(codes.InvalidArgument, "Invalid scheme: %s", sock)
 	}
@@ -209,11 +209,11 @@ func heartBeat(session *yamux.Session) {
 func agentDialer(addr *url.URL, enableYamux bool) dialer {
 	var d dialer
 	switch addr.Scheme {
-	case vsockSocketScheme:
+	case VSockSocketScheme:
 		d = vsockDialer
-	case hybridVSockScheme:
-		d = hybridVSockDialer
-	case unixSocketScheme:
+	case HybridVSockScheme:
+		d = HybridVSockDialer
+	case UnixSocketScheme:
 		fallthrough
 	default:
 		d = unixDialer
@@ -281,7 +281,7 @@ func parseGrpcVsockAddr(sock string) (uint32, uint32, error) {
 	if len(sp) != 3 {
 		return 0, 0, grpcStatus.Errorf(codes.InvalidArgument, "Invalid vsock address: %s", sock)
 	}
-	if sp[0] != vsockSocketScheme {
+	if sp[0] != VSockSocketScheme {
 		return 0, 0, grpcStatus.Errorf(codes.InvalidArgument, "Invalid vsock URL scheme: %s", sp[0])
 	}
 
@@ -371,7 +371,8 @@ func vsockDialer(sock string, timeout time.Duration) (net.Conn, error) {
 	return commonDialer(timeout, dialFunc, timeoutErr)
 }
 
-func hybridVSockDialer(sock string, timeout time.Duration) (net.Conn, error) {
+// HybridVSockDialer dials to a hybrid virtio socket
+func HybridVSockDialer(sock string, timeout time.Duration) (net.Conn, error) {
 	udsPath, err := parseGrpcHybridVSockAddr(sock)
 	if err != nil {
 		return nil, err
