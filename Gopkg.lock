@@ -233,11 +233,11 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:9130855ec01069fe76969bb7b5d2cbb3b427cc3f50c84be1df98c074e7fb16d8"
+  digest = "1:e14e467ed00ab98665623c5060fa17e3d7079be560ffc33cabafd05d35894f05"
   name = "github.com/syndtr/gocapability"
   packages = ["capability"]
   pruneopts = "NUT"
-  revision = "db04d3cc01c8b54962a58ec7e491717d06cfcc16"
+  revision = "d98352740cb2c55f81556b63d4a1ec64c5a319c2"
 
 [[projects]]
   digest = "1:87dee780f88f86f300bbd90116e933347cf4a3c65c1960072d412597a8896d50"
