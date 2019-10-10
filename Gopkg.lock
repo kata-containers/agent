@@ -25,23 +25,12 @@
   revision = "2748ece16665b45a47f884001d5831ec79703880"
 
 [[projects]]
-  digest = "1:5745ae844cff2e5063ff983e8a39f12200d97a41a23d5e94169bc776c24a6580"
+  digest = "1:6bf7f66890675dcbc7952f7afd044a2a46a8bd3143f837c46fd3ccd15da383d7"
   name = "github.com/coreos/go-systemd"
-  packages = [
-    "dbus",
-    "util",
-  ]
+  packages = ["dbus"]
   pruneopts = "NUT"
   revision = "d2196463941895ee908e13531a23a39feb9e1243"
   version = "v15"
-
-[[projects]]
-  digest = "1:6e2ff82d2fe11ee35ec8dceb4346b8144a761f1c8655592c4ebe99a92fcec327"
-  name = "github.com/coreos/pkg"
-  packages = ["dlopen"]
-  pruneopts = "NUT"
-  revision = "3ac0863d7acf3bc44daf49afef8919af12f704ef"
-  version = "v3"
 
 [[projects]]
   digest = "1:b261184aa7fc63d6a1020b8bb386fcf6d0a7f37262dc5102fc9db4739fa17f18"
@@ -149,7 +138,7 @@
   revision = "7d4729fb36185a7c1719923406c9d40e54fb93c7"
 
 [[projects]]
-  digest = "1:8d2b8396c6f94a08d06f43286ff0260c1c40e1b6a3797d6afaa35613cf27a967"
+  digest = "1:f080ede606260f5e0b28b458189777d3ea1da9a2548ebaa51146d2c3512df3fa"
   name = "github.com/opencontainers/runc"
   packages = [
     "libcontainer",
@@ -172,7 +161,7 @@
     "libcontainer/utils",
   ]
   pruneopts = "NUT"
-  revision = "f4982d86f7fde0b6f953cc62ccc4022c519a10a9"
+  revision = "d736ef14f0288d6993a1845745d6756cfc9ddd5a"
 
 [[projects]]
   digest = "1:7a58202c5cdf3d2c1eb0621fe369315561cea7f036ad10f0f0479ac36bcc95eb"
