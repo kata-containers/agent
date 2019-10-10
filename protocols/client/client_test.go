@@ -91,13 +91,13 @@ func checkVersion(cli *AgentClient) error {
 	return nil
 }
 
-func agentClientTest(t *testing.T, sock string, success, enableYamux bool, expect string) {
+func agentClientTest(t *testing.T, sock string, success bool, expect string) {
 	dialTimeout := defaultDialTimeout
 	defaultDialTimeout = 1 * time.Second
 	defer func() {
 		defaultDialTimeout = dialTimeout
 	}()
-	cli, err := NewAgentClient(context.Background(), sock, enableYamux)
+	cli, err := NewAgentClient(context.Background(), sock)
 	if success {
 		assert.Nil(t, err, "Failed to create new agent client: %s", err)
 	} else if !success {
@@ -116,17 +116,16 @@ func agentClientTest(t *testing.T, sock string, success, enableYamux bool, expec
 }
 
 func TestNewAgentClient(t *testing.T) {
-	mock, waitCh, err := startMockServer(t, false)
+	mock, waitCh, err := startMockServer(t, true)
 	assert.Nil(t, err, "failed to start mock server: %s", err)
 	defer os.Remove(mockSockAddr)
 
 	cliFunc := func(sock string, success bool, expect string) {
-		agentClientTest(t, sock, success, false, expect)
+		agentClientTest(t, sock, success, expect)
 	}
 
 	// server starts
 	<-waitCh
-	cliFunc(mockSockAddr, true, "")
 	cliFunc(unixMockAddr, true, "")
 	cliFunc(mockBadSchemeAddr, false, "Invalid scheme:")
 	cliFunc(mockBadVsockScheme, false, "Invalid vsock scheme:")
@@ -145,7 +144,7 @@ func TestNewAgentClientWithYamux(t *testing.T) {
 	defer os.Remove(mockSockAddr)
 
 	cliFunc := func(sock string, success bool, expect string) {
-		agentClientTest(t, sock, success, true, expect)
+		agentClientTest(t, sock, success, expect)
 	}
 	// server starts
 	<-waitCh
