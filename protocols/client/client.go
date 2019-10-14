@@ -83,13 +83,13 @@ type dialer func(string, time.Duration) (net.Conn, error)
 //   - hvsock://<path>:<port>. Firecracker implements the virtio-vsock device
 //     model, and mediates communication between AF_UNIX sockets (on the host end)
 //     and AF_VSOCK sockets (on the guest end).
-func NewAgentClient(ctx context.Context, sock string) (*AgentClient, error) {
+func NewAgentClient(ctx context.Context, sock string, enableYamux bool) (*AgentClient, error) {
 	grpcAddr, parsedAddr, err := parse(sock)
 	if err != nil {
 		return nil, err
 	}
 	dialOpts := []grpc.DialOption{grpc.WithInsecure(), grpc.WithBlock()}
-	dialOpts = append(dialOpts, grpc.WithDialer(agentDialer(parsedAddr)))
+	dialOpts = append(dialOpts, grpc.WithDialer(agentDialer(parsedAddr, enableYamux)))
 
 	var tracer opentracing.Tracer
 
@@ -206,10 +206,8 @@ func heartBeat(session *yamux.Session) {
 	}
 }
 
-func agentDialer(addr *url.URL) dialer {
+func agentDialer(addr *url.URL, enableYamux bool) dialer {
 	var d dialer
-	var enableYamux bool
-
 	switch addr.Scheme {
 	case VSockSocketScheme:
 		d = vsockDialer
@@ -219,7 +217,6 @@ func agentDialer(addr *url.URL) dialer {
 		fallthrough
 	default:
 		d = unixDialer
-		enableYamux = true
 	}
 
 	if !enableYamux {
