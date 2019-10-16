@@ -175,6 +175,9 @@ var logsVSockPort = uint32(0)
 // commType is used to denote the communication channel type used.
 type commType int
 
+// agentSpan is used to denote the span tracing that is being used.
+type agentSpan opentracing.Span
+
 const (
 	// virtio-serial channel
 	serialCh commType = iota
@@ -239,7 +242,7 @@ func (p *process) closePostExitFDs() {
 	}
 }
 
-func (c *container) trace(name string) (opentracing.Span, context.Context) {
+func (c *container) trace(name string) (agentSpan, context.Context) {
 	if c.ctx == nil {
 		agentLog.WithField("type", "bug").Error("trace called before context set")
 		c.ctx = context.Background()
@@ -288,7 +291,7 @@ func (c *container) getProcess(execID string) (*process, error) {
 	return proc, nil
 }
 
-func (s *sandbox) trace(name string) (opentracing.Span, context.Context) {
+func (s *sandbox) trace(name string) (agentSpan, context.Context) {
 	if s.ctx == nil {
 		agentLog.WithField("type", "bug").Error("trace called before context set")
 		s.ctx = context.Background()
@@ -1028,7 +1031,7 @@ func makeUnaryInterceptor() grpc.UnaryServerInterceptor {
 
 		grpcCall := info.FullMethod
 		var ctx context.Context
-		var span opentracing.Span
+		var span agentSpan
 
 		if tracing {
 			ctx = getGRPCContext()
