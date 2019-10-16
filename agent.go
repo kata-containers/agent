@@ -171,6 +171,9 @@ var debugConsole = false
 // Specify a vsock port where logs are written.
 var logsVSockPort = uint32(0)
 
+// Specify a vsock port where debug console is attached.
+var debugConsoleVSockPort = uint32(0)
+
 // commType is used to denote the communication channel type used.
 type commType int
 
@@ -1287,9 +1290,73 @@ func cgroupsMount() error {
 	return ioutil.WriteFile(cgroupMemoryUseHierarchyPath, []byte{'1'}, cgroupMemoryUseHierarchyMode)
 }
 
+func setupDebugConsoleForVsock(ctx context.Context) error {
+	var shellPath string
+	for _, s := range supportedShells {
+		var err error
+		if _, err = os.Stat(s); err == nil {
+			shellPath = s
+			break
+		}
+		agentLog.WithError(err).WithField("shell", s).Warn("Shell not found")
+	}
+
+	if shellPath == "" {
+		return fmt.Errorf("No available shells (checked %v)", supportedShells)
+	}
+
+	cmd := exec.Command(shellPath, "-i")
+	cmd.Env = os.Environ()
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		// Create Session
+		Setsid: true,
+	}
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				// stop the thread
+				return
+			default:
+				dcmd := *cmd
+
+				l, err := vsock.Listen(debugConsoleVSockPort)
+				if err != nil {
+					// nobody dialing
+					continue
+				}
+				c, err := l.Accept()
+				if err != nil {
+					l.Close()
+					// no connection
+					continue
+				}
+
+				dcmd.Stdin = c
+				dcmd.Stdout = c
+				dcmd.Stderr = c
+
+				if err := dcmd.Run(); err != nil {
+					agentLog.WithError(err).Warn("failed to start debug console")
+				}
+
+				c.Close()
+				l.Close()
+			}
+		}
+	}()
+
+	return nil
+}
+
 func setupDebugConsole(ctx context.Context, debugConsolePath string) error {
 	if !debugConsole {
 		return nil
+	}
+
+	if debugConsoleVSockPort != uint32(0) {
+		return setupDebugConsoleForVsock(ctx)
 	}
 
 	var shellPath string

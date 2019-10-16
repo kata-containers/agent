@@ -366,3 +366,45 @@ func TestParseCmdlineOptionDebugConsole(t *testing.T) {
 		assert.True(debugConsole, "test %d (%+v)", i, d)
 	}
 }
+
+func TestParseCmdlineOptionDebugConsoleVPort(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentConfig{}
+
+	type testData struct {
+		option                    string
+		expectDebugConsoleEnabled bool
+		expectedError             bool
+		expectedVPort             uint32
+	}
+
+	data := []testData{
+		{"", false, false, 0},
+		{"debug_console_vport", false, false, 0},
+		{"debug_console_vport=xxx", false, false, 0},
+		{"debug_console_vport=1026", false, false, 0},
+		{debugConsoleVPortFlag + "=", false, true, 0},
+		{debugConsoleVPortFlag + "=xxxx", false, true, 0},
+		{debugConsoleVPortFlag, false, false, 0},
+		{debugConsoleVPortFlag + "=1026", false, false, 1026},
+	}
+
+	for i, d := range data {
+		debugConsole = false
+		debugConsoleVSockPort = 0
+
+		err := a.parseCmdlineOption(d.option)
+		if d.expectedError {
+			assert.Error(err)
+		} else {
+			assert.NoError(err)
+		}
+
+		if d.expectDebugConsoleEnabled {
+			assert.True(debugConsole, "test %d (%+v)", i, d)
+		}
+
+		assert.Equal(debugConsoleVSockPort, d.expectedVPort)
+	}
+}

@@ -37,6 +37,32 @@ allow the agent process to start a debug console. Debug console is only availabl
 or `sh` is installed in the rootfs or initrd image. Developers can [connect to the virtual
 machine using the debug console](https://github.com/kata-containers/documentation/blob/master/Developer-Guide.md#connect-to-the-virtual-machine-using-the-debug-console)
 
+### Enable debug console for firecracker
+
+Firecracker doesn't have a UNIX socket connected to `/dev/console`, hence the
+kernel command line option `agent.debug_console` will not work for firecracker.
+Fortunately, firecracker supports [`hybrid vsocks`][1], and they can be used to
+communicate processes in the guest with processes in the host.
+The kernel command line option `agent.debug_console_vport` was added to allow
+developers specify on which `vsock` port the debugging console should be connected.
+
+In firecracker, the UNIX socket that is connected to the `vsock` end is created at
+`/var/lib/vc/firecracker/$CID/root/kata.hvsock`, where `$CID` is the container ID.
+
+Run the following commands to have a debugging console in firecracker.
+
+```sh
+$ conf="/usr/share/defaults/kata-containers/configuration.toml"
+$ sudo sed -i 's/^kernel_params.*/kernel_params="agent.debug_console_vport=1026"/g' "${conf}"
+$ sudo su -c 'cd /var/lib/vc/firecracker/08facf/root/ && socat stdin unix-connect:kata.hvsock'
+CONNECT 1026
+```
+
+**NOTE:** Ports 1024 and 1025 are reserved for communication with the agent and gathering of agent logs respectively
+
 ## `cpuset` cgroup details
 
 See the [cpuset cgroup documentation](documentation/features/cpuset.md).
+
+
+[1]: https://github.com/firecracker-microvm/firecracker/blob/master/docs/vsock.md
