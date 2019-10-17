@@ -21,7 +21,7 @@ const (
 )
 
 // The first trace span
-var rootSpan opentracing.Span
+var rootSpan agentSpan
 
 // Implements jaeger-client-go.Logger interface
 type traceLogger struct {
@@ -82,7 +82,7 @@ func createTracer(name string) (opentracing.Tracer, error) {
 	return tracer, nil
 }
 
-func setupTracing(rootSpanName string) (opentracing.Span, context.Context, error) {
+func setupTracing(rootSpanName string) (agentSpan, context.Context, error) {
 	ctx := context.Background()
 
 	tracer, err := createTracer(agentName)
@@ -132,7 +132,7 @@ func stopTracing(ctx context.Context) {
 
 // trace creates a new tracing span based on the specified contex, subsystem
 // and name.
-func trace(ctx context.Context, subsystem, name string) (opentracing.Span, context.Context) {
+func trace(ctx context.Context, subsystem, name string) (agentSpan, context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, name)
 
 	span.SetTag("subsystem", subsystem)
