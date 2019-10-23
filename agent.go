@@ -592,7 +592,7 @@ func (s *sandbox) setupSharedPidNs() error {
 
 	cmd := &exec.Cmd{
 		Path: selfBinPath,
-		Args: []string{os.Args[0], pauseBinArg},
+		Env:  []string{fmt.Sprintf("%s=%s", pauseBinKey, pauseBinValue)},
 	}
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
