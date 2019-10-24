@@ -57,15 +57,6 @@ ifeq ($(INIT),no)
     UNIT_FILES += kata-containers.target
 endif
 
-ifeq ($(TRACE),yes)
-    UNIT_FILES += jaeger-client-socat-redirector.service
-endif
-
-ifeq ($(TRACE_DEV_MODE),yes)
-    UNIT_FILES += kata-journald-host-redirect.service
-    SNIPPET_FILES += kata-redirect-agent-output-to-journal.conf
-endif
-
 VERSION_FILE := ./VERSION
 VERSION := $(shell grep -v ^\# $(VERSION_FILE))
 COMMIT_NO := $(shell git rev-parse HEAD 2> /dev/null || true)

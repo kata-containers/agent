@@ -244,7 +244,7 @@ func (c *container) trace(name string) (*agentSpan, context.Context) {
 		c.ctx = context.Background()
 	}
 
-	return trace(c.ctx, "container", name)
+	return tracer(c.ctx, "container", name)
 }
 
 func (c *container) setProcess(process *process) {
@@ -255,7 +255,7 @@ func (c *container) setProcess(process *process) {
 
 func (c *container) deleteProcess(execID string) {
 	span, _ := c.trace("deleteProcess")
-	span.setTag("exec-id", execID)
+	setTag("exec-id", execID)
 	defer span.finish()
 	c.Lock()
 	delete(c.processes, execID)
@@ -293,9 +293,9 @@ func (s *sandbox) trace(name string) (*agentSpan, context.Context) {
 		s.ctx = context.Background()
 	}
 
-	span, ctx := trace(s.ctx, "sandbox", name)
+	span, ctx := tracer(s.ctx, "sandbox", name)
 
-	span.setTag("sandbox", s.id)
+	setTag("sandbox", s.id)
 
 	return span, ctx
 }
@@ -323,7 +323,7 @@ func (s *sandbox) setSandboxStorage(path string) bool {
 // for any OCI hooks
 func (s *sandbox) scanGuestHooks(guestHookPath string) {
 	span, _ := s.trace("scanGuestHooks")
-	span.setTag("guest-hook-path", guestHookPath)
+	setTag("guest-hook-path", guestHookPath)
 	defer span.finish()
 
 	fieldLogger := agentLog.WithField("oci-hook-path", guestHookPath)
@@ -370,7 +370,7 @@ func (s *sandbox) addGuestHooks(spec *specs.Spec) {
 // acquiring a lock on sandbox.
 func (s *sandbox) unSetSandboxStorage(path string) (bool, error) {
 	span, _ := s.trace("unSetSandboxStorage")
-	span.setTag("path", path)
+	setTag("path", path)
 	defer span.finish()
 
 	if sbs, ok := s.storages[path]; ok {
@@ -393,7 +393,7 @@ func (s *sandbox) unSetSandboxStorage(path string) (bool, error) {
 // acquiring a lock on sandbox.
 func (s *sandbox) removeSandboxStorage(path string) error {
 	span, _ := s.trace("removeSandboxStorage")
-	span.setTag("path", path)
+	setTag("path", path)
 	defer span.finish()
 
 	err := removeMounts([]string{path})
@@ -415,7 +415,7 @@ func (s *sandbox) removeSandboxStorage(path string) error {
 // acquiring a lock on sandbox.
 func (s *sandbox) unsetAndRemoveSandboxStorage(path string) error {
 	span, _ := s.trace("unsetAndRemoveSandboxStorage")
-	span.setTag("path", path)
+	setTag("path", path)
 	defer span.finish()
 
 	removeSbs, err := s.unSetSandboxStorage(path)
@@ -451,8 +451,8 @@ func (s *sandbox) setContainer(ctx context.Context, id string, ctr *container) {
 	s.ctx = ctx
 
 	span, _ := s.trace("setContainer")
-	span.setTag("id", id)
-	span.setTag("container", ctr.id)
+	setTag("id", id)
+	setTag("container", ctr.id)
 	defer span.finish()
 
 	s.Lock()
@@ -462,7 +462,7 @@ func (s *sandbox) setContainer(ctx context.Context, id string, ctr *container) {
 
 func (s *sandbox) deleteContainer(id string) {
 	span, _ := s.trace("deleteContainer")
-	span.setTag("container", id)
+	setTag("container", id)
 	defer span.finish()
 
 	s.Lock()
@@ -549,7 +549,7 @@ func (s *sandbox) readStdio(cid, execID string, length int, stdout bool) ([]byte
 }
 
 func (s *sandbox) setupSharedNamespaces(ctx context.Context) error {
-	span, _ := trace(ctx, "sandbox", "setupSharedNamespaces")
+	span, _ := tracer(ctx, "sandbox", "setupSharedNamespaces")
 	defer span.finish()
 
 	// Set up shared IPC namespace
@@ -681,7 +681,7 @@ func (s *sandbox) waitForStopServer() {
 
 	fieldLogger.Info("Force stopping the server now")
 
-	span.setTag("forced", true)
+	setTag("forced", true)
 	s.stopGRPC()
 }
 
@@ -709,12 +709,12 @@ func (s *sandbox) listenToUdevEvents() {
 			continue
 		}
 
-		span, _ := trace(rootContext, "udev", "udev event")
-		span.setTag("udev-action", uEv.Action)
-		span.setTag("udev-name", uEv.DevName)
-		span.setTag("udev-path", uEv.DevPath)
-		span.setTag("udev-subsystem", uEv.SubSystem)
-		span.setTag("udev-seqno", uEv.SeqNum)
+		span, _ := tracer(rootContext, "udev", "udev event")
+		setTag("udev-action", uEv.Action)
+		setTag("udev-name", uEv.DevName)
+		setTag("udev-path", uEv.DevPath)
+		setTag("udev-subsystem", uEv.SubSystem)
+		setTag("udev-seqno", uEv.SeqNum)
 
 		fieldLogger = fieldLogger.WithFields(logrus.Fields{
 			"uevent-action":    uEv.Action,
@@ -1031,8 +1031,8 @@ func makeUnaryInterceptor() grpc.UnaryServerInterceptor {
 
 		if tracing {
 			ctx = getGRPCContext()
-			span, _ = trace(ctx, "gRPC", grpcCall)
-			span.setTag("grpc-method-type", "unary")
+			span, _ = tracer(ctx, "gRPC", grpcCall)
+			setTag("grpc-method-type", "unary")
 
 			if strings.HasSuffix(grpcCall, "/ReadStdout") || strings.HasSuffix(grpcCall, "/WriteStdin") {
 				// Add a tag to allow filtering of those calls dealing
@@ -1040,7 +1040,7 @@ func makeUnaryInterceptor() grpc.UnaryServerInterceptor {
 				// being able to filter them out allows the
 				// performance of "core" calls to be determined
 				// without the "noise" of these calls.
-				span.setTag("api-category", "interactive")
+				setTag("api-category", "interactive")
 			}
 		} else {
 			// Just log call details
@@ -1419,10 +1419,7 @@ func realMain() error {
 		stopServer:     make(chan struct{}),
 	}
 
-	rootSpan, rootContext, err = setupTracing(agentName)
-	if err != nil {
-		return fmt.Errorf("failed to setup tracing: %v", err)
-	}
+	rootSpan, rootContext = setupTracing(agentName)
 
 	if err = s.initLogger(rootContext); err != nil {
 		return fmt.Errorf("failed to setup logger: %v", err)

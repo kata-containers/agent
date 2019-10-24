@@ -46,7 +46,7 @@ type channel interface {
 // (channelExistMaxTries * channelExistWaitTime) / 1000 = timeout in seconds
 // If there are neither vsocks nor serial ports, an error is returned.
 func newChannel(ctx context.Context) (channel, error) {
-	span, _ := trace(ctx, "channel", "newChannel")
+	span, _ := tracer(ctx, "channel", "newChannel")
 	defer span.finish()
 
 	var serialErr error
@@ -90,14 +90,14 @@ func newChannel(ctx context.Context) (channel, error) {
 }
 
 func checkForSerialChannel(ctx context.Context) (*serialChannel, error) {
-	span, _ := trace(ctx, "channel", "checkForSerialChannel")
+	span, _ := tracer(ctx, "channel", "checkForSerialChannel")
 	defer span.finish()
 
 	// Check serial port path
 	serialPath, serialErr := findVirtualSerialPath(serialChannelName)
 	if serialErr == nil {
-		span.setTag("channel-type", "serial")
-		span.setTag("serial-path", serialPath)
+		setTag("channel-type", "serial")
+		setTag("serial-path", serialPath)
 		agentLog.Debug("Serial channel type detected")
 		return &serialChannel{serialPath: serialPath}, nil
 	}
@@ -106,7 +106,7 @@ func checkForSerialChannel(ctx context.Context) (*serialChannel, error) {
 }
 
 func checkForVsockChannel(ctx context.Context) (*vSockChannel, error) {
-	span, _ := trace(ctx, "channel", "checkForVsockChannel")
+	span, _ := tracer(ctx, "channel", "checkForVsockChannel")
 	defer span.finish()
 
 	// check vsock path
@@ -116,7 +116,7 @@ func checkForVsockChannel(ctx context.Context) (*vSockChannel, error) {
 
 	vSockSupported, vsockErr := isAFVSockSupportedFunc()
 	if vSockSupported && vsockErr == nil {
-		span.setTag("channel-type", "vsock")
+		setTag("channel-type", "vsock")
 		agentLog.Debug("Vsock channel type detected")
 		return &vSockChannel{}, nil
 	}

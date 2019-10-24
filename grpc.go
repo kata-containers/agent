@@ -1747,10 +1747,7 @@ func (a *agentGRPC) StartTracing(ctx context.Context, req *pb.StartTracingReques
 	// Ignore the provided context and recreate the root context.
 	// Note that this call will not be traced, but all subsequent ones
 	// will be.
-	rootSpan, rootContext, err = setupTracing(agentName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to setup tracing: %v", err)
-	}
+	rootSpan, rootContext = setupTracing(agentName)
 
 	a.sandbox.ctx = rootContext
 	grpcContext = rootContext

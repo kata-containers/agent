@@ -354,8 +354,8 @@ func mountStorage(storage pb.Storage) error {
 // it to a specific location, according to the type of handler chosen, and for
 // each storage.
 func addStorages(ctx context.Context, storages []*pb.Storage, s *sandbox) (mounts []string, err error) {
-	span, ctx := trace(ctx, "mount", "addStorages")
-	span.setTag("sandbox", s.id)
+	span, ctx := tracer(ctx, "mount", "addStorages")
+	setTag("sandbox", s.id)
 	defer span.finish()
 
 	var mountList []string
@@ -390,7 +390,7 @@ func addStorages(ctx context.Context, storages []*pb.Storage, s *sandbox) (mount
 		// Wrap the span around the handler call to avoid modifying
 		// the handler interface but also to avoid having to add trace
 		// code to each driver.
-		handlerSpan, _ := trace(ctx, "mount", storage.Driver)
+		handlerSpan, _ := tracer(ctx, "mount", storage.Driver)
 		mountPoint, err := devHandler(ctx, *storage, s)
 		handlerSpan.finish()
 
