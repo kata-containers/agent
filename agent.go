@@ -47,6 +47,7 @@ const (
 	bashPath         = "/bin/bash"
 	shPath           = "/bin/sh"
 	debugConsolePath = "/dev/console"
+	sysPCI0Path      = "/sys/devices/pci0000:00/"
 )
 
 var (
@@ -140,6 +141,10 @@ type sandbox struct {
 	sandboxPidNs      bool
 	storages          map[string]*sandboxStorage
 	stopServer        chan struct{}
+
+	// pseudo pci devices at /sys/devices/pci0000:00/, useful to detect new devices.
+	// Use map to improve comparison
+	pseudoPCIDevicesList map[string]bool
 }
 
 var agentFields = logrus.Fields{
@@ -1198,6 +1203,35 @@ func (s *sandbox) stopGRPC() {
 	}
 }
 
+// update the list of device and return a list with
+// the new devices
+func (s *sandbox) updatePCIDevicesList() []string {
+	pseudoPCIDevPrefix := "0000"
+	devices := make(map[string]bool)
+
+	pcidevs, err := ioutil.ReadDir(sysPCI0Path)
+	if err != nil {
+		return []string{}
+	}
+
+	s.Lock()
+	defer s.Unlock()
+	for _, d := range pcidevs {
+		if strings.HasPrefix(d.Name(), pseudoPCIDevPrefix) {
+			devices[d.Name()] = true
+		}
+	}
+
+	var diff []string
+	for k := range devices {
+		if _, ok := s.pseudoPCIDevicesList[k]; !ok {
+			diff = append(diff, k)
+		}
+	}
+	s.pseudoPCIDevicesList = devices
+	return diff
+}
+
 type initMount struct {
 	fstype, src, dest string
 	options           []string
@@ -1449,6 +1483,9 @@ func realMain() error {
 	if err = s.initChannel(); err != nil {
 		return fmt.Errorf("failed to setup channels: %v", err)
 	}
+
+	// update the list of devices
+	s.updatePCIDevicesList()
 
 	// Start gRPC server.
 	s.startGRPC()

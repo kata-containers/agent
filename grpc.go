@@ -574,10 +574,115 @@ func (a *agentGRPC) rollbackFailingContainerCreation(ctr *container) {
 	}
 }
 
-func (a *agentGRPC) finishCreateContainer(ctr *container, req *pb.CreateContainerRequest, config *configs.Config) (resp *gpb.Empty, err error) {
+func getLinuxDevices(pseudoDevice string) ([]*specs.LinuxDevice, error) {
+	classPath := filepath.Join(sysPCI0Path, pseudoDevice, "class")
+	d, err := ioutil.ReadFile(classPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read device class: %v", err)
+	}
+
+	deviceClass := strings.TrimSpace(string(d))
+
+	for class, handler := range functionDeviceHandlerList {
+		if strings.HasPrefix(deviceClass, class) {
+			return handler(pseudoDevice)
+		}
+	}
+
+	return nil, fmt.Errorf("could not find a device handler for %v, class %v", pseudoDevice, deviceClass)
+}
+
+func allocateDevicesResources(ociSpec *specs.Spec) {
+	if ociSpec.Linux.Devices == nil {
+		// allocate devices array
+		ociSpec.Linux.Devices = []specs.LinuxDevice{}
+	}
+
+	if ociSpec.Linux.Resources == nil {
+		// allocate resources
+		ociSpec.Linux.Resources = &specs.LinuxResources{}
+	}
+
+	if ociSpec.Linux.Resources.Devices == nil {
+		ociSpec.Linux.Resources.Devices = []specs.LinuxDeviceCgroup{}
+	}
+}
+
+func linuxDeviceToCgroup(d *specs.LinuxDevice) specs.LinuxDeviceCgroup {
+	return specs.LinuxDeviceCgroup{
+		Allow:  true,
+		Type:   d.Type,
+		Major:  &d.Major,
+		Minor:  &d.Minor,
+		Access: "rwm",
+	}
+}
+
+func (a *agentGRPC) updateOCISpecDevices(ociSpec *specs.Spec) {
+	pciDevs := a.sandbox.updatePCIDevicesList()
+	if len(pciDevs) == 0 {
+		// no new devices
+		agentLog.Debug("no new devices were detected")
+		return
+	}
+
+	for _, pciDev := range pciDevs {
+		// driver link points to the kernel driver, it exists when
+		// the kernel supports such device
+		driverPath := filepath.Join(sysPCI0Path, pciDev, "driver")
+		if _, err := os.Stat(driverPath); os.IsNotExist(err) {
+			// there is no kernel driver for this device
+			agentLog.WithField("pseudo-device", pciDev).Warn("no kernel driver for function device")
+			continue
+		}
+
+		devs, err := getLinuxDevices(pciDev)
+		if err != nil {
+			agentLog.WithError(err).Warn("could not get linux devices")
+			continue
+		}
+
+		allocateDevicesResources(ociSpec)
+		for _, d := range devs {
+			agentLog.WithField("device", d.Path).Debug("adding device to OCI spec")
+			// devices in this list are created with mknod or mount
+			ociSpec.Linux.Devices = append(ociSpec.Linux.Devices, *d)
+			// devices in this list are added into device cgroup
+			ociSpec.Linux.Resources.Devices = append(ociSpec.Linux.Resources.Devices, linuxDeviceToCgroup(d))
+		}
+	}
+}
+
+func (a *agentGRPC) finishCreateContainer(ctr *container, req *pb.CreateContainerRequest, ociSpec *specs.Spec) (resp *gpb.Empty, err error) {
 	containerPath := filepath.Join(libcontainerPath, a.sandbox.id)
+
 	factory, err := libcontainer.New(containerPath, libcontainer.Cgroupfs)
 	if err != nil {
+		return emptyResp, err
+	}
+
+	// devices are hotplugged before container creation
+	// update the list of devices in order to make them visible in the container
+	// and honour devices cgroup
+	a.updateOCISpecDevices(ociSpec)
+
+	// Convert the OCI specification into a libcontainer configuration.
+	config, err := specconv.CreateLibcontainerConfig(&specconv.CreateOpts{
+		CgroupName:   req.ContainerId,
+		NoNewKeyring: true,
+		Spec:         ociSpec,
+		NoPivotRoot:  a.sandbox.noPivotRoot,
+	})
+	if err != nil {
+		return emptyResp, err
+	}
+
+	// apply rlimits
+	config.Rlimits = posixRlimitsToRlimits(ociSpec.Process.Rlimits)
+
+	// Update libcontainer configuration for specific cases not handled
+	// by the specconv converter.
+	if err = a.updateContainerConfig(ociSpec, config, ctr); err != nil {
 		return emptyResp, err
 	}
 
@@ -686,27 +791,7 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		defer os.Chdir(oldcwd)
 	}
 
-	// Convert the OCI specification into a libcontainer configuration.
-	config, err := specconv.CreateLibcontainerConfig(&specconv.CreateOpts{
-		CgroupName:   req.ContainerId,
-		NoNewKeyring: true,
-		Spec:         ociSpec,
-		NoPivotRoot:  a.sandbox.noPivotRoot,
-	})
-	if err != nil {
-		return emptyResp, err
-	}
-
-	// apply rlimits
-	config.Rlimits = posixRlimitsToRlimits(ociSpec.Process.Rlimits)
-
-	// Update libcontainer configuration for specific cases not handled
-	// by the specconv converter.
-	if err = a.updateContainerConfig(ociSpec, config, ctr); err != nil {
-		return emptyResp, err
-	}
-
-	return a.finishCreateContainer(ctr, req, config)
+	return a.finishCreateContainer(ctr, req, ociSpec)
 }
 
 // Path overridden in unit tests

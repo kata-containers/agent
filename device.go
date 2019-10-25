@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	pb "github.com/kata-containers/agent/protocols/grpc"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
@@ -464,4 +466,117 @@ func addDevice(ctx context.Context, device *pb.Device, spec *pb.Spec, s *sandbox
 	}
 
 	return devHandler(ctx, *device, spec, s)
+}
+
+type pseudoPCIDeviceHandler func(pseudoDevice string) ([]*specs.LinuxDevice, error)
+
+// for more information about device classes, see http://pci-ids.ucw.cz/read/PD/
+const (
+	// For GPUs
+	displayControllerPCIClass = "0x03"
+)
+
+var functionDeviceHandlerList = map[string]pseudoPCIDeviceHandler{
+	displayControllerPCIClass: displayControllerPCIHandler,
+}
+
+func waitPathExist(path string) error {
+	var err error
+	delay := time.Millisecond * 100
+	tries := 5
+
+	for i := 0; i < tries; i++ {
+		if _, err = os.Stat(path); err == nil {
+			return nil
+		}
+		time.Sleep(delay)
+	}
+
+	return err
+}
+
+func drmUeventToDevice(uevent string) (*specs.LinuxDevice, error) {
+	device := &specs.LinuxDevice{}
+
+	for _, l := range strings.Split(uevent, "\n") {
+		t := strings.Split(l, "=")
+		if len(t) != 2 {
+			continue
+		}
+
+		switch t[0] {
+		case "MAJOR":
+			major, err := strconv.ParseInt(t[1], 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("could not get drm major: %v", err)
+			}
+			device.Major = major
+		case "MINOR":
+			minor, err := strconv.ParseInt(t[1], 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("could not get drm minor: %v", err)
+			}
+			device.Minor = minor
+
+		case "DEVNAME":
+			device.Path = filepath.Join("/dev", t[1])
+		default:
+			agentLog.Debug("ignoring drm udev option: %s", t[0])
+		}
+	}
+
+	st := &unix.Stat_t{}
+	if err := unix.Stat(device.Path, st); err != nil {
+		return nil, fmt.Errorf("could not get device information: %v", err)
+	}
+
+	switch st.Mode & unix.S_IFMT {
+	case unix.S_IFBLK:
+		device.Type = "b"
+	case unix.S_IFCHR:
+		device.Type = "c"
+	default:
+		return nil, fmt.Errorf("unsupported device type '%v': %s", st.Mode&unix.S_IFMT, device.Path)
+	}
+
+	device.GID = &st.Gid
+	device.UID = &st.Uid
+	device.FileMode = (*os.FileMode)(&st.Mode)
+
+	return device, nil
+}
+
+func displayControllerPCIHandler(pseudoDevice string) ([]*specs.LinuxDevice, error) {
+	agentLog.WithField("pseudo-device", pseudoDevice).Debugf("using DRM handler")
+
+	driverDevicesPath := filepath.Join(sysPCI0Path, pseudoDevice, "drm")
+
+	if err := waitPathExist(driverDevicesPath); err != nil {
+		return nil, fmt.Errorf("kernel driver did not create DRM directory: %v", err)
+	}
+
+	drmDevices, err := ioutil.ReadDir(driverDevicesPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var devices []*specs.LinuxDevice
+	for _, d := range drmDevices {
+		if !d.IsDir() {
+			agentLog.WithField("name", d.Name()).Debug("not a drm directory")
+			continue
+		}
+		uevent, err := ioutil.ReadFile(filepath.Join(driverDevicesPath, d.Name(), "uevent"))
+		if err != nil {
+			return nil, err
+		}
+
+		dev, err := drmUeventToDevice(string(uevent))
+		if err != nil {
+			return nil, err
+		}
+		devices = append(devices, dev)
+	}
+
+	return devices, nil
 }
