@@ -169,6 +169,10 @@ following:
      - The `jaeger-client-socat-redirector.service` systemd service
        (see the [Guest to Host communication using VSOCK](#guest-to-host-communication-using-vsock) section).
        This service should be placed at `/usr/lib/systemd/system/` of the rootfs.
+       It is necessary to perform the following command within the rootfs context:
+       ```
+       $ sudo -E chroot ${rootfs} systemctl enable jaeger-client-socat-redirector.service
+       ```
 
      - The distribution-specific package including the `socat(1)` utility
        (normally the package is called `socat`).
@@ -179,10 +183,18 @@ following:
      - The `kata-journald-host-redirect.service` service.
        (see the [Guest to Host communication using VSOCK](#guest-to-host-communication-using-vsock) section).
        This service should be placed at `/usr/lib/systemd/system/` of the rootfs.
+       It is necessary to perform the following command within the rootfs context:
+       ```
+       $ sudo -E chroot ${rootfs} systemctl enable kata-journald-host-redirect.service
+       ```
 
      - The `kata-redirect-agent-output-to-journal.conf` systemd snippet
        (see the [Guest to Host communication using VSOCK](#guest-to-host-communication-using-vsock) section).
        This configuration file should be placed at `/etc/systemd/system/kata-agent.service.d/` of the rootfs.
+       It is necessary to perform the following command:
+       ```
+       $ install -o root -g root -m 0440 kata-redirect-agent-output-to-journal.conf ${rootfs}/etc/systemd/system/kata-agent.service.d
+       ```
 
 1. Install the custom image.
 
