@@ -17,19 +17,20 @@ import (
 )
 
 const (
-	optionPrefix      = "agent."
-	logLevelFlag      = optionPrefix + "log"
-	logsVSockPortFlag = optionPrefix + "log_vport"
-	devModeFlag       = optionPrefix + "devmode"
-	traceModeFlag     = optionPrefix + "trace"
-	useVsockFlag      = optionPrefix + "use_vsock"
-	debugConsoleFlag  = optionPrefix + "debug_console"
-	kernelCmdlineFile = "/proc/cmdline"
-	traceModeStatic   = "static"
-	traceModeDynamic  = "dynamic"
-	traceTypeIsolated = "isolated"
-	traceTypeCollated = "collated"
-	defaultTraceType  = traceTypeIsolated
+	optionPrefix          = "agent."
+	logLevelFlag          = optionPrefix + "log"
+	logsVSockPortFlag     = optionPrefix + "log_vport"
+	devModeFlag           = optionPrefix + "devmode"
+	traceModeFlag         = optionPrefix + "trace"
+	useVsockFlag          = optionPrefix + "use_vsock"
+	debugConsoleFlag      = optionPrefix + "debug_console"
+	debugConsoleVPortFlag = optionPrefix + "debug_console_vport"
+	kernelCmdlineFile     = "/proc/cmdline"
+	traceModeStatic       = "static"
+	traceModeDynamic      = "dynamic"
+	traceTypeIsolated     = "isolated"
+	traceTypeCollated     = "collated"
+	defaultTraceType      = traceTypeIsolated
 )
 
 type agentConfig struct {
@@ -113,6 +114,13 @@ func (c *agentConfig) parseCmdlineOption(option string) error {
 			return err
 		}
 		logsVSockPort = uint32(port)
+	case debugConsoleVPortFlag:
+		port, err := strconv.ParseUint(split[valuePosition], 10, 32)
+		if err != nil {
+			return err
+		}
+		debugConsole = true
+		debugConsoleVSockPort = uint32(port)
 	case traceModeFlag:
 		switch split[valuePosition] {
 		case traceTypeIsolated:
