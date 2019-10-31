@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
@@ -25,6 +26,7 @@ const (
 	useVsockFlag          = optionPrefix + "use_vsock"
 	debugConsoleFlag      = optionPrefix + "debug_console"
 	debugConsoleVPortFlag = optionPrefix + "debug_console_vport"
+	hotplugTimeoutFlag    = optionPrefix + "hotplug_timeout"
 	kernelCmdlineFile     = "/proc/cmdline"
 	traceModeStatic       = "static"
 	traceModeDynamic      = "dynamic"
@@ -121,6 +123,15 @@ func (c *agentConfig) parseCmdlineOption(option string) error {
 		}
 		debugConsole = true
 		debugConsoleVSockPort = uint32(port)
+	case hotplugTimeoutFlag:
+		timeout, err := time.ParseDuration(split[valuePosition])
+		if err != nil {
+			return err
+		}
+		// Only use the provided timeout if a positive value is provided
+		if timeout > 0 {
+			hotplugTimeout = timeout
+		}
 	case traceModeFlag:
 		switch split[valuePosition] {
 		case traceTypeIsolated:

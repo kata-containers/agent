@@ -647,11 +647,11 @@ func TestGetSCSIDevPath(t *testing.T) {
 	assert := assert.New(t)
 
 	savedFunc := scanSCSIBus
-	savedTimeout := timeoutHotplug
+	savedTimeout := hotplugTimeout
 
 	defer func() {
 		scanSCSIBus = savedFunc
-		timeoutHotplug = savedTimeout
+		hotplugTimeout = savedTimeout
 	}()
 
 	scanSCSIBus = func(_ string) error {

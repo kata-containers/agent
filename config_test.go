@@ -11,6 +11,7 @@ import (
 	"os"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -406,5 +407,47 @@ func TestParseCmdlineOptionDebugConsoleVPort(t *testing.T) {
 		}
 
 		assert.Equal(debugConsoleVSockPort, d.expectedVPort)
+	}
+}
+
+func TestParseCmdlineOptionHotplugTimeout(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentConfig{}
+
+	type testData struct {
+		option                 string
+		shouldErr              bool
+		expectedHotplugTimeout time.Duration
+	}
+
+	data := []testData{
+		{"", false, 3 * time.Second},
+		{"hotpug_timout", false, 3 * time.Second},
+		{"hotplug_timeout", false, 3 * time.Second},
+		{"hotplug_timeout=1h", false, 3 * time.Second},
+		{"agnt.hotplug_timeout=1h", false, 3 * time.Second},
+		{"agent.hotplug_timeout=3h", false, 3 * time.Hour},
+		{"agent.hotplug_timeout=1s", false, 1 * time.Second},
+		{"agent.hotplug_timeout=0s", false, 3 * time.Second},
+		{"agent.hotplug_timeout=0", false, 3 * time.Second},
+		{"agent.hotplug_timeout=100ms", false, 100 * time.Millisecond},
+		{"agent.hotplug_timeout=-1", true, 3 * time.Second},
+		{"agent.hotplug_timeout=foobar", true, 3 * time.Second},
+		{"agent.hotplug_timeout=5.0", true, 3 * time.Second},
+	}
+
+	for i, d := range data {
+		// reset the hotplug timeout
+		hotplugTimeout = 3 * time.Second
+
+		err := a.parseCmdlineOption(d.option)
+		if d.shouldErr {
+			assert.Error(err)
+		} else {
+			assert.NoError(err)
+		}
+
+		assert.Equal(d.expectedHotplugTimeout, hotplugTimeout, "test %d (%+v)", i, d)
 	}
 }

@@ -8,6 +8,7 @@
 * [Enable trace support](#enable-trace-support)
 * [Enable debug console](#enable-debug-console)
 * [`cpuset` cgroup details](#cpuset-cgroup-details)
+* [Hotplug Timeout](#hotplug-timeout)
 
 This project implements an agent called `kata-agent` that runs inside a virtual machine (VM).
 
@@ -64,5 +65,17 @@ CONNECT 1026
 
 See the [cpuset cgroup documentation](documentation/features/cpuset.md).
 
+## Hotplug Timeout
+
+When hot plugging devices into the Kata VM, the agent will wait by default for 3 seconds
+for the device to be plugged in and the corresponding add uevent for the device. If the timeout
+is reached without the above happening, the hot plug action will fail.
+
+The length of the timeout can be increased by specifying the `agent.hotplug_timeout` to the guest
+kernel command line. For example, `agent.hotplug_timeout=10s` will increase the timeout to 10 seconds.
+The value of the option is in the [Go duration format][2].
+
+Any invalid values used for `agent.hotplug_timeout` will fall back to the default of 3 seconds.
 
 [1]: https://github.com/firecracker-microvm/firecracker/blob/master/docs/vsock.md
+[2]: https://golang.org/pkg/time/#ParseDuration
