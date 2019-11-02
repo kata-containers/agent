@@ -45,7 +45,6 @@ var (
 	pciBusRescanFile    = sysfsDir + "/bus/pci/rescan"
 	pciBusPathFormat    = "%s/%s/pci_bus/"
 	systemDevPath       = "/dev"
-	timeoutHotplug      = 3
 	getSCSIDevPath      = getSCSIDevPathImpl
 	getPCIDeviceName    = getPCIDeviceNameImpl
 	getDevicePCIAddress = getDevicePCIAddressImpl
@@ -158,14 +157,14 @@ func getDeviceName(s *sandbox, devID string) (string, error) {
 		fieldLogger.Infof("Waiting on channel for device: %s notification", devID)
 		select {
 		case devName = <-notifyChan:
-		case <-time.After(time.Duration(timeoutHotplug) * time.Second):
+		case <-time.After(hotplugTimeout):
 			s.Lock()
 			delete(s.deviceWatchers, devID)
 			s.Unlock()
 
 			return "", grpcStatus.Errorf(codes.DeadlineExceeded,
-				"Timeout reached after %ds waiting for device %s",
-				timeoutHotplug, devID)
+				"Timeout reached after %s waiting for device %s",
+				hotplugTimeout, devID)
 		}
 	}
 

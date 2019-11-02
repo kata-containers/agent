@@ -174,6 +174,9 @@ var logsVSockPort = uint32(0)
 // Specify a vsock port where debug console is attached.
 var debugConsoleVSockPort = uint32(0)
 
+// Timeout waiting for a device to be hotplugged
+var hotplugTimeout = 3 * time.Second
+
 // commType is used to denote the communication channel type used.
 type commType int
 
