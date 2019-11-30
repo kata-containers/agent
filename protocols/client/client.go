@@ -9,6 +9,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"strconv"
@@ -418,8 +419,11 @@ func HybridVSockDialer(sock string, timeout time.Duration) (net.Conn, error) {
 				return nil, err
 			}
 			eot := make([]byte, 1)
-			if _, _, err = unix.Recvfrom(int(file.Fd()), eot, syscall.MSG_PEEK); err != nil {
+			if n, _, err := unix.Recvfrom(int(file.Fd()), eot, syscall.MSG_PEEK); err != nil || n == 0 {
 				conn.Close()
+				if err == nil {
+					err = io.EOF
+				}
 				return nil, err
 			}
 		}
