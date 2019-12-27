@@ -7,6 +7,7 @@
 package client
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"net"
@@ -407,12 +408,19 @@ func HybridVSockDialer(sock string, timeout time.Duration) (net.Conn, error) {
 			return nil, err
 		}
 
-		// Read EOT (End of transmission) byte
-		eot := make([]byte, 32)
-		if _, err = conn.Read(eot); err != nil {
-			// Just close the connection, gRPC will dial again
-			// without errors
+		// A trivial handshake is included in the host-initiated vsock connection protocol.
+		// It looks like this:
+		// - [host] CONNECT <port><LF>
+		// - [guest/success] OK <assigned_host_port><LF>
+		reader := bufio.NewReader(conn)
+		if response, err := reader.ReadString('\n'); err != nil {
 			conn.Close()
+			// for now, we temporarily rely on the backoff strategy from GRPC for more stable CI.
+			return conn, nil
+		} else if !strings.Contains(response, "OK") {
+			conn.Close()
+			// for now, we temporarily rely on the backoff strategy from GRPC for more stable CI.
+			return conn, nil
 		}
 
 		return conn, nil
