@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -618,6 +619,10 @@ func setupDNS(dns []string) (err error) {
 	if len(dns) == 0 {
 		agentLog.Debug("Did not set sandbox DNS as DNS not received as part of grpc request.")
 		return nil
+	}
+
+	if err := os.MkdirAll(filepath.Dir(kataGuestSandboxDNSFile), 0700); err != nil {
+		return err
 	}
 	if file, err = os.Create(kataGuestSandboxDNSFile); err != nil {
 		return err
