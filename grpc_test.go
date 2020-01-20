@@ -843,12 +843,38 @@ func TestGetGuestDetails(t *testing.T) {
 	probeFile, err := ioutil.TempFile("", "probe")
 	assert.NoError(err)
 
+	// sysfsAcpiMemoryHotplugPath exist and is 1
+	hotplugEnabledFile, err := ioutil.TempFile("", "enabled")
+	assert.NoError(err)
+	_, err = hotplugEnabledFile.WriteString("1")
+	assert.NoError(err)
+	hotplugEnabledFile.Sync()
+
 	oldSysfsMemoryHotplugProbePath := sysfsMemoryHotplugProbePath
+	oldSysfsAcpiMemoryHotplugPath := sysfsAcpiMemoryHotplugPath
 	defer func() {
 		sysfsMemoryHotplugProbePath = oldSysfsMemoryHotplugProbePath
+		sysfsAcpiMemoryHotplugPath = oldSysfsAcpiMemoryHotplugPath
 	}()
 
 	sysfsMemoryHotplugProbePath = probeFile.Name()
+	sysfsAcpiMemoryHotplugPath = hotplugEnabledFile.Name()
+	resp, err = a.GetGuestDetails(context.TODO(), req)
+	assert.NoError(err)
+	assert.Equal(resp.SupportMemHotplugProbe, false)
+
+	// sysfsAcpiMemoryHotplugPath exist and is 0
+	_, err = hotplugEnabledFile.Seek(0, 0)
+	assert.NoError(err)
+	_, err = hotplugEnabledFile.WriteString("0")
+	assert.NoError(err)
+	hotplugEnabledFile.Sync()
+	resp, err = a.GetGuestDetails(context.TODO(), req)
+	assert.NoError(err)
+	assert.Equal(resp.SupportMemHotplugProbe, true)
+
+	// sysfsAcpiMemoryHotplugPath does not exist
+	os.Remove(sysfsAcpiMemoryHotplugPath)
 	resp, err = a.GetGuestDetails(context.TODO(), req)
 	assert.NoError(err)
 	assert.Equal(resp.SupportMemHotplugProbe, true)
