@@ -114,7 +114,7 @@ func updateLink(netHandle *netlink.Handle, link netlink.Link, iface *types.Inter
 	}
 
 	// As a first step, clear out any existing addresses associated with the link:
-	linkIPs, err := netlink.AddrList(link, netlink.FAMILY_V4)
+	linkIPs, err := netlink.AddrList(link, netlink.FAMILY_ALL)
 	if err != nil {
 		return grpcStatus.Errorf(codes.Internal, "Could not check initial addresses for the link: %v", err)
 	}
@@ -297,7 +297,7 @@ func getInterface(netHandle *netlink.Handle, link netlink.Link) (*types.Interfac
 	ifc.Mtu = uint64(linkAttrs.MTU)
 	ifc.HwAddr = linkAttrs.HardwareAddr.String()
 
-	addrs, err := netHandle.AddrList(link, netlink.FAMILY_V4)
+	addrs, err := netHandle.AddrList(link, netlink.FAMILY_ALL)
 	if err != nil {
 		agentLog.WithError(err).Error("getInterface() failed")
 		return nil, err
@@ -307,6 +307,11 @@ func getInterface(netHandle *netlink.Handle, link netlink.Link) (*types.Interfac
 		m := types.IPAddress{
 			Address: addr.IP.String(),
 			Mask:    fmt.Sprintf("%d", netMask),
+		}
+		if addr.IP.To4() != nil {
+			m.Family = types.IPFamily_v4
+		} else {
+			m.Family = types.IPFamily_v6
 		}
 		ifc.IPAddresses = append(ifc.IPAddresses, &m)
 	}
