@@ -15,10 +15,13 @@ ARG arch
 
 # TODO: if you have trouble downloading git repos due to cert problem
 # try to uncomment this
-# ENV GIT_SSL_NO_VERIFY true
+#ENV GIT_SSL_NO_VERIFY true
+
+# import public key
+#RUN rpm --import http://mirror.centos.org/centos/RPM-GPG-KEY-CentOS-7
 
 # install building tools
-RUN yum makecache && yum install -y \
+RUN yum makecache && yum install -y --nogpgcheck \
 	git automake libtool glibc-headers gcc-c++ make
 
 # install GO development environment
