@@ -11,6 +11,20 @@
 
 [[projects]]
   branch = "master"
+  digest = "1:0b6cfb088518f87016444887bcd14548bea4abc050e865ca686035cdaf3d32db"
+  name = "github.com/cilium/ebpf"
+  packages = [
+    ".",
+    "asm",
+    "internal",
+    "internal/btf",
+    "internal/unix",
+  ]
+  pruneopts = "NUT"
+  revision = "4032b1d8aae306b7bb94a2a11002932caf88c644"
+
+[[projects]]
+  branch = "master"
   digest = "1:8ecb89af7dfe3ac401bdb0c9390b134ef96a97e85f732d2b0604fb7b3977839f"
   name = "github.com/codahale/hdrhistogram"
   packages = ["."]
@@ -138,13 +152,17 @@
   revision = "7d4729fb36185a7c1719923406c9d40e54fb93c7"
 
 [[projects]]
-  digest = "1:f080ede606260f5e0b28b458189777d3ea1da9a2548ebaa51146d2c3512df3fa"
+  digest = "1:0df68665e415e06de84ddad84ac3253ed4903ebc3f346c0003f4aaa0228a5901"
   name = "github.com/opencontainers/runc"
   packages = [
     "libcontainer",
     "libcontainer/apparmor",
     "libcontainer/cgroups",
+    "libcontainer/cgroups/ebpf",
+    "libcontainer/cgroups/ebpf/devicefilter",
     "libcontainer/cgroups/fs",
+    "libcontainer/cgroups/fs2",
+    "libcontainer/cgroups/fscommon",
     "libcontainer/cgroups/systemd",
     "libcontainer/configs",
     "libcontainer/configs/validate",
@@ -159,9 +177,10 @@
     "libcontainer/system",
     "libcontainer/user",
     "libcontainer/utils",
+    "types",
   ]
   pruneopts = "NUT"
-  revision = "d736ef14f0288d6993a1845745d6756cfc9ddd5a"
+  revision = "2fc03cc11c775b7a8b2e48d7ee447cb9bef32ad0"
 
 [[projects]]
   digest = "1:7a58202c5cdf3d2c1eb0621fe369315561cea7f036ad10f0f0479ac36bcc95eb"
@@ -194,12 +213,12 @@
   version = "v1.0.2"
 
 [[projects]]
-  digest = "1:5cf3f025cbee5951a4ee961de067c8a89fc95a5adabead774f82822efabab121"
+  digest = "1:4047c378584616813d610c9f993bf90dd0d07aed8d94bd3bc299cd35ececdcba"
   name = "github.com/pkg/errors"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "645ef00459ed84a119197bfb8d8205042c6df63d"
-  version = "v0.8.0"
+  revision = "614d223910a179a466c1767a985424175c39b465"
+  version = "v0.9.1"
 
 [[projects]]
   digest = "1:0028cb19b2e4c3112225cd871870f2d9cf49b9b4276531f03438a88e94be86fe"
@@ -397,6 +416,7 @@
     "github.com/opencontainers/runc/libcontainer/seccomp",
     "github.com/opencontainers/runc/libcontainer/specconv",
     "github.com/opencontainers/runc/libcontainer/utils",
+    "github.com/opencontainers/runc/types",
     "github.com/opencontainers/runtime-spec/specs-go",
     "github.com/opentracing/opentracing-go",
     "github.com/pkg/errors",

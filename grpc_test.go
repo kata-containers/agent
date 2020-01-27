@@ -27,6 +27,7 @@ import (
 	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/seccomp"
+	runctypes "github.com/opencontainers/runc/types"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/sys/unix"
@@ -523,8 +524,8 @@ func TestStatsContainer(t *testing.T) {
 	assert.Error(err)
 	assert.Nil(r)
 
-	network := &libcontainer.NetworkInterface{}
-	interfaces := make([]*libcontainer.NetworkInterface, 0)
+	network := &runctypes.NetworkInterface{}
+	interfaces := make([]*runctypes.NetworkInterface, 0)
 	interfaces = append(interfaces, network)
 
 	a.sandbox.containers[containerID] = &container{
