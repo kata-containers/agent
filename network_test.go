@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/kata-containers/agent/pkg/types"
@@ -300,6 +301,16 @@ func TestListInterfaces(t *testing.T) {
 		assert.Equal(ipAddr.Family, types.IPFamily_v6)
 		ip := net.ParseIP(ipAddr.Address)
 		assert.True(ip.IsLinkLocalUnicast())
+	}
+
+	// Check IFA_F_NODAD flag is set on ipv6 address
+	l, err := netlink.LinkByName(ifc.Name)
+	assert.Nil(err)
+	addrList, err := netlink.AddrList(l, netlink.FAMILY_V6)
+	assert.Nil(err)
+
+	if addrList[0].Flags&syscall.IFA_F_NODAD == 0 {
+		t.Fatalf("Unexpected interface flags for addr %+v: 0x%x. Expected to contain 0x%x", addrList[0], addrList[0].Flags, syscall.IFA_F_NODAD)
 	}
 }
 

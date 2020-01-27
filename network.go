@@ -129,6 +129,17 @@ func updateLink(netHandle *netlink.Handle, link netlink.Link, iface *types.Inter
 		netlinkAddrStr := fmt.Sprintf("%s/%s", addr.Address, addr.Mask)
 		netlinkAddr, err := netlink.ParseAddr(netlinkAddrStr)
 
+		// With ipv6 addresses, there is a brief period during which the address is marked as "tentative"
+		// making it unavailable. A process called duplicate address detection(DAD) is performed during this period.
+		// Disble DAD so that networking is available once the container is up. The assumption is
+		// that it is the reponsibility of the upper stack to make sure the addresses assigned to containers
+		// do not conflict. A similar operation is performed by libnetwork:
+		// https://github.com/moby/moby/issues/18871
+
+		if addr.GetFamily() == types.IPFamily_v6 {
+			netlinkAddr.Flags = netlinkAddr.Flags | syscall.IFA_F_NODAD
+		}
+
 		if err != nil {
 			return grpcStatus.Errorf(codes.Internal, "Could not parse %q: %v", netlinkAddrStr, err)
 		}
