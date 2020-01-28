@@ -18,7 +18,7 @@ ARG arch
 # ENV GIT_SSL_NO_VERIFY true
 
 # install building tools
-RUN yum makecache && yum install -y \
+RUN yum makecache && yum install -y --nogpgcheck \
 	git automake libtool glibc-headers gcc-c++ make
 
 # install GO development environment
