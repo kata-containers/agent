@@ -114,7 +114,7 @@ func updateLink(netHandle *netlink.Handle, link netlink.Link, iface *types.Inter
 	}
 
 	// As a first step, clear out any existing addresses associated with the link:
-	linkIPs, err := netlink.AddrList(link, netlink.FAMILY_V4)
+	linkIPs, err := netlink.AddrList(link, netlink.FAMILY_ALL)
 	if err != nil {
 		return grpcStatus.Errorf(codes.Internal, "Could not check initial addresses for the link: %v", err)
 	}
@@ -128,6 +128,17 @@ func updateLink(netHandle *netlink.Handle, link netlink.Link, iface *types.Inter
 	for _, addr := range iface.IPAddresses {
 		netlinkAddrStr := fmt.Sprintf("%s/%s", addr.Address, addr.Mask)
 		netlinkAddr, err := netlink.ParseAddr(netlinkAddrStr)
+
+		// With ipv6 addresses, there is a brief period during which the address is marked as "tentative"
+		// making it unavailable. A process called duplicate address detection(DAD) is performed during this period.
+		// Disble DAD so that networking is available once the container is up. The assumption is
+		// that it is the reponsibility of the upper stack to make sure the addresses assigned to containers
+		// do not conflict. A similar operation is performed by libnetwork:
+		// https://github.com/moby/moby/issues/18871
+
+		if addr.GetFamily() == types.IPFamily_v6 {
+			netlinkAddr.Flags = netlinkAddr.Flags | syscall.IFA_F_NODAD
+		}
 
 		if err != nil {
 			return grpcStatus.Errorf(codes.Internal, "Could not parse %q: %v", netlinkAddrStr, err)
@@ -297,7 +308,7 @@ func getInterface(netHandle *netlink.Handle, link netlink.Link) (*types.Interfac
 	ifc.Mtu = uint64(linkAttrs.MTU)
 	ifc.HwAddr = linkAttrs.HardwareAddr.String()
 
-	addrs, err := netHandle.AddrList(link, netlink.FAMILY_V4)
+	addrs, err := netHandle.AddrList(link, netlink.FAMILY_ALL)
 	if err != nil {
 		agentLog.WithError(err).Error("getInterface() failed")
 		return nil, err
@@ -307,6 +318,11 @@ func getInterface(netHandle *netlink.Handle, link netlink.Link) (*types.Interfac
 		m := types.IPAddress{
 			Address: addr.IP.String(),
 			Mask:    fmt.Sprintf("%d", netMask),
+		}
+		if addr.IP.To4() != nil {
+			m.Family = types.IPFamily_v4
+		} else {
+			m.Family = types.IPFamily_v6
 		}
 		ifc.IPAddresses = append(ifc.IPAddresses, &m)
 	}
