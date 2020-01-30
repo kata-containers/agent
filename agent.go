@@ -1146,20 +1146,20 @@ func (s *sandbox) startGRPC() {
 			err = s.channel.setup()
 			if err != nil {
 				agentLog.WithError(err).Warn("Failed to setup agent grpc channel")
-				return
+				continue
 			}
 
 			err = s.channel.wait()
 			if err != nil {
 				agentLog.WithError(err).Warn("Failed to wait agent grpc channel ready")
-				return
+				continue
 			}
 
 			var l net.Listener
 			l, err = s.channel.listen()
 			if err != nil {
 				agentLog.WithError(err).Warn("Failed to create agent grpc listener")
-				return
+				continue
 			}
 
 			// l is closed when Serve() returns
