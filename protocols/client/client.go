@@ -35,7 +35,7 @@ const (
 	HybridVSockScheme = "hvsock"
 )
 
-var defaultDialTimeout = 15 * time.Second
+var defaultDialTimeout = 60 * time.Second
 var defaultCloseTimeout = 5 * time.Second
 
 var hybridVSockPort uint32
