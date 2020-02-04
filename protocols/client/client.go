@@ -9,6 +9,7 @@ package client
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -427,13 +428,11 @@ func HybridVSockDialer(sock string, timeout time.Duration) (net.Conn, error) {
 		if err != nil {
 			conn.Close()
 			agentClientLog.WithField("Error", err).Debug("HybridVsock trivial handshake failed")
-			// for now, we temporarily rely on the backoff strategy from GRPC for more stable CI.
-			return conn, nil
+			return nil, err
 		} else if !strings.Contains(response, "OK") {
 			conn.Close()
 			agentClientLog.WithField("response", response).Debug("HybridVsock trivial handshake failed with malformd response code")
-			// for now, we temporarily rely on the backoff strategy from GRPC for more stable CI.
-			return conn, nil
+			return nil, errors.New("hvsock response does not contain \"OK\"")
 		}
 		agentClientLog.WithField("response", response).Debug("HybridVsock trivial handshake")
 
