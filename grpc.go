@@ -668,6 +668,16 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		return emptyResp, err
 	}
 
+	for _, e := range ociSpec.Process.Env {
+		if strings.HasPrefix(e, "NVIDIA_VISIBLE_DEVICES=") {
+			err := setupNvidiaDriver(ociSpec.Root.Path)
+			if err != nil {
+				return emptyResp, err
+			}
+			break
+		}
+	}
+
 	if a.sandbox.guestHooksPresent {
 		// Add any custom OCI hooks to the spec
 		a.sandbox.addGuestHooks(ociSpec)
