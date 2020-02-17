@@ -445,14 +445,14 @@ func TestMount(t *testing.T) {
 		{"", "/foo", "9p", 0, "", true},
 		{"proc", "", "9p", 0, "", true},
 		{"proc", "/proc", "", 0, "", true},
-		{"proc", "", "virtio_fs", 0, "", true},
-		{"proc", subdir, "virtio_fs", 0, "", true},
+		{"proc", "", "virtiofs", 0, "", true},
+		{"proc", subdir, "virtiofs", 0, "", true},
 		{"proc", subdir, "foo", 0, "", true},
 		{symLinkName, symLinkDest, "moo", 0, "", true},
 		{existsFile, existingNonCreatableFile, "bind", 0, "", true},
 		{"tmpfs", validSubdir, "tmpfs", 0, "", true},
 		{"proc", validSubdir, "9p", 0, "", true},
-		{"proc", validSubdir, "virtio_fs", 0, "", true},
+		{"proc", validSubdir, "virtiofs", 0, "", true},
 	}
 
 	for i, d := range data {
