@@ -27,7 +27,6 @@ const (
 	debugConsoleFlag      = optionPrefix + "debug_console"
 	debugConsoleVPortFlag = optionPrefix + "debug_console_vport"
 	hotplugTimeoutFlag    = optionPrefix + "hotplug_timeout"
-	kernelCmdlineFile     = "/proc/cmdline"
 	traceModeStatic       = "static"
 	traceModeDynamic      = "dynamic"
 	traceTypeIsolated     = "isolated"
@@ -35,30 +34,21 @@ const (
 	defaultTraceType      = traceTypeIsolated
 )
 
-type agentConfig struct {
-	logLevel logrus.Level
-}
+var kernelCmdlineFile = "/proc/cmdline"
 
-func newConfig(level logrus.Level) agentConfig {
-	return agentConfig{
-		logLevel: level,
-	}
-}
-
-//Get the agent configuration from kernel cmdline
-func (c *agentConfig) getConfig(cmdLineFile string) error {
-	if cmdLineFile == "" {
+func parseKernelCmdline() error {
+	if kernelCmdlineFile == "" {
 		return grpcStatus.Error(codes.FailedPrecondition, "Kernel cmdline file cannot be empty")
 	}
 
-	kernelCmdline, err := ioutil.ReadFile(cmdLineFile)
+	kernelCmdline, err := ioutil.ReadFile(kernelCmdlineFile)
 	if err != nil {
 		return err
 	}
 
 	words := strings.Fields(string(kernelCmdline))
 	for _, word := range words {
-		if err := c.parseCmdlineOption(word); err != nil {
+		if err := parseCmdlineOption(word); err != nil {
 			agentLog.WithFields(logrus.Fields{
 				"error":  err,
 				"option": word,
@@ -70,7 +60,7 @@ func (c *agentConfig) getConfig(cmdLineFile string) error {
 }
 
 //Parse a string that represents a kernel cmdline option
-func (c *agentConfig) parseCmdlineOption(option string) error {
+func parseCmdlineOption(option string) error {
 	const (
 		optionPosition = iota
 		valuePosition
@@ -106,7 +96,7 @@ func (c *agentConfig) parseCmdlineOption(option string) error {
 		if err != nil {
 			return err
 		}
-		c.logLevel = level
+		logLevel = level
 		if level == logrus.DebugLevel {
 			debug = true
 		}

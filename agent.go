@@ -177,6 +177,9 @@ var debugConsoleVSockPort = uint32(0)
 // Timeout waiting for a device to be hotplugged
 var hotplugTimeout = 3 * time.Second
 
+// Specify the log level
+var logLevel = defaultLogLevel
+
 // commType is used to denote the communication channel type used.
 type commType int
 
@@ -984,12 +987,7 @@ func logsToVPort() {
 func (s *sandbox) initLogger(ctx context.Context) error {
 	agentLog.Logger.Formatter = &logrus.TextFormatter{DisableColors: true, TimestampFormat: time.RFC3339Nano}
 
-	config := newConfig(defaultLogLevel)
-	if err := config.getConfig(kernelCmdlineFile); err != nil {
-		agentLog.WithError(err).Warn("Failed to get config from kernel cmdline")
-	}
-
-	agentLog.Logger.SetLevel(config.logLevel)
+	agentLog.Logger.SetLevel(logLevel)
 
 	agentLog = agentLog.WithField("debug_console", debugConsole)
 
@@ -1426,6 +1424,9 @@ func initAgentAsInit() error {
 	if err := generalMount(); err != nil {
 		return err
 	}
+	if err := parseKernelCmdline(); err != nil {
+		return err
+	}
 	if err := cgroupsMount(); err != nil {
 		return err
 	}
@@ -1477,6 +1478,8 @@ func realMain() error {
 		if err = initAgentAsInit(); err != nil {
 			panic(fmt.Sprintf("failed to setup agent as init: %v", err))
 		}
+	} else if err := parseKernelCmdline(); err != nil {
+		return err
 	}
 
 	r := &agentReaper{}
