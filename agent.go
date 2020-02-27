@@ -63,6 +63,10 @@ var (
 	cgroupMemoryUseHierarchyPath = cgroupMemoryPath + "/memory.use_hierarchy"
 	cgroupMemoryUseHierarchyMode = os.FileMode(0400)
 
+	cgroupControllersPath    = cgroupPath + "/cgroup.controllers"
+	cgroupSubtreeControlPath = cgroupPath + "/cgroup.subtree_control"
+	cgroupSubtreeControlMode = os.FileMode(0644)
+
 	// Set by the build
 	seccompSupport string
 
@@ -179,6 +183,9 @@ var hotplugTimeout = 3 * time.Second
 
 // Specify the log level
 var logLevel = defaultLogLevel
+
+// Specify whether the agent has to use cgroups v2 or not.
+var unifiedCgroupHierarchy = false
 
 // commType is used to denote the communication channel type used.
 type commType int
@@ -1215,6 +1222,12 @@ type initMount struct {
 }
 
 func getCgroupMounts(cgPath string) ([]initMount, error) {
+	if unifiedCgroupHierarchy {
+		return []initMount{
+			{"cgroup2", "cgroup2", cgroupPath, []string{"nosuid", "nodev", "noexec", "relatime", "nsdelegate"}},
+		}, nil
+	}
+
 	f, err := os.Open(cgPath)
 	if err != nil {
 		return []initMount{}, err
@@ -1293,9 +1306,26 @@ func cgroupsMount() error {
 		}
 	}
 
-	// Enable memory hierarchical account.
-	// For more information see https://www.kernel.org/doc/Documentation/cgroup-v1/memory.txt
-	return ioutil.WriteFile(cgroupMemoryUseHierarchyPath, []byte{'1'}, cgroupMemoryUseHierarchyMode)
+	if !unifiedCgroupHierarchy {
+		// Enable memory hierarchical account.
+		// For more information see https://www.kernel.org/doc/Documentation/cgroup-v1/memory.txt
+		return ioutil.WriteFile(cgroupMemoryUseHierarchyPath, []byte{'1'}, cgroupMemoryUseHierarchyMode)
+	}
+
+	// Enable all cgroup v2 controllers
+	rawControllers, err := ioutil.ReadFile(cgroupControllersPath)
+	if err != nil {
+		return err
+	}
+
+	var controllers string
+	for _, c := range strings.Fields(string(rawControllers)) {
+		controllers += fmt.Sprintf("+%v ", c)
+	}
+
+	// https://www.kernel.org/doc/Documentation/cgroup-v2.txt
+	return ioutil.WriteFile(cgroupSubtreeControlPath,
+		[]byte(strings.TrimSpace(controllers)), cgroupSubtreeControlMode)
 }
 
 func setupDebugConsoleForVsock(ctx context.Context) error {

@@ -9,6 +9,7 @@
 * [Enable debug console](#enable-debug-console)
 * [`cpuset` cgroup details](#cpuset-cgroup-details)
 * [Hotplug Timeout](#hotplug-timeout)
+* [Cgroups V2](#cgroups-v2)
 
 This project implements an agent called `kata-agent` that runs inside a virtual machine (VM).
 
@@ -76,6 +77,16 @@ kernel command line. For example, `agent.hotplug_timeout=10s` will increase the 
 The value of the option is in the [Go duration format][2].
 
 Any invalid values used for `agent.hotplug_timeout` will fall back to the default of 3 seconds.
+
+## Cgroups V2
+
+Same as `systemd`, the `kata-agent` has an option to enable or disable the unified
+cgroup hierarchy (cgroups v2) in the guest through the kernel command line.
+Set `agent.unified_cgroup_hierarchy` to `1` or `true` to enable cgroups v2. For
+example, `agent.unified_cgroup_hierarchy=true` will enable cgroups v2 in the guest.
+Set `agent.unified_cgroup_hierarchy` to `0` or `false` to disable cgroups v2. For
+example, `agent.unified_cgroup_hierarchy=0` will disable cgroups v2 in the guest.
+By default cgroups v2 is disabled.
 
 [1]: https://github.com/firecracker-microvm/firecracker/blob/master/docs/vsock.md
 [2]: https://golang.org/pkg/time/#ParseDuration

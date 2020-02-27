@@ -18,20 +18,21 @@ import (
 )
 
 const (
-	optionPrefix          = "agent."
-	logLevelFlag          = optionPrefix + "log"
-	logsVSockPortFlag     = optionPrefix + "log_vport"
-	devModeFlag           = optionPrefix + "devmode"
-	traceModeFlag         = optionPrefix + "trace"
-	useVsockFlag          = optionPrefix + "use_vsock"
-	debugConsoleFlag      = optionPrefix + "debug_console"
-	debugConsoleVPortFlag = optionPrefix + "debug_console_vport"
-	hotplugTimeoutFlag    = optionPrefix + "hotplug_timeout"
-	traceModeStatic       = "static"
-	traceModeDynamic      = "dynamic"
-	traceTypeIsolated     = "isolated"
-	traceTypeCollated     = "collated"
-	defaultTraceType      = traceTypeIsolated
+	optionPrefix               = "agent."
+	logLevelFlag               = optionPrefix + "log"
+	logsVSockPortFlag          = optionPrefix + "log_vport"
+	devModeFlag                = optionPrefix + "devmode"
+	traceModeFlag              = optionPrefix + "trace"
+	useVsockFlag               = optionPrefix + "use_vsock"
+	debugConsoleFlag           = optionPrefix + "debug_console"
+	debugConsoleVPortFlag      = optionPrefix + "debug_console_vport"
+	hotplugTimeoutFlag         = optionPrefix + "hotplug_timeout"
+	unifiedCgroupHierarchyFlag = optionPrefix + "unified_cgroup_hierarchy"
+	traceModeStatic            = "static"
+	traceModeDynamic           = "dynamic"
+	traceTypeIsolated          = "isolated"
+	traceTypeCollated          = "collated"
+	defaultTraceType           = traceTypeIsolated
 )
 
 var kernelCmdlineFile = "/proc/cmdline"
@@ -141,6 +142,12 @@ func parseCmdlineOption(option string) error {
 			agentLog.Debug("Param passed to NOT use vsock channel")
 			commCh = serialCh
 		}
+	case unifiedCgroupHierarchyFlag:
+		flag, err := strconv.ParseBool(split[valuePosition])
+		if err != nil {
+			return err
+		}
+		unifiedCgroupHierarchy = flag
 	default:
 		if strings.HasPrefix(split[optionPosition], optionPrefix) {
 			return grpcStatus.Errorf(codes.NotFound, "Unknown option %s", split[optionPosition])

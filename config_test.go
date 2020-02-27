@@ -410,3 +410,41 @@ func TestParseCmdlineOptionHotplugTimeout(t *testing.T) {
 		assert.Equal(d.expectedHotplugTimeout, hotplugTimeout, "test %d (%+v)", i, d)
 	}
 }
+
+func TestParseCmdlineOptionUnifiedCgroupHierarchy(t *testing.T) {
+	assert := assert.New(t)
+
+	type testData struct {
+		option      string
+		expected    bool
+		expectError bool
+	}
+
+	data := []testData{
+		{"agent.unifiedCgroupHierarchy", false, false},
+		{"agent.unified_cgroup_hierarchy", false, false},
+		{"agent.unified_cgroup_hierarchi", false, false},
+		{"agent.unified_cgroup_hierarchy=fal", false, true},
+		{"agent.unified_cgroup_hierarchy=ttt", false, true},
+		{"agent.unified_cgroup_hierarchy=tru", false, true},
+		{"agent.unified_cgroup_hierarchy=5", false, true},
+
+		{"agent.unified_cgroup_hierarchy=false", false, false},
+		{"agent.unified_cgroup_hierarchy=0", false, false},
+
+		{"agent.unified_cgroup_hierarchy=true", true, false},
+		{"agent.unified_cgroup_hierarchy=1", true, false},
+	}
+
+	for _, d := range data {
+		unifiedCgroupHierarchy = false
+
+		err := parseCmdlineOption(d.option)
+		if d.expectError {
+			assert.Error(err)
+		} else {
+			assert.NoError(err)
+		}
+		assert.Equal(d.expected, unifiedCgroupHierarchy)
+	}
+}
