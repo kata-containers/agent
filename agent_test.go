@@ -971,3 +971,21 @@ func TestSetupDebugConsole(t *testing.T) {
 		assert.NoError(err, msg)
 	}
 }
+
+func TestRunOOMEventMonitor(t *testing.T) {
+	assert := assert.New(t)
+
+	cid := "foo"
+	eventChan := make(chan struct{})
+	s := &sandbox{
+		oomEvents: make(chan string),
+	}
+
+	s.runOOMEventMonitor(eventChan, cid)
+
+	eventChan <- struct{}{}
+	oomEvent := <-s.oomEvents
+	assert.Equal(cid, oomEvent)
+
+	close(eventChan)
+}

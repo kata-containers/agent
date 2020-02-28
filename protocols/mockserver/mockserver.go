@@ -428,3 +428,7 @@ func (m *mockServer) StartTracing(ctx context.Context, req *pb.StartTracingReque
 func (m *mockServer) StopTracing(ctx context.Context, req *pb.StopTracingRequest) (*types.Empty, error) {
 	return nil, nil
 }
+
+func (m *mockServer) GetOOMEvent(ctx context.Context, req *pb.GetOOMEventRequest) (*pb.OOMEvent, error) {
+	return nil, nil
+}
