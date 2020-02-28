@@ -217,6 +217,7 @@ var storageHandlerList = map[string]storageHandler{
 	driverSCSIType:      virtioSCSIStorageHandler,
 	driverEphemeralType: ephemeralStorageHandler,
 	driverLocalType:     localStorageHandler,
+	driverNvdimmType:    nvdimmStorageHandler,
 }
 
 func ephemeralStorageHandler(_ context.Context, storage pb.Storage, s *sandbox) (string, error) {
@@ -303,6 +304,7 @@ func virtioBlkStorageHandler(_ context.Context, storage pb.Storage, s *sandbox) 
 		FileInfo, err := os.Stat(storage.Source)
 		if err != nil {
 			return "", err
+
 		}
 		// Make sure the virt path is valid
 		if FileInfo.Mode()&os.ModeDevice == 0 {
@@ -319,6 +321,22 @@ func virtioBlkStorageHandler(_ context.Context, storage pb.Storage, s *sandbox) 
 	}
 
 	return commonStorageHandler(storage)
+}
+
+func nvdimmStorageHandler(_ context.Context, storage pb.Storage, s *sandbox) (string, error) {
+	// waiting for a pmem device
+	if strings.HasPrefix(storage.Source, "/dev") && strings.HasPrefix(filepath.Base(storage.Source), "pmem") {
+		// Retrieve the device path from ACPI pmem address.
+		// for example: /devices/LNXSYSTM:00/LNXSYBUS:00/ACPI0012:00/ndbus0/region1/pfn1.1/block/pmem1
+		devPath, err := getPmemDevPath(s, storage.Source)
+		if err != nil {
+			return "", err
+		}
+		storage.Source = devPath
+		return commonStorageHandler(storage)
+	}
+
+	return "", fmt.Errorf("invalid nvdimm source path: %v", storage.Source)
 }
 
 // virtioSCSIStorageHandler handles the storage for scsi driver.

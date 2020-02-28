@@ -265,6 +265,47 @@ func TestVirtioBlkStorageHandlerSuccessful(t *testing.T) {
 	assert.Nil(t, err, "storageBlockStorageDriverHandler() failed: %v", err)
 }
 
+func TestNvdimmStorageHandlerSuccessful(t *testing.T) {
+	skipUnlessRoot(t)
+
+	completePCIAddr := "/devices/LNXSYSTM/LNXSYBUS/ACPI/ndbus0/region1/pfn1.1/block/pmem0"
+	pmemDev := "/dev/pmem0"
+	devPath, err := createFakeDevicePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(devPath)
+
+	dirPath, err := ioutil.TempDir("", "fake-dir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dirPath)
+
+	storage := pb.Storage{
+		Source:     pmemDev,
+		MountPoint: filepath.Join(dirPath, "test-mount"),
+	}
+	defer syscall.Unmount(storage.MountPoint, 0)
+
+	s := &sandbox{
+		pciDeviceMap: make(map[string]string),
+	}
+
+	s.Lock()
+	s.pciDeviceMap[completePCIAddr] = devPath
+	s.Unlock()
+
+	storage.Fstype = "bind"
+	storage.Options = []string{"rbind"}
+
+	ctx := context.Background()
+
+	systemDevPath = ""
+	_, err = nvdimmStorageHandler(ctx, storage, s)
+	assert.NoError(t, err)
+}
+
 func TestVirtioSCSIStorageHandlerFailure(t *testing.T) {
 	skipIfRoot(t)
 
