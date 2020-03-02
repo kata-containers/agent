@@ -710,11 +710,6 @@ func (s *sandbox) listenToUdevEvents() {
 			continue
 		}
 
-		// We only care about add event
-		if uEv.Action != "add" {
-			continue
-		}
-
 		span, _ := trace(rootContext, "udev", "udev event")
 		span.setTag("udev-action", uEv.Action)
 		span.setTag("udev-name", uEv.DevName)
@@ -729,6 +724,18 @@ func (s *sandbox) listenToUdevEvents() {
 			"uevent-seqnum":    uEv.SeqNum,
 			"uevent-devname":   uEv.DevName,
 		})
+
+		if uEv.Action == "remove" {
+			fieldLogger.Infof("Remove dev from pciDeviceMap")
+			s.Lock()
+			delete(s.pciDeviceMap, uEv.DevPath)
+			s.Unlock()
+			goto FINISH_SPAN
+		}
+
+		if uEv.Action != "add" {
+			goto FINISH_SPAN
+		}
 
 		fieldLogger.Infof("Received add uevent")
 
@@ -782,7 +789,7 @@ func (s *sandbox) listenToUdevEvents() {
 				fieldLogger.WithError(err).Error("failed online device")
 			}
 		}
-
+	FINISH_SPAN:
 		span.finish()
 	}
 }
