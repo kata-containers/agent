@@ -344,12 +344,12 @@ func buildProcess(agentProcess *pb.Process, procID string, init bool) (*process,
 		return nil, err
 	}
 
-	rStdout, wStdout, err := os.Pipe()
+	rStdout, wStdout, err := createExtendedPipe()
 	if err != nil {
 		return nil, err
 	}
 
-	rStderr, wStderr, err := os.Pipe()
+	rStderr, wStderr, err := createExtendedPipe()
 	if err != nil {
 		return nil, err
 	}
@@ -1790,4 +1790,25 @@ func (a *agentGRPC) StopTracing(ctx context.Context, req *pb.StopTracingRequest)
 	stopTracingCalled = true
 
 	return emptyResp, nil
+}
+
+// createExtendedPipe creates a pipe.
+// Optionally extends the pipe if containerPipeSize is positive.
+func createExtendedPipe() (*os.File, *os.File, error) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		return nil, nil, err
+	}
+	if containerPipeSize > 0 {
+		extendPipe(r, w)
+	}
+	return r, w, nil
+}
+
+// extendPipe extends the write side of the pipe to value of containerPipeSize
+func extendPipe(r, w *os.File) {
+	_, _, errNo := syscall.Syscall(syscall.SYS_FCNTL, w.Fd(), syscall.F_SETPIPE_SZ, uintptr(containerPipeSize))
+	if errNo != 0 {
+		agentLog.WithField("size", containerPipeSize).WithError(errNo).Error("Could not extend write side of pipe")
+	}
 }

@@ -16,6 +16,7 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -1799,4 +1800,43 @@ func TestLoadKernelModule(t *testing.T) {
 	m.Name = "fake"
 	err = loadKernelModule(m)
 	assert.NoError(err)
+}
+
+func TestCreateExtendedPipe(t *testing.T) {
+	assert := assert.New(t)
+
+	// Test the default
+	containerPipeSize = 0
+	_, _, err := createExtendedPipe()
+	assert.NoError(err)
+
+	// Test setting to the max size
+	maxSize, err := getPipeMaxSize()
+	assert.NoError(err)
+	containerPipeSize = maxSize
+	_, w, err := createExtendedPipe()
+	assert.NoError(err)
+	size, err := getPipeSize(w)
+	assert.Equal(syscall.Errno(0), err)
+	assert.Equal(containerPipeSize, size)
+}
+
+func getPipeSize(f *os.File) (uint32, error) {
+	r1, _, err := syscall.Syscall(syscall.SYS_FCNTL, f.Fd(), syscall.F_GETPIPE_SZ, 0)
+	return uint32(r1), err
+}
+
+func getPipeMaxSize() (uint32, error) {
+	f, err := os.Open("/proc/sys/fs/pipe-max-size")
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	b, err := ioutil.ReadAll(f)
+	if err != nil {
+		return 0, err
+	}
+	s := strings.Trim(string(b), "\n")
+	u, err := strconv.ParseUint(s, 10, 32)
+	return uint32(u), err
 }
