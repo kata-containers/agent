@@ -46,6 +46,7 @@ var (
 	pciBusPathFormat    = "%s/%s/pci_bus/"
 	systemDevPath       = "/dev"
 	getSCSIDevPath      = getSCSIDevPathImpl
+	getPmemDevPath      = getPmemDevPathImpl
 	getPCIDeviceName    = getPCIDeviceNameImpl
 	getDevicePCIAddress = getDevicePCIAddressImpl
 	scanSCSIBus         = scanSCSIBusImpl
@@ -355,6 +356,13 @@ func getSCSIDevPathImpl(s *sandbox, scsiAddr string) (string, error) {
 	}
 
 	devPath := filepath.Join(scsiHostChannel+scsiAddr, scsiBlockSuffix)
+
+	return getDeviceName(s, devPath)
+}
+
+func getPmemDevPathImpl(s *sandbox, devPmemPath string) (string, error) {
+	// for example: /block/pmem1
+	devPath := filepath.Join("/", scsiBlockSuffix, filepath.Base(devPmemPath))
 
 	return getDeviceName(s, devPath)
 }
