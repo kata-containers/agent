@@ -63,6 +63,10 @@ var (
 	cgroupMemoryUseHierarchyPath = cgroupMemoryPath + "/memory.use_hierarchy"
 	cgroupMemoryUseHierarchyMode = os.FileMode(0400)
 
+	cgroupControllersPath    = cgroupPath + "/cgroup.controllers"
+	cgroupSubtreeControlPath = cgroupPath + "/cgroup.subtree_control"
+	cgroupSubtreeControlMode = os.FileMode(0644)
+
 	// Set by the build
 	seccompSupport string
 
@@ -176,6 +180,12 @@ var debugConsoleVSockPort = uint32(0)
 
 // Timeout waiting for a device to be hotplugged
 var hotplugTimeout = 3 * time.Second
+
+// Specify the log level
+var logLevel = defaultLogLevel
+
+// Specify whether the agent has to use cgroups v2 or not.
+var unifiedCgroupHierarchy = false
 
 // commType is used to denote the communication channel type used.
 type commType int
@@ -990,12 +1000,7 @@ func logsToVPort() {
 func (s *sandbox) initLogger(ctx context.Context) error {
 	agentLog.Logger.Formatter = &logrus.TextFormatter{DisableColors: true, TimestampFormat: time.RFC3339Nano}
 
-	config := newConfig(defaultLogLevel)
-	if err := config.getConfig(kernelCmdlineFile); err != nil {
-		agentLog.WithError(err).Warn("Failed to get config from kernel cmdline")
-	}
-
-	agentLog.Logger.SetLevel(config.logLevel)
+	agentLog.Logger.SetLevel(logLevel)
 
 	agentLog = agentLog.WithField("debug_console", debugConsole)
 
@@ -1223,6 +1228,12 @@ type initMount struct {
 }
 
 func getCgroupMounts(cgPath string) ([]initMount, error) {
+	if unifiedCgroupHierarchy {
+		return []initMount{
+			{"cgroup2", "cgroup2", cgroupPath, []string{"nosuid", "nodev", "noexec", "relatime", "nsdelegate"}},
+		}, nil
+	}
+
 	f, err := os.Open(cgPath)
 	if err != nil {
 		return []initMount{}, err
@@ -1301,9 +1312,26 @@ func cgroupsMount() error {
 		}
 	}
 
-	// Enable memory hierarchical account.
-	// For more information see https://www.kernel.org/doc/Documentation/cgroup-v1/memory.txt
-	return ioutil.WriteFile(cgroupMemoryUseHierarchyPath, []byte{'1'}, cgroupMemoryUseHierarchyMode)
+	if !unifiedCgroupHierarchy {
+		// Enable memory hierarchical account.
+		// For more information see https://www.kernel.org/doc/Documentation/cgroup-v1/memory.txt
+		return ioutil.WriteFile(cgroupMemoryUseHierarchyPath, []byte{'1'}, cgroupMemoryUseHierarchyMode)
+	}
+
+	// Enable all cgroup v2 controllers
+	rawControllers, err := ioutil.ReadFile(cgroupControllersPath)
+	if err != nil {
+		return err
+	}
+
+	var controllers string
+	for _, c := range strings.Fields(string(rawControllers)) {
+		controllers += fmt.Sprintf("+%v ", c)
+	}
+
+	// https://www.kernel.org/doc/Documentation/cgroup-v2.txt
+	return ioutil.WriteFile(cgroupSubtreeControlPath,
+		[]byte(strings.TrimSpace(controllers)), cgroupSubtreeControlMode)
 }
 
 func setupDebugConsoleForVsock(ctx context.Context) error {
@@ -1432,6 +1460,9 @@ func initAgentAsInit() error {
 	if err := generalMount(); err != nil {
 		return err
 	}
+	if err := parseKernelCmdline(); err != nil {
+		return err
+	}
 	if err := cgroupsMount(); err != nil {
 		return err
 	}
@@ -1483,6 +1514,8 @@ func realMain() error {
 		if err = initAgentAsInit(); err != nil {
 			panic(fmt.Sprintf("failed to setup agent as init: %v", err))
 		}
+	} else if err := parseKernelCmdline(); err != nil {
+		return err
 	}
 
 	r := &agentReaper{}

@@ -9,7 +9,6 @@ package main
 import (
 	"io/ioutil"
 	"os"
-	"reflect"
 	"testing"
 	"time"
 
@@ -17,57 +16,32 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNewConfig(t *testing.T) {
-	assert := assert.New(t)
-
-	testLogLevel := logrus.DebugLevel
-
-	expectedConfig := agentConfig{
-		logLevel: testLogLevel,
-	}
-
-	config := newConfig(testLogLevel)
-
-	assert.True(reflect.DeepEqual(config, expectedConfig),
-		"Config structures should be identical: got %+v, expecting %+v",
-		config, expectedConfig)
-}
-
 func TestParseCmdlineOptionEmptyOption(t *testing.T) {
 	assert := assert.New(t)
-
-	a := &agentConfig{}
-
-	err := a.parseCmdlineOption("")
+	err := parseCmdlineOption("")
 	assert.NoError(err, "%v", err)
 }
 
 func TestParseCmdlineOptionWrongOptionValue(t *testing.T) {
 	assert := assert.New(t)
 
-	a := &agentConfig{}
-
 	wrongOption := logLevelFlag + "=debgu"
 
-	err := a.parseCmdlineOption(wrongOption)
+	err := parseCmdlineOption(wrongOption)
 	assert.Errorf(err, "Parsing should fail because wrong option %q", wrongOption)
 }
 
 func TestParseCmdlineOptionWrongOptionParam(t *testing.T) {
 	assert := assert.New(t)
 
-	a := &agentConfig{}
-
 	wrongOption := "agent.lgo=debug"
 
-	err := a.parseCmdlineOption(wrongOption)
+	err := parseCmdlineOption(wrongOption)
 	assert.Errorf(err, "Parsing should fail because wrong option %q", wrongOption)
 }
 
 func TestParseCmdlineOptionCorrectOptions(t *testing.T) {
 	assert := assert.New(t)
-
-	a := &agentConfig{}
 
 	logFlagList := []string{"debug", "info", "warn", "error", "fatal", "panic"}
 
@@ -75,7 +49,7 @@ func TestParseCmdlineOptionCorrectOptions(t *testing.T) {
 		debug = false
 		option := logLevelFlag + "=" + logFlag
 
-		err := a.parseCmdlineOption(option)
+		err := parseCmdlineOption(option)
 		assert.NoError(err, "%v", err)
 
 		if logFlag == "debug" {
@@ -87,22 +61,18 @@ func TestParseCmdlineOptionCorrectOptions(t *testing.T) {
 func TestParseCmdlineOptionIncorrectOptions(t *testing.T) {
 	assert := assert.New(t)
 
-	a := &agentConfig{}
-
 	logFlagList := []string{"debg", "ifo", "wan", "eror", "ftal", "pnic"}
 
 	for _, logFlag := range logFlagList {
 		option := logLevelFlag + "=" + logFlag
 
-		err := a.parseCmdlineOption(option)
+		err := parseCmdlineOption(option)
 		assert.Errorf(err, "Should fail because of incorrect option %q", logFlag)
 	}
 }
 
 func TestParseCmdlineOptionDevMode(t *testing.T) {
 	assert := assert.New(t)
-
-	a := &agentConfig{}
 
 	type testData struct {
 		option               string
@@ -126,7 +96,7 @@ func TestParseCmdlineOptionDevMode(t *testing.T) {
 		debug = false
 		crashOnError = false
 
-		err := a.parseCmdlineOption(d.option)
+		err := parseCmdlineOption(d.option)
 		assert.NoError(err)
 
 		if !d.expectDevModeEnabled {
@@ -138,19 +108,8 @@ func TestParseCmdlineOptionDevMode(t *testing.T) {
 	}
 }
 
-func TestGetConfigEmptyFileName(t *testing.T) {
-	assert := assert.New(t)
-
-	a := &agentConfig{}
-
-	err := a.getConfig("")
-	assert.Error(err, "Should fail because command line path is empty")
-}
-
 func TestGetConfigFilePathNotExist(t *testing.T) {
 	assert := assert.New(t)
-
-	a := &agentConfig{}
 
 	tmpFile, err := ioutil.TempFile("", "test")
 	assert.NoError(err, "%v", err)
@@ -160,14 +119,16 @@ func TestGetConfigFilePathNotExist(t *testing.T) {
 	err = os.Remove(fileName)
 	assert.NoError(err, "%v", err)
 
-	err = a.getConfig(fileName)
-	assert.Error(err, "Should fail because command line path does not exist")
+	kernelCmdlineFileOld := kernelCmdlineFile
+	defer func() {
+		kernelCmdlineFile = kernelCmdlineFileOld
+	}()
+	kernelCmdlineFile = fileName
+	assert.Error(parseKernelCmdline())
 }
 
-func TestGetConfig(t *testing.T) {
+func TestParseKernelCmdline(t *testing.T) {
 	assert := assert.New(t)
-
-	a := &agentConfig{}
 
 	tmpFile, err := ioutil.TempFile("", "test")
 	assert.NoError(err, "%v", err)
@@ -178,12 +139,17 @@ func TestGetConfig(t *testing.T) {
 
 	defer os.Remove(fileName)
 
-	err = a.getConfig(fileName)
-	assert.NoError(err, "%v", err)
+	kernelCmdlineFileOld := kernelCmdlineFile
+	defer func() {
+		kernelCmdlineFile = kernelCmdlineFileOld
+	}()
+	kernelCmdlineFile = fileName
 
-	assert.True(a.logLevel == logrus.InfoLevel,
+	assert.NoError(parseKernelCmdline())
+
+	assert.True(logLevel == logrus.InfoLevel,
 		"Log levels should be identical: got %+v, expecting %+v",
-		a.logLevel, logrus.InfoLevel)
+		logLevel, logrus.InfoLevel)
 }
 
 func TestParseCmdlineOptionTracing(t *testing.T) {
@@ -214,13 +180,16 @@ func TestParseCmdlineOptionTracing(t *testing.T) {
 		{traceModeFlag + "=" + traceTypeCollated + "x", false, false},
 	}
 
+	kernelCmdlineFileOld := kernelCmdlineFile
+	defer func() {
+		kernelCmdlineFile = kernelCmdlineFileOld
+	}()
+
 	for i, d := range data {
 		// force reset
 		tracing = false
 		collatedTrace = false
 		debug = false
-
-		a := &agentConfig{}
 
 		tmpFile, err := ioutil.TempFile("", "")
 		assert.NoError(err)
@@ -235,8 +204,8 @@ func TestParseCmdlineOptionTracing(t *testing.T) {
 		assert.False(collatedTrace)
 		assert.False(debug)
 
-		err = a.getConfig(fileName)
-		assert.NoError(err)
+		kernelCmdlineFile = fileName
+		assert.NoError(parseKernelCmdline())
 
 		if d.expectTraceEnabled {
 			assert.Truef(tracing, "test %d (%+v)", i, d)
@@ -296,18 +265,14 @@ func TestParseCmdlineOptionWrongOptionVsock(t *testing.T) {
 	t.Skip()
 	assert := assert.New(t)
 
-	a := &agentConfig{}
-
 	wrongOption := "use_vsockkk=true"
 
-	err := a.parseCmdlineOption(wrongOption)
+	err := parseCmdlineOption(wrongOption)
 	assert.Errorf(err, "Parsing should fail because wrong option %q", wrongOption)
 }
 
 func TestParseCmdlineOptionsVsock(t *testing.T) {
 	assert := assert.New(t)
-
-	a := &agentConfig{}
 
 	type testData struct {
 		val            string
@@ -325,7 +290,7 @@ func TestParseCmdlineOptionsVsock(t *testing.T) {
 		commCh = unknownCh
 		option := useVsockFlag + "=" + d.val
 
-		err := a.parseCmdlineOption(option)
+		err := parseCmdlineOption(option)
 		if d.shouldErr {
 			assert.Error(err)
 		} else {
@@ -337,8 +302,6 @@ func TestParseCmdlineOptionsVsock(t *testing.T) {
 
 func TestParseCmdlineOptionDebugConsole(t *testing.T) {
 	assert := assert.New(t)
-
-	a := &agentConfig{}
 
 	type testData struct {
 		option                    string
@@ -357,7 +320,7 @@ func TestParseCmdlineOptionDebugConsole(t *testing.T) {
 	for i, d := range data {
 		debugConsole = false
 
-		err := a.parseCmdlineOption(d.option)
+		err := parseCmdlineOption(d.option)
 		assert.NoError(err)
 
 		if !d.expectDebugConsoleEnabled {
@@ -370,8 +333,6 @@ func TestParseCmdlineOptionDebugConsole(t *testing.T) {
 
 func TestParseCmdlineOptionDebugConsoleVPort(t *testing.T) {
 	assert := assert.New(t)
-
-	a := &agentConfig{}
 
 	type testData struct {
 		option                    string
@@ -395,7 +356,7 @@ func TestParseCmdlineOptionDebugConsoleVPort(t *testing.T) {
 		debugConsole = false
 		debugConsoleVSockPort = 0
 
-		err := a.parseCmdlineOption(d.option)
+		err := parseCmdlineOption(d.option)
 		if d.expectedError {
 			assert.Error(err)
 		} else {
@@ -412,8 +373,6 @@ func TestParseCmdlineOptionDebugConsoleVPort(t *testing.T) {
 
 func TestParseCmdlineOptionHotplugTimeout(t *testing.T) {
 	assert := assert.New(t)
-
-	a := &agentConfig{}
 
 	type testData struct {
 		option                 string
@@ -441,7 +400,7 @@ func TestParseCmdlineOptionHotplugTimeout(t *testing.T) {
 		// reset the hotplug timeout
 		hotplugTimeout = 3 * time.Second
 
-		err := a.parseCmdlineOption(d.option)
+		err := parseCmdlineOption(d.option)
 		if d.shouldErr {
 			assert.Error(err)
 		} else {
@@ -449,5 +408,43 @@ func TestParseCmdlineOptionHotplugTimeout(t *testing.T) {
 		}
 
 		assert.Equal(d.expectedHotplugTimeout, hotplugTimeout, "test %d (%+v)", i, d)
+	}
+}
+
+func TestParseCmdlineOptionUnifiedCgroupHierarchy(t *testing.T) {
+	assert := assert.New(t)
+
+	type testData struct {
+		option      string
+		expected    bool
+		expectError bool
+	}
+
+	data := []testData{
+		{"agent.unifiedCgroupHierarchy", false, false},
+		{"agent.unified_cgroup_hierarchy", false, false},
+		{"agent.unified_cgroup_hierarchi", false, false},
+		{"agent.unified_cgroup_hierarchy=fal", false, true},
+		{"agent.unified_cgroup_hierarchy=ttt", false, true},
+		{"agent.unified_cgroup_hierarchy=tru", false, true},
+		{"agent.unified_cgroup_hierarchy=5", false, true},
+
+		{"agent.unified_cgroup_hierarchy=false", false, false},
+		{"agent.unified_cgroup_hierarchy=0", false, false},
+
+		{"agent.unified_cgroup_hierarchy=true", true, false},
+		{"agent.unified_cgroup_hierarchy=1", true, false},
+	}
+
+	for _, d := range data {
+		unifiedCgroupHierarchy = false
+
+		err := parseCmdlineOption(d.option)
+		if d.expectError {
+			assert.Error(err)
+		} else {
+			assert.NoError(err)
+		}
+		assert.Equal(d.expected, unifiedCgroupHierarchy)
 	}
 }

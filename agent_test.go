@@ -562,6 +562,23 @@ func TestMountToRootfsFailed(t *testing.T) {
 
 }
 
+func TestGetCgroupMountsUnifiedHierarchy(t *testing.T) {
+	assert := assert.New(t)
+
+	orgUnifiedCgroupHierarchy := unifiedCgroupHierarchy
+	defer func() {
+		unifiedCgroupHierarchy = orgUnifiedCgroupHierarchy
+	}()
+	unifiedCgroupHierarchy = true
+
+	initMounts, err := getCgroupMounts("/sys/fs/cgroups")
+	assert.NoError(err)
+	assert.NotEmpty(initMounts)
+	assert.Len(initMounts, 1)
+	assert.Equal(initMounts[0].fstype, "cgroup2")
+	assert.Equal(initMounts[0].src, "cgroup2")
+}
+
 func TestGetCgroupMountsFailed(t *testing.T) {
 	cgprocDir, err := ioutil.TempDir("", "proc-cgroup")
 	assert.Nil(t, err, "%v", err)
