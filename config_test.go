@@ -448,3 +448,41 @@ func TestParseCmdlineOptionUnifiedCgroupHierarchy(t *testing.T) {
 		assert.Equal(d.expected, unifiedCgroupHierarchy)
 	}
 }
+
+func TestParseCmdlineOptionContainerPipeSize(t *testing.T) {
+	assert := assert.New(t)
+
+	type testData struct {
+		option                    string
+		shouldErr                 bool
+		expectedContainerPipeSize uint32
+	}
+
+	data := []testData{
+		{"", false, 0},
+		{"container_pip_siz", false, 0},
+		{"container_pipe_size", false, 0},
+		{"container_pipe_size=3", false, 0},
+		{"agnt.container_pipe_size=3", false, 0},
+		{"agent.container_pipe_size=3", false, 3},
+		{"agent.container_pipe_size=2097152", false, 2097152},
+		{"agent.container_pipe_size=-1", true, 0},
+		{"agent.container_pipe_size=foobar", true, 0},
+		{"agent.container_pipe_size=5.0", true, 0},
+		{"agent.container_pipe_size=0", false, 0},
+	}
+
+	for i, d := range data {
+		// reset the container pipe size
+		containerPipeSize = uint32(0)
+
+		err := parseCmdlineOption(d.option)
+		if d.shouldErr {
+			assert.Error(err)
+		} else {
+			assert.NoError(err)
+		}
+
+		assert.Equal(d.expectedContainerPipeSize, containerPipeSize, "test %d (%+v)", i, d)
+	}
+}

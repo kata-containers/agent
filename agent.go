@@ -187,6 +187,9 @@ var logLevel = defaultLogLevel
 // Specify whether the agent has to use cgroups v2 or not.
 var unifiedCgroupHierarchy = false
 
+// Size in bytes of the stdout/stderr pipes created for each container.
+var containerPipeSize = uint32(0)
+
 // commType is used to denote the communication channel type used.
 type commType int
 

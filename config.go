@@ -28,6 +28,7 @@ const (
 	debugConsoleVPortFlag      = optionPrefix + "debug_console_vport"
 	hotplugTimeoutFlag         = optionPrefix + "hotplug_timeout"
 	unifiedCgroupHierarchyFlag = optionPrefix + "unified_cgroup_hierarchy"
+	containerPipeSizeFlag      = optionPrefix + "container_pipe_size"
 	traceModeStatic            = "static"
 	traceModeDynamic           = "dynamic"
 	traceTypeIsolated          = "isolated"
@@ -123,6 +124,12 @@ func parseCmdlineOption(option string) error {
 		if timeout > 0 {
 			hotplugTimeout = timeout
 		}
+	case containerPipeSizeFlag:
+		size, err := strconv.ParseUint(split[valuePosition], 10, 32)
+		if err != nil {
+			return err
+		}
+		containerPipeSize = uint32(size)
 	case traceModeFlag:
 		switch split[valuePosition] {
 		case traceTypeIsolated:

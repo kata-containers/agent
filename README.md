@@ -88,5 +88,16 @@ Set `agent.unified_cgroup_hierarchy` to `0` or `false` to disable cgroups v2. Fo
 example, `agent.unified_cgroup_hierarchy=0` will disable cgroups v2 in the guest.
 By default cgroups v2 is disabled.
 
+## Container Pipe Size
+
+The agent will configure a [Pipe][3] for stdio (stdout, stderr, stdin) for each container. By default,
+this will use the OS' defaults in terms of pipe capacity. However, some workloads may require a larger pipe 
+when writing to stdout/stderr in non-blocking mode.
+
+The pipe's capacity for stdout/stderr can be modified by specifying the `agent.container_pipe_size` flag
+to the guest kernel command line. For example, `agent.container_pipe_size=2097152` will set the stdout and stderr
+pipes to 2097152 bytes.
+
 [1]: https://github.com/firecracker-microvm/firecracker/blob/master/docs/vsock.md
 [2]: https://golang.org/pkg/time/#ParseDuration
+[3]: http://man7.org/linux/man-pages/man7/pipe.7.html
