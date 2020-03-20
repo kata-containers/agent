@@ -254,6 +254,7 @@ func (p *process) closePostExitFDs() {
 
 	if p.epoller != nil {
 		p.epoller.sockR.Close()
+		unix.Close(p.epoller.fd)
 	}
 }
 
