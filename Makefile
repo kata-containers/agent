@@ -15,6 +15,9 @@ INIT := no
 # Set to "yes" if agent should support OpenTracing with http://jaegertracing.io.
 TRACE := no
 
+# Set to "yes“ if binary stripping is needed.
+STRIP := no
+
 # Tracing cannot currently be supported when running the agent as PID 1 since
 # the tracing requires additional services to be started _before_ the agent
 # process starts.
@@ -85,6 +88,11 @@ else
 	BUILDFLAGS := -buildmode=pie
 endif
 
+# whether stipping the binary
+ifeq ($(STRIP),yes)
+	KATA_LDFLAGS += -w -s
+endif
+
 # args for building agent image
 BUILDARGS := $(if $(http_proxy), --build-arg http_proxy=$(http_proxy))
 BUILDARGS += $(if $(https_proxy), --build-arg https_proxy=$(https_proxy))
@@ -94,7 +102,7 @@ AGENT_TAG := $(if $(COMMIT_NO_SHORT),$(COMMIT_NO_SHORT),dev)
 
 $(TARGET): $(GENERATED_FILES) $(SOURCES) $(VERSION_FILE)
 	go build $(BUILDFLAGS) -tags "$(BUILDTAGS)" -o $@ \
-		-ldflags "-X main.version=$(VERSION_COMMIT) -X main.seccompSupport=$(SECCOMP) $(LDFLAGS)"
+		-ldflags "-X main.version=$(VERSION_COMMIT) -X main.seccompSupport=$(SECCOMP) $(LDFLAGS) $(KATA_LDFLAGS)"
 
 install: $(TARGET)
 	install -D $(TARGET) $(DESTDIR)$(BINDIR)/$(TARGET)
