@@ -1493,11 +1493,6 @@ func init() {
 		}
 		panic("--this line should have never been executed, congratulations--")
 	}
-
-	// agent won't receive anything from the stdin.
-	// Close stdin to avoid the agent receives signals
-	// (ctrl + c/d) from the stdin.
-	os.Stdin.Close()
 }
 
 func realMain() error {
