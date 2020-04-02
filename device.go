@@ -352,7 +352,10 @@ func scanSCSIBusImpl(scsiAddr string) error {
 // associated with the disk.
 func getSCSIDevPathImpl(s *sandbox, scsiAddr string) (string, error) {
 	if err := scanSCSIBus(scsiAddr); err != nil {
-		return "", err
+		if !ignoreSCSIBusScanErrs {
+			return "", err
+		}
+		agentLog.WithError(err).Warnf("SCSI bus scan failed")
 	}
 
 	devPath := filepath.Join(scsiHostChannel+scsiAddr, scsiBlockSuffix)
@@ -422,9 +425,11 @@ func addDevices(ctx context.Context, devices []*pb.Device, spec *pb.Spec, s *san
 
 		err := addDevice(ctx, device, spec, s)
 		if err != nil {
-			return err
+			if !ignoreAllDeviceErrs {
+				return err
+			}
+			agentLog.WithError(err).Warnf("Could not attach %s device", device.Type)
 		}
-
 	}
 
 	return nil

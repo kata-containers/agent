@@ -190,6 +190,9 @@ var unifiedCgroupHierarchy = false
 // Size in bytes of the stdout/stderr pipes created for each container.
 var containerPipeSize = uint32(0)
 
+var ignoreSCSIBusScanErrs = false
+var ignoreAllDeviceErrs = false
+
 // commType is used to denote the communication channel type used.
 type commType int
 

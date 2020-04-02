@@ -29,6 +29,8 @@ const (
 	hotplugTimeoutFlag         = optionPrefix + "hotplug_timeout"
 	unifiedCgroupHierarchyFlag = optionPrefix + "unified_cgroup_hierarchy"
 	containerPipeSizeFlag      = optionPrefix + "container_pipe_size"
+	ignoreSCSIBusScanErrsFlag  = optionPrefix + "ingnore_scsi_bus_scan_errors"
+	ignoreAllDeviceErrsFlag    = optionPrefix + "ingnore_all_device_errors"
 	traceModeStatic            = "static"
 	traceModeDynamic           = "dynamic"
 	traceTypeIsolated          = "isolated"
@@ -130,6 +132,24 @@ func parseCmdlineOption(option string) error {
 			return err
 		}
 		containerPipeSize = uint32(size)
+	case ignoreSCSIBusScanErrsFlag:
+		flag, err := strconv.ParseBool(split[valuePosition])
+		if err != nil {
+			return err
+		}
+		if flag {
+			agentLog.Debug("Param passed to disable SCSI bus scan errors and produce warnings instead")
+			ignoreSCSIBusScanErrs = true
+		}
+	case ignoreAllDeviceErrsFlag:
+		flag, err := strconv.ParseBool(split[valuePosition])
+		if err != nil {
+			return err
+		}
+		if flag {
+			agentLog.Debug("Param passed to disable device attachement errors and produce warnings instead")
+			ignoreAllDeviceErrs = true
+		}
 	case traceModeFlag:
 		switch split[valuePosition] {
 		case traceTypeIsolated:
