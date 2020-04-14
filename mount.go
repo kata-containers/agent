@@ -27,7 +27,7 @@ import (
 
 const (
 	type9pFs       = "9p"
-	typeVirtioFS   = "virtio_fs"
+	typeVirtioFS   = "virtiofs"
 	typeRootfs     = "rootfs"
 	typeTmpFs      = "tmpfs"
 	procMountStats = "/proc/self/mountstats"
