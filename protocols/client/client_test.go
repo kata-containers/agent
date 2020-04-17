@@ -131,7 +131,7 @@ func TestNewAgentClient(t *testing.T) {
 	cliFunc(mockBadSchemeAddr, false, "Invalid scheme:")
 	cliFunc(mockBadVsockScheme, false, "Invalid vsock scheme:")
 	cliFunc(mockVsockBadCid, false, "Invalid vsock cid")
-	cliFunc(mockVsockBadPort, false, "Invalid vsock port")
+	cliFunc(mockVsockBadPort, false, "invalid port")
 	cliFunc(mockFakeVsockAddr, false, "context deadline exceeded")
 
 	// wait mock server to stop
@@ -153,7 +153,7 @@ func TestNewAgentClientWithYamux(t *testing.T) {
 	cliFunc(mockBadSchemeAddr, false, "Invalid scheme:")
 	cliFunc(mockBadVsockScheme, false, "Invalid vsock scheme:")
 	cliFunc(mockVsockBadCid, false, "Invalid vsock cid")
-	cliFunc(mockVsockBadPort, false, "Invalid vsock port")
+	cliFunc(mockVsockBadPort, false, "invalid port")
 	cliFunc(mockFakeVsockAddr, false, "context deadline exceeded")
 
 	// wait mock server to stop
