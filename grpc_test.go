@@ -1821,6 +1821,53 @@ func TestCreateExtendedPipe(t *testing.T) {
 	assert.Equal(containerPipeSize, size)
 }
 
+func TestGetOOMEvent(t *testing.T) {
+	assert := assert.New(t)
+
+	a := &agentGRPC{
+		sandbox: &sandbox{
+			oomEvents: make(chan string),
+		},
+	}
+
+	cid1 := "foo"
+	cid2 := "bar"
+
+	cid1EventChan := make(chan struct{})
+	cid2EventChan := make(chan struct{})
+
+	// Start the oom monitors
+	a.sandbox.runOOMEventMonitor(cid1EventChan, cid1)
+	a.sandbox.runOOMEventMonitor(cid2EventChan, cid2)
+
+	// Test sending two oom events
+	cid1EventChan <- struct{}{}
+
+	req := &pb.GetOOMEventRequest{}
+
+	// Retrieve both events
+	oomEventRes, err := a.GetOOMEvent(context.Background(), req)
+	assert.NoError(err)
+	assert.Equal(cid1, oomEventRes.ContainerId)
+
+	cid2EventChan <- struct{}{}
+
+	oomEventRes, err = a.GetOOMEvent(context.Background(), req)
+	assert.NoError(err)
+	assert.Equal(cid2, oomEventRes.ContainerId)
+
+	close(cid1EventChan)
+
+	cid2EventChan <- struct{}{}
+
+	// Ensure that cid2 still works
+	oomEventRes, err = a.GetOOMEvent(context.Background(), req)
+	assert.NoError(err)
+	assert.Equal(cid2, oomEventRes.ContainerId)
+
+	close(cid2EventChan)
+}
+
 func getPipeSize(f *os.File) (uint32, error) {
 	r1, _, err := syscall.Syscall(syscall.SYS_FCNTL, f.Fd(), syscall.F_GETPIPE_SZ, 0)
 	return uint32(r1), err

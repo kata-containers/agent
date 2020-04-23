@@ -861,6 +861,13 @@ func (a *agentGRPC) StartContainer(ctx context.Context, req *pb.StartContainerRe
 		return emptyResp, err
 	}
 
+	// Add the container to the OOM event monitor
+	oomCh, err := ctr.container.NotifyOOM()
+	if err != nil {
+		return emptyResp, err
+	}
+	a.sandbox.runOOMEventMonitor(oomCh, req.ContainerId)
+
 	return emptyResp, nil
 }
 
@@ -1790,6 +1797,11 @@ func (a *agentGRPC) StopTracing(ctx context.Context, req *pb.StopTracingRequest)
 	stopTracingCalled = true
 
 	return emptyResp, nil
+}
+
+func (a *agentGRPC) GetOOMEvent(ctx context.Context, req *pb.GetOOMEventRequest) (*pb.OOMEvent, error) {
+	containerID := <-a.sandbox.oomEvents
+	return &pb.OOMEvent{ContainerId: containerID}, nil
 }
 
 // createExtendedPipe creates a pipe.

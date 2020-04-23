@@ -144,6 +144,7 @@ type sandbox struct {
 	sandboxPidNs      bool
 	storages          map[string]*sandboxStorage
 	stopServer        chan struct{}
+	oomEvents         chan string
 }
 
 var agentFields = logrus.Fields{
@@ -812,6 +813,19 @@ func (s *sandbox) listenToUdevEvents() {
 	FINISH_SPAN:
 		span.finish()
 	}
+}
+
+func (s *sandbox) runOOMEventMonitor(ch <-chan struct{}, containerID string) {
+	go func() {
+		for {
+			_, ok := <-ch
+			if !ok {
+				return
+			}
+			agentLog.WithField("container-id", containerID).Info("Received OOM event")
+			s.oomEvents <- containerID
+		}
+	}()
 }
 
 // This loop is meant to be run inside a separate Go routine.
@@ -1537,6 +1551,7 @@ func realMain() error {
 		deviceWatchers: make(map[string](chan string)),
 		storages:       make(map[string]*sandboxStorage),
 		stopServer:     make(chan struct{}),
+		oomEvents:      make(chan string),
 	}
 
 	rootSpan, rootContext, err = setupTracing(agentName)
