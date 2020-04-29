@@ -27,6 +27,7 @@ var (
 	channelExistMaxTries   = 200
 	channelExistWaitTime   = 50 * time.Millisecond
 	channelCloseTimeout    = 5 * time.Second
+	vsockReadyTimeout      = 2 * time.Second
 	isAFVSockSupportedFunc = isAFVSockSupported
 )
 
@@ -132,7 +133,38 @@ func (c *vSockChannel) setup() error {
 }
 
 func (c *vSockChannel) wait() error {
-	return nil
+	if vsockHostPort == uint32(0) {
+		return fmt.Errorf("fail to get vsock host port %d", vsockHostPort)
+	}
+
+	cancel := make(chan bool)
+	conn := make(chan bool)
+	go func() {
+		for {
+			select {
+			case <-cancel:
+				return
+			default:
+			}
+
+			// Let the agent launch a new connection to vsock vhost port
+			// to tell it the vsock transport in guest is ready
+			c, err := vsock.Dial(unix.VMADDR_CID_HOST, vsockHostPort)
+			if err == nil {
+				conn <- true
+				c.Close()
+				return
+			}
+		}
+	}()
+
+	select {
+	case <-conn:
+		return nil
+	case <-time.After(vsockReadyTimeout):
+		cancel <- true
+		return fmt.Errorf("time out to do vsock quick handshake")
+	}
 }
 
 func (c *vSockChannel) listen() (net.Listener, error) {

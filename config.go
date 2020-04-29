@@ -24,6 +24,7 @@ const (
 	devModeFlag                = optionPrefix + "devmode"
 	traceModeFlag              = optionPrefix + "trace"
 	useVsockFlag               = optionPrefix + "use_vsock"
+	vsockHostPortFlag          = optionPrefix + "vsock_host_port"
 	debugConsoleFlag           = optionPrefix + "debug_console"
 	debugConsoleVPortFlag      = optionPrefix + "debug_console_vport"
 	hotplugTimeoutFlag         = optionPrefix + "hotplug_timeout"
@@ -149,6 +150,12 @@ func parseCmdlineOption(option string) error {
 			agentLog.Debug("Param passed to NOT use vsock channel")
 			commCh = serialCh
 		}
+	case vsockHostPortFlag:
+		port, err := strconv.ParseUint(split[valuePosition], 10, 32)
+		if err != nil {
+			return err
+		}
+		vsockHostPort = uint32(port)
 	case unifiedCgroupHierarchyFlag:
 		flag, err := strconv.ParseBool(split[valuePosition])
 		if err != nil {

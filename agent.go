@@ -176,6 +176,9 @@ var debugConsole = false
 // Specify a vsock port where logs are written.
 var logsVSockPort = uint32(0)
 
+// Specify a vsock host port to do a quick handshake.
+var vsockHostPort = uint32(0)
+
 // Specify a vsock port where debug console is attached.
 var debugConsoleVSockPort = uint32(0)
 
