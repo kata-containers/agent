@@ -307,6 +307,16 @@ func (m *mockServer) UpdateRoutes(ctx context.Context, req *pb.UpdateRoutesReque
 	return nil, nil
 }
 
+func (m *mockServer) AddARPNeighbors(ctx context.Context, req *pb.AddARPNeighborsRequest) (*types.Empty, error) {
+	mockLock.RLock()
+	defer mockLock.RUnlock()
+	if err := m.podExist(); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
 func (m *mockServer) OnlineCPUMem(ctx context.Context, req *pb.OnlineCPUMemRequest) (*types.Empty, error) {
 	mockLock.RLock()
 	defer mockLock.RUnlock()

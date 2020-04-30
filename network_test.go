@@ -557,3 +557,71 @@ func TestSetupDNS(t *testing.T) {
 	expectedDNS := strings.Split(string(content), "\n")
 	assert.Equal(t, dns, expectedDNS)
 }
+
+func TestAddARPNeighbors(t *testing.T) {
+	skipUnlessRoot(t)
+
+	tearDown := setupNetworkTest(t)
+	defer tearDown()
+
+	s := sandbox{}
+
+	// create a dummy link which we'll play with
+	macAddr := net.HardwareAddr{0x02, 0x00, 0xCA, 0xFE, 0x00, 0x48}
+	link := &netlink.Dummy{
+		LinkAttrs: netlink.LinkAttrs{
+			MTU:          1500,
+			TxQLen:       -1,
+			Name:         "ifc-name",
+			HardwareAddr: macAddr,
+		},
+	}
+	netHandle, _ := netlink.NewHandle()
+	defer netHandle.Delete()
+
+	netHandle.LinkAdd(link)
+	if err := netHandle.LinkSetUp(link); err != nil {
+		t.Fatal(err)
+	}
+
+	netlinkAddr, _ := netlink.ParseAddr("192.168.0.2/16")
+	netHandle.AddrAdd(link, netlinkAddr)
+
+	mac := "6a:92:3a:59:70:aa"
+	toIP := "169.254.1.1"
+	neighbors := []*types.ARPNeighbor{
+		{
+			Device:      "ifc-name",
+			Lladdr:      mac,
+			ToIPAddress: &types.IPAddress{Address: toIP},
+			State:       netlink.NUD_PERMANENT,
+		},
+	}
+
+	testNeighbors := &pb.ARPNeighbors{
+		ARPNeighbors: neighbors,
+	}
+
+	err := s.addARPNeighbors(netHandle, testNeighbors)
+	assert.Nil(t, err, "Unexpected add neighbors failure: %v", err)
+
+	addedLink, err := netlink.LinkByName(link.Name)
+	assert.Nil(t, err)
+
+	dump, err := netlink.NeighList(addedLink.Attrs().Index, 0)
+	if err != nil {
+		t.Errorf("Failed to NeighList: %v", err)
+	}
+
+	neighFound := false
+	for _, n := range dump {
+		if n.IP.Equal(net.ParseIP(toIP)) && (n.State&netlink.NUD_INCOMPLETE) == 0 && n.HardwareAddr.String() == mac {
+			neighFound = true
+		}
+	}
+
+	if !neighFound {
+		t.Errorf("Failed to find neighbour after AddARPNeighbor()")
+	}
+
+}

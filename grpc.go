@@ -1571,6 +1571,10 @@ func (a *agentGRPC) ListRoutes(ctx context.Context, req *pb.ListRoutesRequest) (
 	return a.sandbox.listRoutes(nil)
 }
 
+func (a *agentGRPC) AddARPNeighbors(ctx context.Context, req *pb.AddARPNeighborsRequest) (*gpb.Empty, error) {
+	return emptyResp, a.sandbox.addARPNeighbors(nil, req.Neighbors)
+}
+
 func (a *agentGRPC) OnlineCPUMem(ctx context.Context, req *pb.OnlineCPUMemRequest) (*gpb.Empty, error) {
 	if !req.Wait {
 		go a.onlineCPUMem(req)
