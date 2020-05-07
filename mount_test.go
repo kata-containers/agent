@@ -605,7 +605,8 @@ func TestStorageHandlers(t *testing.T) {
 		}
 
 		sb := sandbox{
-			storages: make(map[string]*sandboxStorage),
+			storages:       make(map[string]*sandboxStorage),
+			deviceWatchers: make(map[string](chan string)),
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())

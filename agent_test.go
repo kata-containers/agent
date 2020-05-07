@@ -30,7 +30,6 @@ const (
 	testExecID      = "testExecID"
 	testContainerID = "testContainerID"
 	testFileMode    = os.FileMode(0640)
-	testDirMode     = os.FileMode(0750)
 )
 
 func createFileWithPerms(file, contents string, perms os.FileMode) error {
