@@ -504,45 +504,6 @@ func TestUpdateSpecDeviceList(t *testing.T) {
 	assert.NoError(err)
 }
 
-func TestRescanPciBus(t *testing.T) {
-	skipUnlessRoot(t)
-
-	assert := assert.New(t)
-
-	err := rescanPciBus()
-	assert.Nil(err)
-
-}
-
-func TestRescanPciBusSubverted(t *testing.T) {
-	assert := assert.New(t)
-
-	dir, err := ioutil.TempDir("", "")
-	assert.NoError(err)
-	defer os.RemoveAll(dir)
-
-	rescanDir := filepath.Join(dir, "rescan-dir")
-
-	err = os.MkdirAll(rescanDir, testDirMode)
-	assert.NoError(err)
-
-	rescan := filepath.Join(rescanDir, "rescan")
-
-	savedFile := pciBusRescanFile
-	defer func() {
-		pciBusRescanFile = savedFile
-	}()
-
-	pciBusRescanFile = rescan
-
-	err = rescanPciBus()
-	assert.NoError(err)
-
-	os.RemoveAll(rescanDir)
-	err = rescanPciBus()
-	assert.Error(err)
-}
-
 func TestVirtioMmioBlkDeviceHandler(t *testing.T) {
 	assert := assert.New(t)
 
@@ -632,13 +593,6 @@ func TestGetPCIDeviceName(t *testing.T) {
 	sb := sandbox{
 		deviceWatchers: make(map[string](chan string)),
 	}
-
-	_, err = getPCIDeviceNameImpl(&sb, "")
-	assert.Error(err)
-
-	rescanDir := filepath.Dir(pciBusRescanFile)
-	err = os.MkdirAll(rescanDir, testDirMode)
-	assert.NoError(err)
 
 	_, err = getPCIDeviceNameImpl(&sb, "")
 	assert.Error(err)

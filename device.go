@@ -37,13 +37,8 @@ const (
 	vmRootfs            = "/"
 )
 
-const (
-	pciBusMode = 0220
-)
-
 var (
 	sysBusPrefix        = sysfsDir + "/bus/pci/devices"
-	pciBusRescanFile    = sysfsDir + "/bus/pci/rescan"
 	pciBusPathFormat    = "%s/%s/pci_bus/"
 	systemDevPath       = "/dev"
 	getSCSIDevPath      = getSCSIDevPathImpl
@@ -79,10 +74,6 @@ var deviceHandlerList = map[string]deviceHandler{
 	driverBlkCCWType:  virtioBlkCCWDeviceHandler,
 	driverSCSIType:    virtioSCSIDeviceHandler,
 	driverNvdimmType:  nvdimmDeviceHandler,
-}
-
-func rescanPciBus() error {
-	return ioutil.WriteFile(pciBusRescanFile, []byte{'1'}, pciBusMode)
 }
 
 // getDevicePCIAddress fetches the complete PCI address in sysfs, based on the PCI
@@ -176,14 +167,6 @@ func getDeviceName(s *sandbox, devID string) (string, error) {
 func getPCIDeviceNameImpl(s *sandbox, pciID string) (string, error) {
 	pciAddr, err := getDevicePCIAddress(pciID)
 	if err != nil {
-		return "", err
-	}
-
-	fieldLogger := agentLog.WithField("pciAddr", pciAddr)
-
-	// Rescan pci bus if we need to wait for a new pci device
-	if err = rescanPciBus(); err != nil {
-		fieldLogger.WithError(err).Error("Failed to scan pci bus")
 		return "", err
 	}
 

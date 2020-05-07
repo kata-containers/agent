@@ -618,12 +618,6 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		return emptyResp, err
 	}
 
-	// re-scan PCI bus
-	// looking for hidden devices
-	if err = rescanPciBus(); err != nil {
-		agentLog.WithError(err).Warn("Could not rescan PCI bus")
-	}
-
 	// Some devices need some extra processing (the ones invoked with
 	// --device for instance), and that's what this call is doing. It
 	// updates the devices listed in the OCI spec, so that they actually
