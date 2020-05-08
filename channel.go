@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/hashicorp/yamux"
@@ -194,6 +195,10 @@ func (c *serialChannel) wait() error {
 	for {
 		nev, err := unix.EpollWait(epfd, events[:], -1)
 		if err != nil {
+			if err == syscall.EINTR {
+				continue
+			}
+
 			return err
 		}
 
