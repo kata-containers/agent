@@ -83,7 +83,7 @@ else
 endif
 # go build common flags
 ifdef STATIC
-	LDFLAGS := -extldflags '-static'
+	STATIC_LDFLAGS := -extldflags '-static'
 else
 	BUILDFLAGS := -buildmode=pie
 endif
@@ -102,7 +102,7 @@ AGENT_TAG := $(if $(COMMIT_NO_SHORT),$(COMMIT_NO_SHORT),dev)
 
 $(TARGET): $(GENERATED_FILES) $(SOURCES) $(VERSION_FILE)
 	go build $(BUILDFLAGS) -tags "$(BUILDTAGS)" -o $@ \
-		-ldflags "-X main.version=$(VERSION_COMMIT) -X main.seccompSupport=$(SECCOMP) $(LDFLAGS) $(KATA_LDFLAGS)"
+		-ldflags "-X main.version=$(VERSION_COMMIT) -X main.seccompSupport=$(SECCOMP) $(STATIC_LDFLAGS) $(KATA_LDFLAGS)"
 
 install: $(TARGET)
 	install -D $(TARGET) $(DESTDIR)$(BINDIR)/$(TARGET)
