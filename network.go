@@ -32,6 +32,7 @@ var (
 	errNoLink               = grpcStatus.Errorf(codes.InvalidArgument, "Need network link")
 	errNoMAC                = grpcStatus.Errorf(codes.InvalidArgument, "Need hardware address")
 	errNoRoutes             = grpcStatus.Errorf(codes.InvalidArgument, "Need network routes")
+	errNoNeighbors          = grpcStatus.Errorf(codes.InvalidArgument, "Need ARP neighbors")
 	guestDNSFile            = "/etc/resolv.conf"
 	kataGuestSandboxDNSFile = "/run/kata-containers/sandbox/resolv.conf"
 )
@@ -620,6 +621,61 @@ func (s *sandbox) updateRoute(netHandle *netlink.Handle, route *types.Route, add
 				break
 			}
 		}
+	}
+
+	return nil
+}
+
+// addARPNeighbors will take neighbors and add them to ARP entries.
+// This is used to mirror any static arp entries created by the network
+// plugin in the network namespace on the host side.
+func (s *sandbox) addARPNeighbors(netHandle *netlink.Handle, requestedNeighbors *pb.ARPNeighbors) error {
+	if requestedNeighbors == nil {
+		return errNoNeighbors
+	}
+
+	var err error
+	if netHandle == nil {
+		netHandle, err = netlink.NewHandle(unix.NETLINK_ROUTE)
+		if err != nil {
+			return err
+		}
+		defer netHandle.Delete()
+	}
+
+	for _, neighbor := range requestedNeighbors.ARPNeighbors {
+		// Find link index from route's device name.
+		link, err := netHandle.LinkByName(neighbor.Device)
+		if err != nil {
+			return grpcStatus.Errorf(codes.Internal, "Could not find link from device %s: %v", neighbor.Device, err)
+		}
+
+		toIP := net.ParseIP(neighbor.ToIPAddress.Address)
+		if toIP == nil {
+			return grpcStatus.Errorf(codes.Internal, "Invalid To IP address %s for device  %s", neighbor.ToIPAddress.Address, neighbor.Device)
+		}
+
+		var mac net.HardwareAddr
+		if neighbor.Lladdr != "" {
+			mac, err = net.ParseMAC(neighbor.Lladdr)
+			if err != nil {
+				return grpcStatus.Errorf(codes.Internal, "Invalid hardware address %s for device  %s: %v", neighbor.Lladdr, neighbor.Device, err)
+			}
+		}
+
+		neigh := netlink.Neigh{
+			LinkIndex:    link.Attrs().Index,
+			HardwareAddr: mac,
+			State:        int(neighbor.State),
+			IP:           toIP,
+			Flags:        int(neighbor.Flags),
+		}
+
+		err = netHandle.NeighAdd(&neigh)
+		if err != nil {
+			return grpcStatus.Errorf(codes.Internal, "Could not add ARP neighbor %+v: %v", neighbor, err)
+		}
+
 	}
 
 	return nil
