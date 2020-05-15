@@ -520,6 +520,13 @@ func (a *agentGRPC) updateContainerConfigNamespaces(config *configs.Config, ctr 
 		config.Namespaces = append(config.Namespaces, newUTSNs)
 	}
 
+	// If container needs to be in the agent PID namespace, do not create a new
+	// PID namespace.
+	if ctr.agentPidNs {
+		agentLog.Warnf("Container shares Pid namespace with the agent, allowing container access to the agent process")
+		return
+	}
+
 	// Update PID namespace.
 	var pidNsPath string
 
@@ -643,6 +650,7 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		processes:       make(map[string]*process),
 		mounts:          mountList,
 		useSandboxPidNs: req.SandboxPidns,
+		agentPidNs:      req.AgentPidns,
 		ctx:             ctx,
 	}
 

@@ -111,6 +111,7 @@ type container struct {
 	processes       map[string]*process
 	mounts          []string
 	useSandboxPidNs bool
+	agentPidNs      bool
 	ctx             context.Context
 }
 
