@@ -653,6 +653,9 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		}
 	}()
 
+	// Add the nvdimm root partition to the device cgroup to prevent access
+	updateDeviceCgroupForGuestRootfs(req.OCI)
+
 	// Convert the spec to an actual OCI specification structure.
 	ociSpec, err := pb.GRPCtoOCI(req.OCI)
 	if err != nil {
