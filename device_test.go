@@ -18,6 +18,7 @@ import (
 
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/sys/unix"
 )
 
 var (
@@ -727,4 +728,26 @@ func TestGetDeviceName(t *testing.T) {
 
 	assert.Nil(err)
 	assert.Equal(name, path.Join(devRootPath, devName))
+}
+
+func TestUpdateDeviceCgroupForGuestRootfs(t *testing.T) {
+	skipUnlessRoot(t)
+	assert := assert.New(t)
+
+	spec := &pb.Spec{}
+
+	spec.Linux = &pb.Linux{}
+	spec.Linux.Resources = &pb.LinuxResources{}
+
+	updateDeviceCgroupForGuestRootfs(spec)
+	assert.Equal(1, len(spec.Linux.Resources.Devices))
+
+	var devStat unix.Stat_t
+	err := unix.Stat(vmRootfs, &devStat)
+	if err != nil {
+		return
+	}
+
+	assert.Equal(spec.Linux.Resources.Devices[0].Major, int64(unix.Major(devStat.Dev)))
+	assert.Equal(spec.Linux.Resources.Devices[0].Minor, int64(unix.Minor(devStat.Dev)))
 }
