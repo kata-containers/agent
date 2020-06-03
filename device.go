@@ -34,6 +34,7 @@ const (
 	driverNvdimmType    = "nvdimm"
 	driverEphemeralType = "ephemeral"
 	driverLocalType     = "local"
+	vmRootfs            = "/"
 )
 
 const (
@@ -471,4 +472,29 @@ func addDevice(ctx context.Context, device *pb.Device, spec *pb.Spec, s *sandbox
 	}
 
 	return devHandler(ctx, *device, spec, s)
+}
+
+// updateDeviceCgroupForGuestRootfs updates the device cgroup for container
+// to not allow access to the nvdim root partition. This prevents the container
+// from being able to access the VM rootfs.
+func updateDeviceCgroupForGuestRootfs(spec *pb.Spec) {
+	var devStat unix.Stat_t
+
+	err := unix.Stat(vmRootfs, &devStat)
+	if err != nil {
+		return
+	}
+
+	devMajor := int64(unix.Major(devStat.Dev))
+	devMinor := int64(unix.Minor(devStat.Dev))
+
+	nvdimmCg := pb.LinuxDeviceCgroup{
+		Allow:  false,
+		Major:  devMajor,
+		Minor:  devMinor,
+		Type:   "b",
+		Access: "rwm",
+	}
+
+	spec.Linux.Resources.Devices = append(spec.Linux.Resources.Devices, nvdimmCg)
 }
