@@ -17,6 +17,8 @@ import (
 )
 
 func TestChangeToBundlePath(t *testing.T) {
+	skipUnlessRoot(t)
+	containerId := "1"
 	assert := assert.New(t)
 
 	originalCwd, err := os.Getwd()
@@ -37,15 +39,15 @@ func TestChangeToBundlePath(t *testing.T) {
 		Readonly: false,
 	}
 
-	_, err = changeToBundlePath(spec)
+	_, err = changeToBundlePath(spec, containerId)
 	assert.Error(err)
 
 	// Write the spec file to create a valid OCI bundle
 	spec.Root.Path = rootfsPath
-	err = writeSpecToFile(spec)
+	err = writeSpecToFile(spec, containerId)
 	assert.NoError(err)
 
-	cwd, err := changeToBundlePath(spec)
+	cwd, err := changeToBundlePath(spec, containerId)
 	assert.NoError(err)
 	assert.Equal(cwd, originalCwd)
 
@@ -55,6 +57,8 @@ func TestChangeToBundlePath(t *testing.T) {
 }
 
 func TestWriteSpecToFile(t *testing.T) {
+	skipUnlessRoot(t)
+	containerId := "1"
 	assert := assert.New(t)
 
 	bundlePath, err := ioutil.TempDir("", "bundle")
@@ -75,10 +79,17 @@ func TestWriteSpecToFile(t *testing.T) {
 			Readonly: false,
 		},
 	}
-	err = writeSpecToFile(spec)
+	err = writeSpecToFile(spec, containerId)
 	assert.NoError(err)
 
 	file, err := os.Open(path.Join(bundlePath, ociConfigFile))
+	assert.Error(err)
+	defer file.Close()
+
+	_, err = file.Stat()
+	assert.Error(err)
+
+	file, err = os.Open(path.Join("/run/libcontainer/", containerId, ociConfigFile))
 	assert.NoError(err)
 	defer file.Close()
 
