@@ -39,14 +39,18 @@ var testSharedUTSNs = "testSharedUTSNs"
 var testSharedIPCNs = "testSharedIPCNs"
 
 func testUpdateContainerConfigNamespacesSharedPid(t *testing.T, sharedPidNs, sharedUTSNs, sharedIPCNs string, config, expected configs.Config) {
-	testUpdateContainerConfigNamespaces(t, sharedPidNs, sharedUTSNs, sharedIPCNs, config, expected, true)
+	testUpdateContainerConfigNamespaces(t, sharedPidNs, sharedUTSNs, sharedIPCNs, config, expected, true, false)
 }
 
 func testUpdateContainerConfigNamespacesNonSharedPid(t *testing.T, sharedPidNs, sharedUTSNs, sharedIPCNs string, config, expected configs.Config) {
-	testUpdateContainerConfigNamespaces(t, sharedPidNs, sharedUTSNs, sharedIPCNs, config, expected, false)
+	testUpdateContainerConfigNamespaces(t, sharedPidNs, sharedUTSNs, sharedIPCNs, config, expected, false, false)
 }
 
-func testUpdateContainerConfigNamespaces(t *testing.T, sharedPidNs, sharedUTSNs, sharedIPCNs string, config, expected configs.Config, sharedPid bool) {
+func testUpdateContainerConfigNamespacesAgentPid(t *testing.T, sharedPidNs, sharedUTSNs, sharedIPCNs string, config, expected configs.Config) {
+	testUpdateContainerConfigNamespaces(t, sharedPidNs, sharedUTSNs, sharedIPCNs, config, expected, false, true)
+}
+
+func testUpdateContainerConfigNamespaces(t *testing.T, sharedPidNs, sharedUTSNs, sharedIPCNs string, config, expected configs.Config, sharedPid, agentPid bool) {
 	s := &sandbox{
 		sharedPidNs: namespace{
 			path: sharedPidNs,
@@ -64,6 +68,7 @@ func testUpdateContainerConfigNamespaces(t *testing.T, sharedPidNs, sharedUTSNs,
 	ctr := &container{
 		id:              contID,
 		useSandboxPidNs: sharedPid,
+		agentPidNs:      agentPid,
 	}
 
 	s.containers[contID] = ctr
@@ -169,6 +174,35 @@ func TestUpdateContainerConfigNamespacesEmptyConfig(t *testing.T) {
 	}
 
 	testUpdateContainerConfigNamespacesNonSharedPid(t, testSharedPidNs, testSharedUTSNs, testSharedIPCNs, configs.Config{}, expectedConfig)
+}
+
+func TestUpdateContainerConfigNamespacesAgentPidConfig(t *testing.T) {
+	config := configs.Config{
+		Namespaces: []configs.Namespace{
+			{
+				Type: configs.NEWIPC,
+			},
+			{
+				Type: configs.NEWUTS,
+			},
+		},
+	}
+
+	expectedConfig := configs.Config{
+		Namespaces: []configs.Namespace{
+			{
+				Type: configs.NEWIPC,
+				Path: testSharedIPCNs,
+			},
+			{
+				Type: configs.NEWUTS,
+				Path: testSharedUTSNs,
+			},
+		},
+	}
+
+	testUpdateContainerConfigNamespacesAgentPid(t, testSharedPidNs, testSharedUTSNs, testSharedIPCNs, config, expectedConfig)
+
 }
 
 func testUpdateContainerConfigPrivileges(t *testing.T, spec *specs.Spec, config, expected configs.Config) {

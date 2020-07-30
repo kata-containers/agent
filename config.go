@@ -162,7 +162,6 @@ func parseCmdlineOption(option string) error {
 	}
 
 	return nil
-
 }
 
 func enableTracing(traceMode, traceType string) {
