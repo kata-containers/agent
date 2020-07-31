@@ -684,14 +684,14 @@ func (a *agentGRPC) CreateContainer(ctx context.Context, req *pb.CreateContainer
 		a.sandbox.addGuestHooks(ociSpec)
 
 		// write the OCI spec to a file so that hooks can read it
-		err = writeSpecToFile(ociSpec)
+		err = writeSpecToFile(ociSpec, req.ContainerId)
 		if err != nil {
 			return emptyResp, err
 		}
 
 		// Change cwd because libcontainer assumes the bundle path is the cwd:
 		// https://github.com/opencontainers/runc/blob/v1.0.0-rc5/libcontainer/specconv/spec_linux.go#L157
-		oldcwd, err := changeToBundlePath(ociSpec)
+		oldcwd, err := changeToBundlePath(ociSpec, req.ContainerId)
 		if err != nil {
 			return emptyResp, err
 		}
@@ -1313,6 +1313,9 @@ func (a *agentGRPC) RemoveContainer(ctx context.Context, req *pb.RemoveContainer
 		}
 	}
 
+	configJsonDir := filepath.Join("/run/libcontainer/", req.ContainerId)
+	//Best effort.. Ignore any errors in the deletion of the directory
+	_ = os.RemoveAll(configJsonDir)
 	delete(a.sandbox.containers, ctr.id)
 
 	return emptyResp, nil
