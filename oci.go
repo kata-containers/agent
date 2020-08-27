@@ -22,13 +22,18 @@ import (
 const (
 	ociConfigFile     string      = "config.json"
 	ociConfigFileMode os.FileMode = 0444
+	ociConfigBasePath string      = "/run/libcontainer"
 )
 
-// writeSpecToFile writes the container's OCI spec to "dirname(spec.Root.Path)/config.json"
-// This effectively makes the parent directory a valid OCI bundle.
-func writeSpecToFile(spec *specs.Spec) error {
-	bundlePath := filepath.Dir(spec.Root.Path)
-	configPath := filepath.Join(bundlePath, ociConfigFile)
+// writeSpecToFile writes the container's OCI spec to "/run/libcontainer/<container-id>/config.json"
+// Note that the OCI bundle (rootfs) is at a different path
+func writeSpecToFile(spec *specs.Spec, containerId string) error {
+	configJsonDir := filepath.Join(ociConfigBasePath, containerId)
+	err := os.MkdirAll(configJsonDir, 0700)
+	if err != nil {
+		return err
+	}
+	configPath := filepath.Join(configJsonDir, ociConfigFile)
 	f, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE, ociConfigFileMode)
 	if err != nil {
 		return err
@@ -40,7 +45,7 @@ func writeSpecToFile(spec *specs.Spec) error {
 
 // changeToBundlePath changes the cwd to the OCI bundle path defined as
 // dirname(spec.Root.Path) and returns the old cwd.
-func changeToBundlePath(spec *specs.Spec) (string, error) {
+func changeToBundlePath(spec *specs.Spec, containerId string) (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return cwd, err
@@ -51,9 +56,10 @@ func changeToBundlePath(spec *specs.Spec) (string, error) {
 	}
 
 	bundlePath := filepath.Dir(spec.Root.Path)
-	configPath := filepath.Join(bundlePath, ociConfigFile)
+	configPath := filepath.Join(ociConfigBasePath, containerId, ociConfigFile)
 
-	// Verify that config.json is present at the root of the bundle path.
+	// config.json is at "/run/libcontainer/<container-id>/"
+	// Actual bundle (rootfs) is at dirname(spec.Root.Path)
 	if _, err := os.Stat(configPath); err != nil {
 		return cwd, errors.New("invalid OCI bundle")
 	}
