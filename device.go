@@ -219,15 +219,12 @@ func virtioBlkCCWDeviceHandler(ctx context.Context, device pb.Device, spec *pb.S
 // Here, bridgeAddr is the address at which the brige is attached on the root bus,
 // while deviceAddr is the address at which the device is attached on the bridge.
 func virtioBlkDeviceHandler(_ context.Context, device pb.Device, spec *pb.Spec, s *sandbox) error {
-	// When "Id (PCIAddr)" is not set, we allow to use the predicted "VmPath" passed from kata-runtime
-	if device.Id != "" {
-		// Get the device node path based on the PCI device address
-		devPath, err := getPCIDeviceName(s, device.Id)
-		if err != nil {
-			return err
-		}
-		device.VmPath = devPath
+	// Get the device node path based on the PCI device address
+	devPath, err := getPCIDeviceName(s, device.Id)
+	if err != nil {
+		return err
 	}
+	device.VmPath = devPath
 
 	return updateSpecDeviceList(device, spec)
 }
