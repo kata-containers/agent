@@ -174,9 +174,21 @@ func getDeviceName(s *sandbox, devID string) (string, error) {
 }
 
 func getPCIDeviceNameImpl(s *sandbox, pciID string) (string, error) {
-	pciAddr, err := getDevicePCIAddress(pciID)
-	if err != nil {
-		return "", err
+	var pciAddr string
+	var err error
+
+	// The standard BDF (bus/device/function) format is '0000:00:00.0'
+	const sizeBDFStr = 12
+	const sizeBDFToken = 3
+
+	// Take the input pciID as pciAddr if it's BDF format
+	if len(pciID) == sizeBDFStr && len(strings.Split(pciID, ":")) == sizeBDFToken {
+		pciAddr = pciID
+	} else {
+		pciAddr, err = getDevicePCIAddress(pciID)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	fieldLogger := agentLog.WithField("pciAddr", pciAddr)
@@ -215,7 +227,8 @@ func virtioBlkCCWDeviceHandler(ctx context.Context, device pb.Device, spec *pb.S
 	return updateSpecDeviceList(device, spec)
 }
 
-// device.Id should be the PCI address in the format  "bridgeAddr/deviceAddr".
+// device.Id should be the PCI address which is either in the standard
+// BDF format (e.g. '0000:00:00.0'), or in the format  "bridgeAddr/deviceAddr".
 // Here, bridgeAddr is the address at which the brige is attached on the root bus,
 // while deviceAddr is the address at which the device is attached on the bridge.
 func virtioBlkDeviceHandler(_ context.Context, device pb.Device, spec *pb.Spec, s *sandbox) error {
