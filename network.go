@@ -693,6 +693,11 @@ func setupDNS(dns []string) (err error) {
 		return nil
 	}
 
+	if _, err := os.Stat(guestDNSFile); err != nil && os.IsNotExist(err) {
+		agentLog.Errorf("%s is not exist in guest, dns service may be unavailable", guestDNSFile)
+		return nil
+	}
+
 	if err := os.MkdirAll(filepath.Dir(kataGuestSandboxDNSFile), 0700); err != nil {
 		return err
 	}
