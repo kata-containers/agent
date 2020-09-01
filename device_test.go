@@ -822,6 +822,47 @@ func TestNvdimmDeviceHandler(t *testing.T) {
 	assert.Error(err)
 }
 
+func TestVfioVmDeviceHandler(t *testing.T) {
+	assert := assert.New(t)
+
+	hostBdf := "0000:0a:0b.0"
+	guestPciPath := "1c/1d"
+	guestBridgeBdf := "0000:00:1c.0"
+	guestBdf := "0000:0e:1d.0"
+	pciSysPath := filepath.Join(guestBridgeBdf, guestBdf)
+	guestSysPath := filepath.Join(sysfsDir, rootBusPath, pciSysPath)
+
+	device := pb.Device{
+		Type: driverVfioVmType,
+		Options: []string{fmt.Sprintf("%s=%s", hostBdf, guestPciPath)},
+	}
+	spec := &pb.Spec{}
+	devIdx := makeDevIndex(spec)
+	sb := &sandbox{
+		sysToDevMap: make(map[string]string),
+	}
+
+	// Pre-populate the sysToDevMap, since the getDeviceName
+	// mechanics is not what we're testing
+	sb.sysToDevMap[guestSysPath] = ""
+
+	ctx := context.Background()
+
+	// Replace getDevicePCIAddress with a dummy, since that's not
+	// what we're testing here, and it would attempt to poke in
+	// sysfs
+	savedFunc := pciPathToSysfs
+	defer func() {
+		pciPathToSysfs = savedFunc
+	}()
+	pciPathToSysfs = func(pciPath PciPath) (string, error) {
+		return pciSysPath, nil
+	}
+
+	err := vfioDeviceHandler(ctx, device, spec, sb, devIdx)
+	assert.Nil(err)
+}
+
 func TestGetPCIDeviceName(t *testing.T) {
 	assert := assert.New(t)
 
