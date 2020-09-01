@@ -34,7 +34,12 @@ const (
 	driverNvdimmType    = "nvdimm"
 	driverEphemeralType = "ephemeral"
 	driverLocalType     = "local"
-	vmRootfs            = "/"
+
+	//VFIO devices to be bound to the VM's native drivers (this is
+	//Kata specific behaviour, that requires careful configuration
+	//to get something usable inside the container)
+	driverVfioVmType = "vfio-vm"
+	vmRootfs         = "/"
 )
 
 const (
@@ -97,6 +102,7 @@ var deviceHandlerList = map[string]deviceHandler{
 	driverBlkCCWType:  virtioBlkCCWDeviceHandler,
 	driverSCSIType:    virtioSCSIDeviceHandler,
 	driverNvdimmType:  nvdimmDeviceHandler,
+	driverVfioVmType:  vfioDeviceHandler,
 }
 
 func rescanPciBus() error {
@@ -261,6 +267,46 @@ func virtioSCSIDeviceHandler(ctx context.Context, device pb.Device, spec *pb.Spe
 
 func nvdimmDeviceHandler(_ context.Context, device pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error {
 	return updateSpecDeviceList(device, spec, devIdx)
+}
+
+// device.Options should have one entry for each PCI device in the VFIO group
+// Each option should have the form "DDDD:BB:DD.F=NN/MM"
+//     DDDD:BB:DD.F is the device's PCI address in the host
+//     NN is the PCI slot of the device's bridge, MM is the PCI slot of the device
+func vfioDeviceHandler(ctx context.Context, device pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error {
+	fieldLogger := agentLog.WithField("host-dev", device.ContainerPath)
+
+	for _, opt := range device.Options {
+		tokens := strings.Split(opt, "=")
+		if len(tokens) != 2 {
+			return fmt.Errorf("Malformed VFIO option %q", opt)
+		}
+
+		hostBdf := tokens[0]
+		guestPCIPath := PciPath{tokens[1]}
+
+		sysfsRelPath, err := pciPathToSysfs(guestPCIPath)
+		if err != nil {
+			return err
+		}
+
+		// We don't actually care what the /dev node is called
+		// (and there may not be any), but this will wait for
+		// a uevent that indicates the device is ready
+		_, err = getDeviceName(s, sysfsRelPath)
+		if err != nil {
+			return err
+		}
+
+		tokens = strings.Split(sysfsRelPath, "/")
+		guestBdf := tokens[len(tokens)-1]
+
+		fieldLogger.WithField("host-bdf", hostBdf).WithField("guest-bdf", guestBdf).Debug("VFIO: PCI device ready")
+	}
+
+	fieldLogger.Debug("VFIO: Group complete")
+
+	return nil
 }
 
 // updateSpecDeviceList takes a device description provided by the caller,
