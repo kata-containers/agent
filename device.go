@@ -373,7 +373,17 @@ func vfioDeviceHandler(ctx context.Context, device pb.Device, spec *pb.Spec, s *
 		fieldLogger.WithField("host-bdf", hostBdf).WithField("guest-bdf", guestBdf).Debug("VFIO: Device complete")
 	}
 
-	fieldLogger.WithField("guest-group", group).Debug("VFIO: Group complete")
+	fieldLogger.WithField("guest-dev", device.VmPath).Debug("VFIO: Group complete")
+
+	if rebindToVfio {
+		vmpath, err := getDeviceName(s, filepath.Join("vfio", group))
+		if err != nil {
+			return fmt.Errorf("Couldn't find device for guest VFIO group %s: %s",
+				group, err)
+		}
+		device.VmPath = vmpath
+		return updateSpecDevice(spec, devIdx, device.ContainerPath, device.VmPath, device.VmPath)
+	}
 
 	return nil
 }
