@@ -210,7 +210,7 @@ func virtioMmioBlkDeviceHandler(_ context.Context, device pb.Device, spec *pb.Sp
 		return fmt.Errorf("Invalid path for virtioMmioBlkDevice")
 	}
 
-	return updateSpecDevice(spec, devIdx, device.ContainerPath, device.VmPath)
+	return updateSpecDevice(spec, devIdx, device.ContainerPath, device.VmPath, device.ContainerPath)
 }
 
 func virtioBlkCCWDeviceHandler(ctx context.Context, device pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error {
@@ -225,7 +225,7 @@ func virtioBlkCCWDeviceHandler(ctx context.Context, device pb.Device, spec *pb.S
 	}
 
 	device.VmPath = devPath
-	return updateSpecDevice(spec, devIdx, device.ContainerPath, device.VmPath)
+	return updateSpecDevice(spec, devIdx, device.ContainerPath, device.VmPath, device.ContainerPath)
 }
 
 // device.Id should be a PCI path (see type PciPath)
@@ -239,7 +239,7 @@ func virtioBlkDeviceHandler(_ context.Context, device pb.Device, spec *pb.Spec, 
 		device.VmPath = devPath
 	}
 
-	return updateSpecDevice(spec, devIdx, device.ContainerPath, device.VmPath)
+	return updateSpecDevice(spec, devIdx, device.ContainerPath, device.VmPath, device.ContainerPath)
 }
 
 // device.Id should be the SCSI address of the disk in the format "scsiID:lunID"
@@ -251,11 +251,11 @@ func virtioSCSIDeviceHandler(ctx context.Context, device pb.Device, spec *pb.Spe
 	}
 	device.VmPath = devPath
 
-	return updateSpecDevice(spec, devIdx, device.ContainerPath, device.VmPath)
+	return updateSpecDevice(spec, devIdx, device.ContainerPath, device.VmPath, device.ContainerPath)
 }
 
 func nvdimmDeviceHandler(_ context.Context, device pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error {
-	return updateSpecDevice(spec, devIdx, device.ContainerPath, device.VmPath)
+	return updateSpecDevice(spec, devIdx, device.ContainerPath, device.VmPath, device.ContainerPath)
 }
 
 // Take the guest device with the given DDDD:BB:SS.F PCI address,
@@ -381,9 +381,10 @@ func vfioDeviceHandler(ctx context.Context, device pb.Device, spec *pb.Spec, s *
 // updateSpecDevice updates a device list in the OCI spec to make it
 // include details appropriate for the VM, instead of the host.  It is
 // given the host path to the device (to locate the device in the
-// original OCI spec) and the VM path which it uses to determine the
-// VM major/minor numbers.
-func updateSpecDevice(spec *pb.Spec, devIdx devIndex, hostPath, vmPath string) error {
+// original OCI spec), the VM path which it uses to determine the VM
+// major/minor number, and the final path with which to present the
+// device in the (inner) container
+func updateSpecDevice(spec *pb.Spec, devIdx devIndex, hostPath, vmPath, finalPath string) error {
 	// If no hostPath is provided, we won't be able to match and
 	// update the device in the OCI spec device list. This is an
 	// error.
@@ -432,6 +433,7 @@ func updateSpecDevice(spec *pb.Spec, devIdx devIndex, hostPath, vmPath string) e
 
 	spec.Linux.Devices[idxData.idx].Major = major
 	spec.Linux.Devices[idxData.idx].Minor = minor
+	spec.Linux.Devices[idxData.idx].Path = finalPath
 
 	// Resources must be updated since they are used to identify the
 	// device in the devices cgroup.
