@@ -210,7 +210,7 @@ func virtioMmioBlkDeviceHandler(_ context.Context, device pb.Device, spec *pb.Sp
 		return fmt.Errorf("Invalid path for virtioMmioBlkDevice")
 	}
 
-	return updateSpecDeviceList(device, spec, devIdx)
+	return updateSpecDevice(spec, devIdx, device.ContainerPath, device.VmPath)
 }
 
 func virtioBlkCCWDeviceHandler(ctx context.Context, device pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error {
@@ -225,7 +225,7 @@ func virtioBlkCCWDeviceHandler(ctx context.Context, device pb.Device, spec *pb.S
 	}
 
 	device.VmPath = devPath
-	return updateSpecDeviceList(device, spec, devIdx)
+	return updateSpecDevice(spec, devIdx, device.ContainerPath, device.VmPath)
 }
 
 // device.Id should be a PCI path (see type PciPath)
@@ -239,7 +239,7 @@ func virtioBlkDeviceHandler(_ context.Context, device pb.Device, spec *pb.Spec, 
 		device.VmPath = devPath
 	}
 
-	return updateSpecDeviceList(device, spec, devIdx)
+	return updateSpecDevice(spec, devIdx, device.ContainerPath, device.VmPath)
 }
 
 // device.Id should be the SCSI address of the disk in the format "scsiID:lunID"
@@ -251,11 +251,11 @@ func virtioSCSIDeviceHandler(ctx context.Context, device pb.Device, spec *pb.Spe
 	}
 	device.VmPath = devPath
 
-	return updateSpecDeviceList(device, spec, devIdx)
+	return updateSpecDevice(spec, devIdx, device.ContainerPath, device.VmPath)
 }
 
 func nvdimmDeviceHandler(_ context.Context, device pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error {
-	return updateSpecDeviceList(device, spec, devIdx)
+	return updateSpecDevice(spec, devIdx, device.ContainerPath, device.VmPath)
 }
 
 // Take the guest device with the given DDDD:BB:SS.F PCI address,
@@ -378,18 +378,18 @@ func vfioDeviceHandler(ctx context.Context, device pb.Device, spec *pb.Spec, s *
 	return nil
 }
 
-// updateSpecDeviceList takes a device description provided by the caller,
-// trying to find it on the guest. Once this device has been identified, the
-// "real" information that can be read from inside the VM is used to update
-// the same device in the list of devices provided through the OCI spec.
-// This is needed to update information about minor/major numbers that cannot
-// be predicted from the caller.
-func updateSpecDeviceList(device pb.Device, spec *pb.Spec, devIdx devIndex) error {
-	// If no ContainerPath is provided, we won't be able to match and
-	// update the device in the OCI spec device list. This is an error.
-	if device.ContainerPath == "" {
+// updateSpecDevice updates a device list in the OCI spec to make it
+// include details appropriate for the VM, instead of the host.  It is
+// given the host path to the device (to locate the device in the
+// original OCI spec) and the VM path which it uses to determine the
+// VM major/minor numbers.
+func updateSpecDevice(spec *pb.Spec, devIdx devIndex, hostPath, vmPath string) error {
+	// If no hostPath is provided, we won't be able to match and
+	// update the device in the OCI spec device list. This is an
+	// error.
+	if hostPath == "" {
 		return grpcStatus.Errorf(codes.Internal,
-			"ContainerPath cannot be empty")
+			"Host path cannot be empty")
 	}
 
 	if spec.Linux == nil || len(spec.Linux.Devices) == 0 {
@@ -398,7 +398,7 @@ func updateSpecDeviceList(device pb.Device, spec *pb.Spec, devIdx devIndex) erro
 	}
 
 	stat := syscall.Stat_t{}
-	if err := syscall.Stat(device.VmPath, &stat); err != nil {
+	if err := syscall.Stat(vmPath, &stat); err != nil {
 		return err
 	}
 
@@ -408,21 +408,22 @@ func updateSpecDeviceList(device pb.Device, spec *pb.Spec, devIdx devIndex) erro
 	minor := int64(unix.Minor(dev))
 
 	agentLog.WithFields(logrus.Fields{
-		"device-path":  device.VmPath,
+		"device-path":  vmPath,
 		"device-major": major,
 		"device-minor": minor,
 	}).Info("handling block device")
 
 	// Update the spec
-	idxData, ok := devIdx[device.ContainerPath]
+	idxData, ok := devIdx[hostPath]
 	if !ok {
 		return grpcStatus.Errorf(codes.Internal,
 			"Should have found a matching device %s in the spec",
-			device.ContainerPath)
+			hostPath)
 	}
 
 	agentLog.WithFields(logrus.Fields{
-		"device-path":        device.VmPath,
+		"host-path":          hostPath,
+		"device-path":        vmPath,
 		"host-device-major":  spec.Linux.Devices[idxData.idx].Major,
 		"host-device-minor":  spec.Linux.Devices[idxData.idx].Minor,
 		"guest-device-major": major,

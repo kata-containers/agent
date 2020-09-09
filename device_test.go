@@ -476,24 +476,25 @@ func TestUpdateSpecDeviceList(t *testing.T) {
 	var err error
 	spec := &pb.Spec{}
 	devIdx := makeDevIndex(spec)
-	device := pb.Device{}
 	major := int64(7)
 	minor := int64(2)
 
-	//ContainerPath empty
-	err = updateSpecDeviceList(device, spec, devIdx)
+	var containerPath, vmPath string
+
+	// containerPath empty
+	err = updateSpecDevice(spec, devIdx, containerPath, vmPath)
 	assert.Error(err)
 
-	device.ContainerPath = "/dev/null"
+	containerPath = "/dev/null"
 
-	//Linux is nil
-	err = updateSpecDeviceList(device, spec, devIdx)
+	// Linux is nil
+	err = updateSpecDevice(spec, devIdx, containerPath, vmPath)
 	assert.Error(err)
 
 	spec.Linux = &pb.Linux{}
 
 	/// Linux.Devices empty
-	err = updateSpecDeviceList(device, spec, devIdx)
+	err = updateSpecDevice(spec, devIdx, containerPath, vmPath)
 	assert.Error(err)
 
 	spec.Linux.Devices = []pb.LinuxDevice{
@@ -505,27 +506,27 @@ func TestUpdateSpecDeviceList(t *testing.T) {
 	}
 	devIdx = makeDevIndex(spec)
 
-	// VmPath empty
-	err = updateSpecDeviceList(device, spec, devIdx)
+	// mmPath empty
+	err = updateSpecDevice(spec, devIdx, containerPath, vmPath)
 	assert.Error(err)
 
-	device.VmPath = "/dev/null"
+	vmPath = "/dev/null"
 
 	// guest and host path are not the same
-	err = updateSpecDeviceList(device, spec, devIdx)
+	err = updateSpecDevice(spec, devIdx, containerPath, vmPath)
 	assert.Error(err)
 
-	spec.Linux.Devices[0].Path = device.ContainerPath
+	spec.Linux.Devices[0].Path = containerPath
 	devIdx = makeDevIndex(spec)
 
 	// spec.Linux.Resources is nil
-	err = updateSpecDeviceList(device, spec, devIdx)
+	err = updateSpecDevice(spec, devIdx, containerPath, vmPath)
 	assert.NoError(err)
 
 	// update both devices and cgroup lists
 	spec.Linux.Devices = []pb.LinuxDevice{
 		{
-			Path:  device.ContainerPath,
+			Path:  containerPath,
 			Major: major,
 			Minor: minor,
 		},
@@ -540,7 +541,7 @@ func TestUpdateSpecDeviceList(t *testing.T) {
 	}
 	devIdx = makeDevIndex(spec)
 
-	err = updateSpecDeviceList(device, spec, devIdx)
+	err = updateSpecDevice(spec, devIdx, containerPath, vmPath)
 	assert.NoError(err)
 }
 
@@ -596,17 +597,13 @@ func TestUpdateSpecDeviceListGuestHostConflict(t *testing.T) {
 		},
 	}
 
-	devA := pb.Device{
-		ContainerPath: "/dev/a",
-		VmPath:        "/dev/zero",
-	}
+	containerPathA := "/dev/a"
+	vmPathA := "/dev/zero"
 	guestMajorA := int64(unix.Major(zeroStat.Rdev))
 	guestMinorA := int64(unix.Minor(zeroStat.Rdev))
 
-	devB := pb.Device{
-		ContainerPath: "/dev/b",
-		VmPath:        "/dev/full",
-	}
+	containerPathB := "/dev/b"
+	vmPathB := "/dev/full"
 	guestMajorB := int64(unix.Major(fullStat.Rdev))
 	guestMinorB := int64(unix.Minor(fullStat.Rdev))
 
@@ -622,7 +619,7 @@ func TestUpdateSpecDeviceListGuestHostConflict(t *testing.T) {
 	assert.Equal(hostMajorB, spec.Linux.Resources.Devices[1].Major)
 	assert.Equal(hostMinorB, spec.Linux.Resources.Devices[1].Minor)
 
-	err = updateSpecDeviceList(devA, spec, devIdx)
+	err = updateSpecDevice(spec, devIdx, containerPathA, vmPathA)
 	assert.NoError(err)
 
 	assert.Equal(guestMajorA, spec.Linux.Devices[0].Major)
@@ -635,7 +632,7 @@ func TestUpdateSpecDeviceListGuestHostConflict(t *testing.T) {
 	assert.Equal(hostMajorB, spec.Linux.Resources.Devices[1].Major)
 	assert.Equal(hostMinorB, spec.Linux.Resources.Devices[1].Minor)
 
-	err = updateSpecDeviceList(devB, spec, devIdx)
+	err = updateSpecDevice(spec, devIdx, containerPathB, vmPathB)
 	assert.NoError(err)
 
 	assert.Equal(guestMajorA, spec.Linux.Devices[0].Major)
@@ -698,10 +695,8 @@ func TestUpdateSpecDeviceListCharBlockConflict(t *testing.T) {
 		},
 	}
 
-	dev := pb.Device{
-		ContainerPath: "/dev/char",
-		VmPath:        "/dev/null",
-	}
+	containerPath := "/dev/char"
+	vmPath := "/dev/null"
 
 	assert.Equal(hostMajor, spec.Linux.Resources.Devices[0].Major)
 	assert.Equal(hostMinor, spec.Linux.Resources.Devices[0].Minor)
@@ -709,7 +704,7 @@ func TestUpdateSpecDeviceListCharBlockConflict(t *testing.T) {
 	assert.Equal(hostMinor, spec.Linux.Resources.Devices[1].Minor)
 
 	devIdx := makeDevIndex(spec)
-	err = updateSpecDeviceList(dev, spec, devIdx)
+	err = updateSpecDevice(spec, devIdx, containerPath, vmPath)
 	assert.NoError(err)
 
 	// Only the char device, not the block device should be updated
