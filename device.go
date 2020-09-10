@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -39,10 +40,18 @@ const (
 	//Kata specific behaviour, that requires careful configuration
 	//to get something usable inside the container)
 	driverVfioVmType = "vfio-vm"
-	vmRootfs         = "/"
+	//VFIO devices to be bound to VFIO again within the VM, so
+	//that the container itself can access them.  This is how a
+	//normal OCI runtime would treat VFIO devices given to a
+	//container
+	driverVfioType = "vfio"
+
+	vmRootfs = "/"
 )
 
 var (
+	pciProbeFile     = sysfsDir + "/bus/pci/drivers_probe"
+	sysPciDevices    = sysfsDir + "/bus/pci/devices"
 	systemDevPath    = "/dev"
 	getSCSIDevPath   = getSCSIDevPathImpl
 	getPmemDevPath   = getPmemDevPathImpl
@@ -98,6 +107,7 @@ var deviceHandlerList = map[string]deviceHandler{
 	driverSCSIType:    virtioSCSIDeviceHandler,
 	driverNvdimmType:  nvdimmDeviceHandler,
 	driverVfioVmType:  vfioDeviceHandler,
+	driverVfioType:    vfioDeviceHandler,
 }
 
 // pciPathToSysfs fetches the sysfs path for a PCI path, relative to
@@ -248,12 +258,66 @@ func nvdimmDeviceHandler(_ context.Context, device pb.Device, spec *pb.Spec, s *
 	return updateSpecDeviceList(device, spec, devIdx)
 }
 
+// Take the guest device with the given DDDD:BB:SS.F PCI address,
+// unbind it from any existing driver, and bind it to the vfio-pci
+// driver
+func vfioRebindDevice(bdf string) error {
+	fieldLogger := agentLog.WithField("guest-bdf", bdf)
+	fieldLogger.Infof("VFIO: Rebinding driver")
+
+	sysPath := filepath.Join(sysPciDevices, bdf)
+
+	overridePath := filepath.Join(sysPath, "driver_override")
+	err := ioutil.WriteFile(overridePath, []byte("vfio-pci"), 0200)
+	if err != nil {
+		return fmt.Errorf("Failed to write %s: %s", overridePath, err)
+	}
+
+	driverPath := filepath.Join(sysPath, "driver")
+	driver, err := os.Readlink(driverPath)
+	if os.IsNotExist(err) {
+		// This just means the device isn't bound to any driver
+		driver = ""
+	} else if err != nil {
+		return fmt.Errorf("Failed to readlink %s: %s", driverPath, err)
+	} else {
+		driver = filepath.Base(driver)
+	}
+
+	fieldLogger.Debugf("VFIO: Device previously bound to '%s'", driver)
+
+	if driver != "vfio-pci" && driver != "" {
+		// We have to unbind the device from the old driver
+		// before we can bind it to the VFIO driver
+		fieldLogger.Debugf("VFIO: Unbinding from %s", driver)
+		unbindPath := filepath.Join(sysPath, bdf, "driver", "unbind")
+		err = ioutil.WriteFile(unbindPath, []byte(bdf), 0200)
+		if err != nil {
+			return fmt.Errorf("Failed to write %s: %s:", unbindPath, err)
+		}
+	}
+
+	err = ioutil.WriteFile(pciProbeFile, []byte(bdf), 0200)
+	if err != nil {
+		return fmt.Errorf("Failed to write %s: %s", pciProbeFile, err)
+	}
+
+	fieldLogger.Info("VFIO: Rebind complete")
+	return nil
+}
+
 // device.Options should have one entry for each PCI device in the VFIO group
 // Each option should have the form "DDDD:BB:DD.F=NN/MM"
 //     DDDD:BB:DD.F is the device's PCI address in the host
 //     NN is the PCI slot of the device's bridge, MM is the PCI slot of the device
 func vfioDeviceHandler(ctx context.Context, device pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error {
 	fieldLogger := agentLog.WithField("host-dev", device.ContainerPath)
+
+	var rebindToVfio bool
+
+	if device.Type != driverVfioVmType {
+		rebindToVfio = true
+	}
 
 	for _, opt := range device.Options {
 		tokens := strings.Split(opt, "=")
@@ -281,6 +345,15 @@ func vfioDeviceHandler(ctx context.Context, device pb.Device, spec *pb.Spec, s *
 		guestBdf := tokens[len(tokens)-1]
 
 		fieldLogger.WithField("host-bdf", hostBdf).WithField("guest-bdf", guestBdf).Debug("VFIO: PCI device ready")
+
+		if rebindToVfio {
+			err = vfioRebindDevice(guestBdf)
+			if err != nil {
+				return err
+			}
+		}
+
+		fieldLogger.WithField("host-bdf", hostBdf).WithField("guest-bdf", guestBdf).Debug("VFIO: Device complete")
 	}
 
 	fieldLogger.Debug("VFIO: Group complete")
