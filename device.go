@@ -446,7 +446,7 @@ func makeDevIndex(spec *pb.Spec) devIndex {
 
 		if spec.Linux.Resources != nil && spec.Linux.Resources.Devices != nil {
 			for j, r := range spec.Linux.Resources.Devices {
-				if r.Major == d.Major && r.Minor == d.Minor {
+				if r.Type == d.Type && r.Major == d.Major && r.Minor == d.Minor {
 					rIdx = append(rIdx, j)
 				}
 			}

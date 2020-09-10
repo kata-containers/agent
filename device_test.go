@@ -615,6 +615,76 @@ func TestUpdateSpecDeviceListGuestHostConflict(t *testing.T) {
 	assert.Equal(guestMinorB, spec.Linux.Resources.Devices[1].Minor)
 }
 
+// Test handling in the case that the host has a block device and a
+// character device with the same major:minor, but the equivalent
+// guest devices do *not* have the same major:minor
+func TestUpdateSpecDeviceListCharBlockConflict(t *testing.T) {
+	assert := assert.New(t)
+
+	var nullStat unix.Stat_t
+	err := unix.Stat("/dev/null", &nullStat)
+	assert.NoError(err)
+
+	guestMajor := int64(unix.Major(nullStat.Rdev))
+	guestMinor := int64(unix.Minor(nullStat.Rdev))
+
+	hostMajor := int64(99)
+	hostMinor := int64(99)
+
+	spec := &pb.Spec{
+		Linux: &pb.Linux{
+			Devices: []pb.LinuxDevice{
+				{
+					Path:  "/dev/char",
+					Type:  "c",
+					Major: hostMajor,
+					Minor: hostMinor,
+				},
+				{
+					Path:  "/dev/block",
+					Type:  "b",
+					Major: hostMajor,
+					Minor: hostMinor,
+				},
+			},
+			Resources: &pb.LinuxResources{
+				Devices: []pb.LinuxDeviceCgroup{
+					{
+						Type:  "c",
+						Major: hostMajor,
+						Minor: hostMinor,
+					},
+					{
+						Type:  "b",
+						Major: hostMajor,
+						Minor: hostMinor,
+					},
+				},
+			},
+		},
+	}
+
+	dev := pb.Device{
+		ContainerPath: "/dev/char",
+		VmPath:        "/dev/null",
+	}
+
+	assert.Equal(hostMajor, spec.Linux.Resources.Devices[0].Major)
+	assert.Equal(hostMinor, spec.Linux.Resources.Devices[0].Minor)
+	assert.Equal(hostMajor, spec.Linux.Resources.Devices[1].Major)
+	assert.Equal(hostMinor, spec.Linux.Resources.Devices[1].Minor)
+
+	devIdx := makeDevIndex(spec)
+	err = updateSpecDeviceList(dev, spec, devIdx)
+	assert.NoError(err)
+
+	// Only the char device, not the block device should be updated
+	assert.Equal(guestMajor, spec.Linux.Resources.Devices[0].Major)
+	assert.Equal(guestMinor, spec.Linux.Resources.Devices[0].Minor)
+	assert.Equal(hostMajor, spec.Linux.Resources.Devices[1].Major)
+	assert.Equal(hostMinor, spec.Linux.Resources.Devices[1].Minor)
+}
+
 func TestRescanPciBus(t *testing.T) {
 	skipUnlessRoot(t)
 
