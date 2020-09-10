@@ -46,7 +46,8 @@ func testVirtioBlkDeviceHandlerFailure(t *testing.T, device pb.Device, spec *pb.
 
 	ctx := context.Background()
 
-	err = virtioBlkDeviceHandler(ctx, device, spec, &sandbox{})
+	devIdx := makeDevIndex(spec)
+	err = virtioBlkDeviceHandler(ctx, device, spec, &sandbox{}, devIdx)
 	assert.NotNil(t, err, "blockDeviceHandler() should have failed")
 
 	savedFunc := getPCIDeviceName
@@ -58,7 +59,7 @@ func testVirtioBlkDeviceHandlerFailure(t *testing.T, device pb.Device, spec *pb.
 		getPCIDeviceName = savedFunc
 	}()
 
-	err = virtioBlkDeviceHandler(ctx, device, spec, &sandbox{})
+	err = virtioBlkDeviceHandler(ctx, device, spec, &sandbox{}, devIdx)
 	assert.Error(t, err)
 }
 
@@ -212,11 +213,11 @@ func TestAddDevicesNilMountsSuccessful(t *testing.T) {
 	testAddDevicesSuccessful(t, devices, spec)
 }
 
-func noopDeviceHandlerReturnNil(_ context.Context, device pb.Device, spec *pb.Spec, s *sandbox) error {
+func noopDeviceHandlerReturnNil(_ context.Context, device pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error {
 	return nil
 }
 
-func noopDeviceHandlerReturnError(_ context.Context, device pb.Device, spec *pb.Spec, s *sandbox) error {
+func noopDeviceHandlerReturnError(_ context.Context, device pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error {
 	return fmt.Errorf("Noop handler failure")
 }
 
@@ -423,7 +424,8 @@ func TestAddDevice(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 
-		err := addDevice(ctx, d.device, d.spec, s)
+		devIdx := makeDevIndex(d.spec)
+		err := addDevice(ctx, d.device, d.spec, s, devIdx)
 		if d.expectError {
 			assert.Error(err, msg)
 		} else {
@@ -439,24 +441,25 @@ func TestUpdateSpecDeviceList(t *testing.T) {
 
 	var err error
 	spec := &pb.Spec{}
+	devIdx := makeDevIndex(spec)
 	device := pb.Device{}
 	major := int64(7)
 	minor := int64(2)
 
 	//ContainerPath empty
-	err = updateSpecDeviceList(device, spec)
+	err = updateSpecDeviceList(device, spec, devIdx)
 	assert.Error(err)
 
 	device.ContainerPath = "/dev/null"
 
 	//Linux is nil
-	err = updateSpecDeviceList(device, spec)
+	err = updateSpecDeviceList(device, spec, devIdx)
 	assert.Error(err)
 
 	spec.Linux = &pb.Linux{}
 
 	/// Linux.Devices empty
-	err = updateSpecDeviceList(device, spec)
+	err = updateSpecDeviceList(device, spec, devIdx)
 	assert.Error(err)
 
 	spec.Linux.Devices = []pb.LinuxDevice{
@@ -466,21 +469,23 @@ func TestUpdateSpecDeviceList(t *testing.T) {
 			Minor: minor,
 		},
 	}
+	devIdx = makeDevIndex(spec)
 
 	// VmPath empty
-	err = updateSpecDeviceList(device, spec)
+	err = updateSpecDeviceList(device, spec, devIdx)
 	assert.Error(err)
 
 	device.VmPath = "/dev/null"
 
 	// guest and host path are not the same
-	err = updateSpecDeviceList(device, spec)
+	err = updateSpecDeviceList(device, spec, devIdx)
 	assert.Error(err)
 
 	spec.Linux.Devices[0].Path = device.ContainerPath
+	devIdx = makeDevIndex(spec)
 
 	// spec.Linux.Resources is nil
-	err = updateSpecDeviceList(device, spec)
+	err = updateSpecDeviceList(device, spec, devIdx)
 	assert.NoError(err)
 
 	// update both devices and cgroup lists
@@ -499,9 +504,115 @@ func TestUpdateSpecDeviceList(t *testing.T) {
 			},
 		},
 	}
+	devIdx = makeDevIndex(spec)
 
-	err = updateSpecDeviceList(device, spec)
+	err = updateSpecDeviceList(device, spec, devIdx)
 	assert.NoError(err)
+}
+
+// Test handling in the case that one device has the same guest
+// major:minor as a different device's host major:minor
+func TestUpdateSpecDeviceListGuestHostConflict(t *testing.T) {
+	assert := assert.New(t)
+
+	var nullStat, zeroStat, fullStat unix.Stat_t
+
+	err := unix.Stat("/dev/null", &nullStat)
+	assert.NoError(err)
+	err = unix.Stat("/dev/zero", &zeroStat)
+	assert.NoError(err)
+	err = unix.Stat("/dev/full", &fullStat)
+	assert.NoError(err)
+
+	hostMajorA := int64(unix.Major(nullStat.Rdev))
+	hostMinorA := int64(unix.Minor(nullStat.Rdev))
+	hostMajorB := int64(unix.Major(zeroStat.Rdev))
+	hostMinorB := int64(unix.Minor(zeroStat.Rdev))
+
+	spec := &pb.Spec{
+		Linux: &pb.Linux{
+			Devices: []pb.LinuxDevice{
+				{
+					Path:  "/dev/a",
+					Type:  "c",
+					Major: hostMajorA,
+					Minor: hostMinorA,
+				},
+				{
+					Path:  "/dev/b",
+					Type:  "c",
+					Major: hostMajorB,
+					Minor: hostMinorB,
+				},
+			},
+			Resources: &pb.LinuxResources{
+				Devices: []pb.LinuxDeviceCgroup{
+					{
+						Type:  "c",
+						Major: hostMajorA,
+						Minor: hostMinorA,
+					},
+					{
+						Type:  "c",
+						Major: hostMajorB,
+						Minor: hostMinorB,
+					},
+				},
+			},
+		},
+	}
+
+	devA := pb.Device{
+		ContainerPath: "/dev/a",
+		VmPath:        "/dev/zero",
+	}
+	guestMajorA := int64(unix.Major(zeroStat.Rdev))
+	guestMinorA := int64(unix.Minor(zeroStat.Rdev))
+
+	devB := pb.Device{
+		ContainerPath: "/dev/b",
+		VmPath:        "/dev/full",
+	}
+	guestMajorB := int64(unix.Major(fullStat.Rdev))
+	guestMinorB := int64(unix.Minor(fullStat.Rdev))
+
+	devIdx := makeDevIndex(spec)
+
+	assert.Equal(hostMajorA, spec.Linux.Devices[0].Major)
+	assert.Equal(hostMinorA, spec.Linux.Devices[0].Minor)
+	assert.Equal(hostMajorB, spec.Linux.Devices[1].Major)
+	assert.Equal(hostMinorB, spec.Linux.Devices[1].Minor)
+
+	assert.Equal(hostMajorA, spec.Linux.Resources.Devices[0].Major)
+	assert.Equal(hostMinorA, spec.Linux.Resources.Devices[0].Minor)
+	assert.Equal(hostMajorB, spec.Linux.Resources.Devices[1].Major)
+	assert.Equal(hostMinorB, spec.Linux.Resources.Devices[1].Minor)
+
+	err = updateSpecDeviceList(devA, spec, devIdx)
+	assert.NoError(err)
+
+	assert.Equal(guestMajorA, spec.Linux.Devices[0].Major)
+	assert.Equal(guestMinorA, spec.Linux.Devices[0].Minor)
+	assert.Equal(hostMajorB, spec.Linux.Devices[1].Major)
+	assert.Equal(hostMinorB, spec.Linux.Devices[1].Minor)
+
+	assert.Equal(guestMajorA, spec.Linux.Resources.Devices[0].Major)
+	assert.Equal(guestMinorA, spec.Linux.Resources.Devices[0].Minor)
+	assert.Equal(hostMajorB, spec.Linux.Resources.Devices[1].Major)
+	assert.Equal(hostMinorB, spec.Linux.Resources.Devices[1].Minor)
+
+	err = updateSpecDeviceList(devB, spec, devIdx)
+	assert.NoError(err)
+
+	assert.Equal(guestMajorA, spec.Linux.Devices[0].Major)
+	assert.Equal(guestMinorA, spec.Linux.Devices[0].Minor)
+	assert.Equal(guestMajorB, spec.Linux.Devices[1].Major)
+	assert.Equal(guestMinorB, spec.Linux.Devices[1].Minor)
+
+	assert.Equal(guestMajorA, spec.Linux.Resources.Devices[0].Major)
+	assert.Equal(guestMinorA, spec.Linux.Resources.Devices[0].Minor)
+	assert.Equal(guestMajorB, spec.Linux.Resources.Devices[1].Major)
+	assert.Equal(guestMinorB, spec.Linux.Resources.Devices[1].Minor)
 }
 
 func TestRescanPciBus(t *testing.T) {
@@ -548,17 +659,18 @@ func TestVirtioMmioBlkDeviceHandler(t *testing.T) {
 
 	device := pb.Device{}
 	spec := &pb.Spec{}
+	devIdx := makeDevIndex(spec)
 	sb := &sandbox{}
 
 	ctx := context.Background()
 
-	err := virtioMmioBlkDeviceHandler(ctx, device, spec, sb)
+	err := virtioMmioBlkDeviceHandler(ctx, device, spec, sb, devIdx)
 	assert.Error(err)
 
 	device.VmPath = "foo"
 	device.ContainerPath = ""
 
-	err = virtioMmioBlkDeviceHandler(ctx, device, spec, sb)
+	err = virtioMmioBlkDeviceHandler(ctx, device, spec, sb, devIdx)
 	assert.Error(err)
 }
 
@@ -567,11 +679,12 @@ func TestVirtioSCSIDeviceHandler(t *testing.T) {
 
 	device := pb.Device{}
 	spec := &pb.Spec{}
+	devIdx := makeDevIndex(spec)
 	sb := &sandbox{}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	err := virtioSCSIDeviceHandler(ctx, device, spec, sb)
+	err := virtioSCSIDeviceHandler(ctx, device, spec, sb, devIdx)
 	assert.Error(err)
 	cancel()
 
@@ -586,7 +699,7 @@ func TestVirtioSCSIDeviceHandler(t *testing.T) {
 
 	ctx, cancel = context.WithCancel(context.Background())
 
-	err = virtioSCSIDeviceHandler(ctx, device, spec, sb)
+	err = virtioSCSIDeviceHandler(ctx, device, spec, sb, devIdx)
 	assert.Error(err)
 	cancel()
 }
@@ -596,11 +709,12 @@ func TestNvdimmDeviceHandler(t *testing.T) {
 
 	device := pb.Device{}
 	spec := &pb.Spec{}
+	devIdx := makeDevIndex(spec)
 	sb := &sandbox{}
 
 	ctx := context.Background()
 
-	err := nvdimmDeviceHandler(ctx, device, spec, sb)
+	err := nvdimmDeviceHandler(ctx, device, spec, sb, devIdx)
 	assert.Error(err)
 }
 
