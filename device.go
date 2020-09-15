@@ -314,6 +314,7 @@ func vfioDeviceHandler(ctx context.Context, device pb.Device, spec *pb.Spec, s *
 	fieldLogger := agentLog.WithField("host-dev", device.ContainerPath)
 
 	var rebindToVfio bool
+	var group string
 
 	if device.Type != driverVfioVmType {
 		rebindToVfio = true
@@ -351,12 +352,28 @@ func vfioDeviceHandler(ctx context.Context, device pb.Device, spec *pb.Spec, s *
 			if err != nil {
 				return err
 			}
+
+			groupPath := filepath.Join(sysPciDevices, guestBdf, "iommu_group")
+			groupLink, err := os.Readlink(groupPath)
+			if err != nil {
+				return fmt.Errorf("Failed to read %s: %s", groupPath, err)
+			}
+
+			if group == "" {
+				group = filepath.Base(groupLink)
+			} else if group != filepath.Base(groupLink) {
+				// If PCI devices associated with the same
+				// VFIO device (and therefore group) in the
+				// host don't end up in the same group in the
+				// guest, something has gone horribly wrong
+				return fmt.Errorf("%s is not in guest IOMMU group %s", guestBdf, group)
+			}
 		}
 
 		fieldLogger.WithField("host-bdf", hostBdf).WithField("guest-bdf", guestBdf).Debug("VFIO: Device complete")
 	}
 
-	fieldLogger.Debug("VFIO: Group complete")
+	fieldLogger.WithField("guest-group", group).Debug("VFIO: Group complete")
 
 	return nil
 }
