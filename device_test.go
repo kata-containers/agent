@@ -872,12 +872,12 @@ func TestGetDeviceName(t *testing.T) {
 	busID := "0.0.0005"
 	devPath := path.Join("/devices/css0/0.0.0004", busID, "virtio4/block", devName)
 
-	pcidevicemap := make(map[string]string)
-	pcidevicemap[devPath] = devName
+	systodevmap := make(map[string]string)
+	systodevmap[devPath] = devName
 
 	sb := sandbox{
 		deviceWatchers: make(map[string](chan string)),
-		pciDeviceMap:   pcidevicemap,
+		sysToDevMap:    systodevmap,
 	}
 
 	name, err := getDeviceName(&sb, busID)
@@ -885,7 +885,7 @@ func TestGetDeviceName(t *testing.T) {
 	assert.Nil(err)
 	assert.Equal(name, path.Join(devRootPath, devName))
 
-	delete(sb.pciDeviceMap, devPath)
+	delete(sb.sysToDevMap, devPath)
 
 	go func() {
 		for {

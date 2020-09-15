@@ -144,10 +144,10 @@ func getDeviceName(s *sandbox, devID string) (string, error) {
 
 	// Check if the dev identifier is in PCI device map.
 	s.Lock()
-	for key, value := range s.pciDeviceMap {
+	for key, value := range s.sysToDevMap {
 		if strings.Contains(key, devID) {
 			devName = value
-			fieldLogger.Infof("Device: %s found in pci device map", devID)
+			fieldLogger.Infof("Device: %s found in device map", devID)
 			break
 		}
 	}
