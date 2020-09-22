@@ -71,7 +71,15 @@ var (
 	scsiHostPath    = filepath.Join(sysClassPrefix, "scsi_host")
 )
 
-type deviceHandler func(ctx context.Context, device pb.Device, spec *pb.Spec, s *sandbox) error
+// Stores a mapping of device names (in host / outer container naming)
+// to the device and resources slots in a container spec
+type devIndexEntry struct {
+	idx         int
+	resourceIdx []int
+}
+type devIndex map[string]devIndexEntry
+
+type deviceHandler func(ctx context.Context, device pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error
 
 var deviceHandlerList = map[string]deviceHandler{
 	driverMmioBlkType: virtioMmioBlkDeviceHandler,
@@ -192,15 +200,15 @@ func getPCIDeviceNameImpl(s *sandbox, pciID string) (string, error) {
 
 // device.Id should be the predicted device name (vda, vdb, ...)
 // device.VmPath already provides a way to send it in
-func virtioMmioBlkDeviceHandler(_ context.Context, device pb.Device, spec *pb.Spec, s *sandbox) error {
+func virtioMmioBlkDeviceHandler(_ context.Context, device pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error {
 	if device.VmPath == "" {
 		return fmt.Errorf("Invalid path for virtioMmioBlkDevice")
 	}
 
-	return updateSpecDeviceList(device, spec)
+	return updateSpecDeviceList(device, spec, devIdx)
 }
 
-func virtioBlkCCWDeviceHandler(ctx context.Context, device pb.Device, spec *pb.Spec, s *sandbox) error {
+func virtioBlkCCWDeviceHandler(ctx context.Context, device pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error {
 	devPath, err := getBlkCCWDevPath(s, device.Id)
 	if err != nil {
 		return err
@@ -212,13 +220,13 @@ func virtioBlkCCWDeviceHandler(ctx context.Context, device pb.Device, spec *pb.S
 	}
 
 	device.VmPath = devPath
-	return updateSpecDeviceList(device, spec)
+	return updateSpecDeviceList(device, spec, devIdx)
 }
 
 // device.Id should be the PCI address in the format  "bridgeAddr/deviceAddr".
 // Here, bridgeAddr is the address at which the brige is attached on the root bus,
 // while deviceAddr is the address at which the device is attached on the bridge.
-func virtioBlkDeviceHandler(_ context.Context, device pb.Device, spec *pb.Spec, s *sandbox) error {
+func virtioBlkDeviceHandler(_ context.Context, device pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error {
 	// When "Id (PCIAddr)" is not set, we allow to use the predicted "VmPath" passed from kata-runtime
 	if device.Id != "" {
 		// Get the device node path based on the PCI device address
@@ -229,11 +237,11 @@ func virtioBlkDeviceHandler(_ context.Context, device pb.Device, spec *pb.Spec, 
 		device.VmPath = devPath
 	}
 
-	return updateSpecDeviceList(device, spec)
+	return updateSpecDeviceList(device, spec, devIdx)
 }
 
 // device.Id should be the SCSI address of the disk in the format "scsiID:lunID"
-func virtioSCSIDeviceHandler(ctx context.Context, device pb.Device, spec *pb.Spec, s *sandbox) error {
+func virtioSCSIDeviceHandler(ctx context.Context, device pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error {
 	// Retrieve the device path from SCSI address.
 	devPath, err := getSCSIDevPath(s, device.Id)
 	if err != nil {
@@ -241,11 +249,11 @@ func virtioSCSIDeviceHandler(ctx context.Context, device pb.Device, spec *pb.Spe
 	}
 	device.VmPath = devPath
 
-	return updateSpecDeviceList(device, spec)
+	return updateSpecDeviceList(device, spec, devIdx)
 }
 
-func nvdimmDeviceHandler(_ context.Context, device pb.Device, spec *pb.Spec, s *sandbox) error {
-	return updateSpecDeviceList(device, spec)
+func nvdimmDeviceHandler(_ context.Context, device pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error {
+	return updateSpecDeviceList(device, spec, devIdx)
 }
 
 // updateSpecDeviceList takes a device description provided by the caller,
@@ -254,7 +262,7 @@ func nvdimmDeviceHandler(_ context.Context, device pb.Device, spec *pb.Spec, s *
 // the same device in the list of devices provided through the OCI spec.
 // This is needed to update information about minor/major numbers that cannot
 // be predicted from the caller.
-func updateSpecDeviceList(device pb.Device, spec *pb.Spec) error {
+func updateSpecDeviceList(device pb.Device, spec *pb.Spec, devIdx devIndex) error {
 	// If no ContainerPath is provided, we won't be able to match and
 	// update the device in the OCI spec device list. This is an error.
 	if device.ContainerPath == "" {
@@ -284,42 +292,32 @@ func updateSpecDeviceList(device pb.Device, spec *pb.Spec) error {
 	}).Info("handling block device")
 
 	// Update the spec
-	for idx, d := range spec.Linux.Devices {
-		if d.Path == device.ContainerPath {
-			hostMajor := spec.Linux.Devices[idx].Major
-			hostMinor := spec.Linux.Devices[idx].Minor
-			agentLog.WithFields(logrus.Fields{
-				"device-path":        device.VmPath,
-				"host-device-major":  hostMajor,
-				"host-device-minor":  hostMinor,
-				"guest-device-major": major,
-				"guest-device-minor": minor,
-			}).Info("updating block device major/minor into the spec")
-
-			spec.Linux.Devices[idx].Major = major
-			spec.Linux.Devices[idx].Minor = minor
-
-			// there is no resource to update
-			if spec.Linux == nil || spec.Linux.Resources == nil {
-				return nil
-			}
-
-			// Resources must be updated since they are used to identify the
-			// device in the devices cgroup.
-			for idxRsrc, dRsrc := range spec.Linux.Resources.Devices {
-				if dRsrc.Major == hostMajor && dRsrc.Minor == hostMinor {
-					spec.Linux.Resources.Devices[idxRsrc].Major = major
-					spec.Linux.Resources.Devices[idxRsrc].Minor = minor
-				}
-			}
-
-			return nil
-		}
+	idxData, ok := devIdx[device.ContainerPath]
+	if !ok {
+		return grpcStatus.Errorf(codes.Internal,
+			"Should have found a matching device %s in the spec",
+			device.ContainerPath)
 	}
 
-	return grpcStatus.Errorf(codes.Internal,
-		"Should have found a matching device %s in the spec",
-		device.VmPath)
+	agentLog.WithFields(logrus.Fields{
+		"device-path":        device.VmPath,
+		"host-device-major":  spec.Linux.Devices[idxData.idx].Major,
+		"host-device-minor":  spec.Linux.Devices[idxData.idx].Minor,
+		"guest-device-major": major,
+		"guest-device-minor": minor,
+	}).Info("updating block device major/minor into the spec")
+
+	spec.Linux.Devices[idxData.idx].Major = major
+	spec.Linux.Devices[idxData.idx].Minor = minor
+
+	// Resources must be updated since they are used to identify the
+	// device in the devices cgroup.
+	for _, idxRsrc := range idxData.resourceIdx {
+		spec.Linux.Resources.Devices[idxRsrc].Major = major
+		spec.Linux.Resources.Devices[idxRsrc].Minor = minor
+	}
+
+	return nil
 }
 
 // scanSCSIBus scans SCSI bus for the given SCSI address(SCSI-Id and LUN)
@@ -419,12 +417,14 @@ func getBlkCCWDevPath(s *sandbox, bus string) (string, error) {
 }
 
 func addDevices(ctx context.Context, devices []*pb.Device, spec *pb.Spec, s *sandbox) error {
+	devIdx := makeDevIndex(spec)
+
 	for _, device := range devices {
 		if device == nil {
 			continue
 		}
 
-		err := addDevice(ctx, device, spec, s)
+		err := addDevice(ctx, device, spec, s, devIdx)
 		if err != nil {
 			return err
 		}
@@ -434,7 +434,34 @@ func addDevices(ctx context.Context, devices []*pb.Device, spec *pb.Spec, s *san
 	return nil
 }
 
-func addDevice(ctx context.Context, device *pb.Device, spec *pb.Spec, s *sandbox) error {
+func makeDevIndex(spec *pb.Spec) devIndex {
+	devIdx := make(devIndex)
+
+	if spec == nil || spec.Linux == nil || spec.Linux.Devices == nil {
+		return devIdx
+	}
+
+	for i, d := range spec.Linux.Devices {
+		rIdx := make([]int, 0)
+
+		if spec.Linux.Resources != nil && spec.Linux.Resources.Devices != nil {
+			for j, r := range spec.Linux.Resources.Devices {
+				if r.Type == d.Type && r.Major == d.Major && r.Minor == d.Minor {
+					rIdx = append(rIdx, j)
+				}
+			}
+		}
+
+		devIdx[d.Path] = devIndexEntry{
+			idx:         i,
+			resourceIdx: rIdx,
+		}
+	}
+
+	return devIdx
+}
+
+func addDevice(ctx context.Context, device *pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error {
 	if device == nil {
 		return grpcStatus.Error(codes.InvalidArgument, "invalid device")
 	}
@@ -474,7 +501,7 @@ func addDevice(ctx context.Context, device *pb.Device, spec *pb.Spec, s *sandbox
 			"Unknown device type %q", device.Type)
 	}
 
-	return devHandler(ctx, *device, spec, s)
+	return devHandler(ctx, *device, spec, s, devIdx)
 }
 
 // updateDeviceCgroupForGuestRootfs updates the device cgroup for container
