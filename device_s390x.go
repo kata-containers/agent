@@ -16,8 +16,4 @@ const (
 	// processors, thermal zones. Those objects are exported to user space via
 	// sysfs as directories in the subtree under /sys/devices/LNXSYSTM:00
 	acpiDevPath = "/devices/LNXSYSTM"
-
-	// /dev/pmemX devices exported in the ACPI sysfs (/devices/LNXSYSTM) are
-	// in a subdirectory whose prefix is pfn (page frame number).
-	pfnDevPrefix = "/pfn"
 )

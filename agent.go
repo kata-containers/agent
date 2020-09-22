@@ -774,34 +774,14 @@ func (s *sandbox) listenToUdevEvents() {
 
 				fieldLogger.Infof("Got a wait channel for device %s", devAddress)
 
-				// blk driver case
-				if strings.HasPrefix(uEv.DevPath, filepath.Join(rootBusPath, devAddress)) {
-					goto OUT
-				}
-
-				// pmem/nvdimm case
-				if strings.Contains(uEv.DevPath, pfnDevPrefix) && strings.HasSuffix(uEv.DevPath, devAddress) {
-					goto OUT
-				}
-
+				// This is a pretty imperfect way of
+				// matching, but it's the same as we
+				// use in getDeviceName()
 				if strings.Contains(uEv.DevPath, devAddress) {
-					// scsi driver case
-					if strings.HasSuffix(devAddress, scsiBlockSuffix) {
-						goto OUT
-					}
-					// blk-ccw driver case
-					if strings.HasSuffix(devAddress, blkCCWSuffix) {
-						goto OUT
-					}
+					ch <- uEv.DevName
+					close(ch)
+					delete(s.deviceWatchers, devAddress)
 				}
-
-				continue
-
-			OUT:
-				ch <- uEv.DevName
-				close(ch)
-				delete(s.deviceWatchers, devAddress)
-
 			}
 
 			s.Unlock()
