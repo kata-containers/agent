@@ -523,7 +523,7 @@ func updateDeviceCgroupForGuestRootfs(spec *pb.Spec) {
 		Major:  devMajor,
 		Minor:  devMinor,
 		Type:   "b",
-		Access: "rw",
+		Access: "rwm",
 	}
 
 	spec.Linux.Resources.Devices = append(spec.Linux.Resources.Devices, nvdimmCg)
