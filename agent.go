@@ -181,7 +181,7 @@ var logsVSockPort = uint32(0)
 var debugConsoleVSockPort = uint32(0)
 
 // Timeout waiting for a device to be hotplugged
-var hotplugTimeout = 3 * time.Second
+var hotplugTimeout = 10 * time.Second
 
 // Specify the log level
 var logLevel = defaultLogLevel
