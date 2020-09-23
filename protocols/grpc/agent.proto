@@ -78,12 +78,6 @@ message CreateContainerRequest {
 	// The agent would receive an OCI spec with PID namespace cleared
 	// out altogether and not just the pid ns path.
 	bool sandbox_pidns = 7;
-
-	// This field is used to indicate if container should just join the
-	// the pid namespace of the agent. This functionality is added to
-	// allow debug containers/sidecars to have access to the main pid
-	// namespace.
-	bool agent_pidns = 8;
 }
 
 message StartContainerRequest {
