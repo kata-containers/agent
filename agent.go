@@ -133,7 +133,7 @@ type sandbox struct {
 	mounts            []string
 	subreaper         reaper
 	server            *grpc.Server
-	pciDeviceMap      map[string]string
+	sysToDevMap       map[string]string
 	deviceWatchers    map[string](chan string)
 	sharedUTSNs       namespace
 	sharedIPCNs       namespace
@@ -742,9 +742,9 @@ func (s *sandbox) listenToUdevEvents() {
 		})
 
 		if uEv.Action == "remove" {
-			fieldLogger.Infof("Remove dev from pciDeviceMap")
+			fieldLogger.Infof("Remove dev from sysToDevMap")
 			s.Lock()
-			delete(s.pciDeviceMap, uEv.DevPath)
+			delete(s.sysToDevMap, uEv.DevPath)
 			s.Unlock()
 			goto FINISH_SPAN
 		}
@@ -758,12 +758,12 @@ func (s *sandbox) listenToUdevEvents() {
 		// Check if device hotplug event results in a device node being created.
 		if uEv.DevName != "" &&
 			(strings.HasPrefix(uEv.DevPath, rootBusPath) || strings.HasPrefix(uEv.DevPath, acpiDevPath)) {
-			// Lock is needed to safey read and modify the pciDeviceMap and deviceWatchers.
+			// Lock is needed to safely read and modify the sysToDevMap and deviceWatchers.
 			// This makes sure that watchers do not access the map while it is being updated.
 			s.Lock()
 
-			// Add the device node name to the pci device map.
-			s.pciDeviceMap[uEv.DevPath] = uEv.DevName
+			// Add the device node name to the device map.
+			s.sysToDevMap[uEv.DevPath] = uEv.DevName
 
 			// Notify watchers that are interested in the udev event.
 			// Close the channel after watcher has been notified.
@@ -774,34 +774,14 @@ func (s *sandbox) listenToUdevEvents() {
 
 				fieldLogger.Infof("Got a wait channel for device %s", devAddress)
 
-				// blk driver case
-				if strings.HasPrefix(uEv.DevPath, filepath.Join(rootBusPath, devAddress)) {
-					goto OUT
-				}
-
-				// pmem/nvdimm case
-				if strings.Contains(uEv.DevPath, pfnDevPrefix) && strings.HasSuffix(uEv.DevPath, devAddress) {
-					goto OUT
-				}
-
+				// This is a pretty imperfect way of
+				// matching, but it's the same as we
+				// use in getDeviceName()
 				if strings.Contains(uEv.DevPath, devAddress) {
-					// scsi driver case
-					if strings.HasSuffix(devAddress, scsiBlockSuffix) {
-						goto OUT
-					}
-					// blk-ccw driver case
-					if strings.HasSuffix(devAddress, blkCCWSuffix) {
-						goto OUT
-					}
+					ch <- uEv.DevName
+					close(ch)
+					delete(s.deviceWatchers, devAddress)
 				}
-
-				continue
-
-			OUT:
-				ch <- uEv.DevName
-				close(ch)
-				delete(s.deviceWatchers, devAddress)
-
 			}
 
 			s.Unlock()
@@ -1548,7 +1528,7 @@ func realMain() error {
 		// Documentation/filesystem/ramfs-rootfs-initramfs.txt
 		noPivotRoot:    (fsType == typeRootfs),
 		subreaper:      r,
-		pciDeviceMap:   make(map[string]string),
+		sysToDevMap:    make(map[string]string),
 		deviceWatchers: make(map[string](chan string)),
 		storages:       make(map[string]*sandboxStorage),
 		stopServer:     make(chan struct{}),

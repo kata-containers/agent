@@ -248,11 +248,11 @@ func TestVirtioBlkStorageHandlerSuccessful(t *testing.T) {
 	defer syscall.Unmount(storage.MountPoint, 0)
 
 	s := &sandbox{
-		pciDeviceMap: make(map[string]string),
+		sysToDevMap: make(map[string]string),
 	}
 
 	s.Lock()
-	s.pciDeviceMap[completePCIAddr] = devPath
+	s.sysToDevMap[completePCIAddr] = devPath
 	s.Unlock()
 
 	storage.Fstype = "bind"
@@ -268,7 +268,7 @@ func TestVirtioBlkStorageHandlerSuccessful(t *testing.T) {
 func TestNvdimmStorageHandlerSuccessful(t *testing.T) {
 	skipUnlessRoot(t)
 
-	completePCIAddr := "/devices/LNXSYSTM/LNXSYBUS/ACPI/ndbus0/region1/pfn1.1/block/pmem0"
+	sysfsPath := "/devices/LNXSYSTM/LNXSYBUS/ACPI/ndbus0/region1/pfn1.1/block/pmem0"
 	pmemDev := "/dev/pmem0"
 	devPath, err := createFakeDevicePath()
 	if err != nil {
@@ -289,11 +289,11 @@ func TestNvdimmStorageHandlerSuccessful(t *testing.T) {
 	defer syscall.Unmount(storage.MountPoint, 0)
 
 	s := &sandbox{
-		pciDeviceMap: make(map[string]string),
+		sysToDevMap: make(map[string]string),
 	}
 
 	s.Lock()
-	s.pciDeviceMap[completePCIAddr] = devPath
+	s.sysToDevMap[sysfsPath] = devPath
 	s.Unlock()
 
 	storage.Fstype = "bind"
