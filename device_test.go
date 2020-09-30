@@ -965,6 +965,13 @@ func TestGetDeviceName(t *testing.T) {
 	oneGetDeviceNameTest(t, sysName, devName, busID)
 }
 
+func TestGetDeviceNameEmptyDev(t *testing.T) {
+	busID := "0000:01:00.0"
+	sysName := path.Join("/devices/pci0000:00/0000:00:1c.0", busID)
+
+	oneGetDeviceNameTest(t, sysName, "", busID)
+}
+
 func TestUpdateDeviceCgroupForGuestRootfs(t *testing.T) {
 	skipUnlessRoot(t)
 	assert := assert.New(t)

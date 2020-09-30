@@ -146,6 +146,7 @@ func pciPathToSysfsImpl(pciPath PciPath) (string, error) {
 }
 
 func getDeviceName(s *sandbox, devID string) (string, error) {
+	var found bool
 	var devName string
 	var notifyChan chan string
 
@@ -155,7 +156,7 @@ func getDeviceName(s *sandbox, devID string) (string, error) {
 	s.Lock()
 	for key, value := range s.sysToDevMap {
 		if strings.Contains(key, devID) {
-			devName = value
+			devName, found = value, true
 			fieldLogger.Infof("Device: %s found in device map", devID)
 			break
 		}
@@ -166,13 +167,13 @@ func getDeviceName(s *sandbox, devID string) (string, error) {
 	// The key of the watchers map is the device we are interested in.
 	// Note this is done inside the lock, not to miss any events from the
 	// global udev listener.
-	if devName == "" {
+	if !found {
 		notifyChan = make(chan string, 1)
 		s.deviceWatchers[devID] = notifyChan
 	}
 	s.Unlock()
 
-	if devName == "" {
+	if !found {
 		fieldLogger.Infof("Waiting on channel for device: %s notification", devID)
 		select {
 		case devName = <-notifyChan:
