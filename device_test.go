@@ -900,26 +900,23 @@ func TestCheckCCWBusFormat(t *testing.T) {
 	}
 }
 
-func TestGetDeviceName(t *testing.T) {
+func oneGetDeviceNameTest(t *testing.T, sysName, devName, watchFor string) {
 	assert := assert.New(t)
-	devName := "vda"
-	busID := "0.0.0005"
-	devPath := path.Join("/devices/css0/0.0.0004", busID, "virtio4/block", devName)
 
 	systodevmap := make(map[string]string)
-	systodevmap[devPath] = devName
+	systodevmap[sysName] = devName
 
 	sb := sandbox{
 		deviceWatchers: make(map[string](chan string)),
 		sysToDevMap:    systodevmap,
 	}
 
-	name, err := getDeviceName(&sb, busID)
+	name, err := getDeviceName(&sb, watchFor)
 
 	assert.Nil(err)
 	assert.Equal(name, path.Join(devRootPath, devName))
 
-	delete(sb.sysToDevMap, devPath)
+	delete(sb.sysToDevMap, sysName)
 
 	go func() {
 		for {
@@ -929,7 +926,7 @@ func TestGetDeviceName(t *testing.T) {
 					continue
 				}
 
-				if strings.Contains(devPath, devAddress) && strings.HasSuffix(devAddress, blkCCWSuffix) {
+				if strings.Contains(watchFor, devAddress) {
 					ch <- devName
 					close(ch)
 					delete(sb.deviceWatchers, devAddress)
@@ -942,10 +939,18 @@ func TestGetDeviceName(t *testing.T) {
 		sb.Unlock()
 	}()
 
-	name, err = getDeviceName(&sb, path.Join(busID, blkCCWSuffix))
+	name, err = getDeviceName(&sb, watchFor)
 
 	assert.Nil(err)
 	assert.Equal(name, path.Join(devRootPath, devName))
+}
+
+func TestGetDeviceName(t *testing.T) {
+	devName := "vda"
+	busID := "0.0.0005"
+	sysName := path.Join("/devices/css0/0.0.0004", busID, "virtio4/block", devName)
+
+	oneGetDeviceNameTest(t, sysName, devName, busID)
 }
 
 func TestUpdateDeviceCgroupForGuestRootfs(t *testing.T) {
