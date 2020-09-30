@@ -756,8 +756,7 @@ func (s *sandbox) listenToUdevEvents() {
 		fieldLogger.Infof("Received add uevent")
 
 		// Check if device hotplug event results in a device node being created.
-		if uEv.DevName != "" &&
-			(strings.HasPrefix(uEv.DevPath, rootBusPath) || strings.HasPrefix(uEv.DevPath, acpiDevPath)) {
+		if strings.HasPrefix(uEv.DevPath, rootBusPath) || strings.HasPrefix(uEv.DevPath, acpiDevPath) {
 			// Lock is needed to safely read and modify the sysToDevMap and deviceWatchers.
 			// This makes sure that watchers do not access the map while it is being updated.
 			s.Lock()
