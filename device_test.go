@@ -99,40 +99,47 @@ func TestPciPathToSysfs(t *testing.T) {
 	}
 	defer os.RemoveAll(testDir)
 
-	pciPath := PciPath{"02"}
-	_, err = pciPathToSysfs(pciPath)
-	assert.NotNil(t, err)
-
-	pciPath = PciPath{"02/03/04"}
-	_, err = pciPathToSysfs(pciPath)
-	assert.NotNil(t, err)
-
-	bridgeID := "02"
-	deviceID := "03"
-	pciBus := "0000:01"
-	expectedRelPath := "0000:00:02.0/0000:01:03.0"
-	pciPath = PciPath{fmt.Sprintf("%s/%s", bridgeID, deviceID)}
-
 	// Set sysBusPrefix to test directory for unit tests.
 	sysBusPrefix = testDir
-	bridgeBusPath := fmt.Sprintf(pciBusPathFormat, sysBusPrefix, "0000:00:02.0")
 
-	_, err = pciPathToSysfs(pciPath)
-	assert.NotNil(t, err)
+	_, err = pciPathToSysfs(PciPath{"02"})
+	assert.Error(t, err)
 
-	err = os.MkdirAll(bridgeBusPath, mountPerm)
-	assert.Nil(t, err)
+	_, err = pciPathToSysfs(PciPath{"02/03"})
+	assert.Error(t, err)
 
-	_, err = pciPathToSysfs(pciPath)
-	assert.NotNil(t, err)
+	_, err = pciPathToSysfs(PciPath{"02/03/04"})
+	assert.Error(t, err)
 
-	err = os.MkdirAll(filepath.Join(bridgeBusPath, pciBus), mountPerm)
-	assert.Nil(t, err)
+	// Create mock sysfs files for the device at 0000:00:02.0
+	bridge2Path := fmt.Sprintf(pciBusPathFormat, sysBusPrefix, "0000:00:02.0")
 
-	addr, err := pciPathToSysfs(pciPath)
-	assert.Nil(t, err)
+	err = os.MkdirAll(bridge2Path, mountPerm)
+	assert.NoError(t, err)
 
-	assert.Equal(t, addr, expectedRelPath)
+	_, err = pciPathToSysfs(PciPath{"02"})
+	assert.Error(t, err)
+
+	_, err = pciPathToSysfs(PciPath{"02/03"})
+	assert.Error(t, err)
+
+	_, err = pciPathToSysfs(PciPath{"02/03/04"})
+	assert.Error(t, err)
+
+	// Create mock sysfs files to indicate that 0000:00:02.0 is a bridge to bus 01
+	bridge2Bus := "0000:01"
+	err = os.MkdirAll(filepath.Join(bridge2Path, bridge2Bus), mountPerm)
+	assert.NoError(t, err)
+
+	_, err = pciPathToSysfs(PciPath{"02"})
+	assert.Error(t, err)
+
+	sysRelPath, err := pciPathToSysfs(PciPath{"02/03"})
+	assert.NoError(t, err)
+	assert.Equal(t, sysRelPath, "0000:00:02.0/0000:01:03.0")
+
+	_, err = pciPathToSysfs(PciPath{"02/03/04"})
+	assert.Error(t, err)
 }
 
 func TestScanSCSIBus(t *testing.T) {
