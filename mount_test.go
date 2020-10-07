@@ -219,9 +219,9 @@ func TestVirtioBlkStorageHandlerSuccessful(t *testing.T) {
 	bridgeID := "02"
 	deviceID := "03"
 	pciBus := "0000:01"
-	completePCIAddr := fmt.Sprintf("0000:00:%s.0/%s:%s.0", bridgeID, pciBus, deviceID)
+	sysRelPath := fmt.Sprintf("0000:00:%s.0/%s:%s.0", bridgeID, pciBus, deviceID)
 
-	pciID := fmt.Sprintf("%s/%s", bridgeID, deviceID)
+	pciPath := fmt.Sprintf("%s/%s", bridgeID, deviceID)
 
 	sysBusPrefix = testDir
 	bridgeBusPath := fmt.Sprintf(pciBusPathFormat, sysBusPrefix, "0000:00:02.0")
@@ -242,7 +242,7 @@ func TestVirtioBlkStorageHandlerSuccessful(t *testing.T) {
 	defer os.RemoveAll(dirPath)
 
 	storage := pb.Storage{
-		Source:     pciID,
+		Source:     pciPath,
 		MountPoint: filepath.Join(dirPath, "test-mount"),
 	}
 	defer syscall.Unmount(storage.MountPoint, 0)
@@ -252,7 +252,7 @@ func TestVirtioBlkStorageHandlerSuccessful(t *testing.T) {
 	}
 
 	s.Lock()
-	s.sysToDevMap[completePCIAddr] = devPath
+	s.sysToDevMap[sysRelPath] = devPath
 	s.Unlock()
 
 	storage.Fstype = "bind"

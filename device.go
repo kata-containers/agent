@@ -79,6 +79,17 @@ type devIndexEntry struct {
 }
 type devIndex map[string]devIndexEntry
 
+// Guest-side PCI path, identifies a PCI device by where it sits in
+// the PCI topology.
+//
+// Has the format "bridgeAddr/deviceAddr" where bridgeAddr is the
+// address at which the brige is attached on the root bus, while
+// deviceAddr is the address at which the device is attached on the
+// bridge
+type PciPath struct {
+	path string
+}
+
 type deviceHandler func(ctx context.Context, device pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error
 
 var deviceHandlerList = map[string]deviceHandler{
@@ -95,12 +106,9 @@ func rescanPciBus() error {
 
 // pciPathToSysfs fetches the sysfs path for a PCI path, relative to
 // the syfs path for the PCI host bridge, based on the PCI path
-// provided. The path should be in the format "bridgeAddr/deviceAddr",
-// where bridgeAddr is the address at which the brige is attached on
-// the root bus, while deviceAddr is the address at which the device
-// is attached on the bridge.
-func pciPathToSysfsImpl(pciPath string) (string, error) {
-	tokens := strings.Split(pciPath, "/")
+// provided.
+func pciPathToSysfsImpl(pciPath PciPath) (string, error) {
+	tokens := strings.Split(pciPath.path, "/")
 
 	if len(tokens) != 2 {
 		return "", fmt.Errorf("PCI path for device should be of format [bridgeAddr/deviceAddr], got %q", pciPath)
@@ -183,7 +191,7 @@ func getDeviceName(s *sandbox, devID string) (string, error) {
 	return filepath.Join(systemDevPath, devName), nil
 }
 
-func getPCIDeviceNameImpl(s *sandbox, pciPath string) (string, error) {
+func getPCIDeviceNameImpl(s *sandbox, pciPath PciPath) (string, error) {
 	sysfsRelPath, err := pciPathToSysfs(pciPath)
 	if err != nil {
 		return "", err
@@ -225,14 +233,11 @@ func virtioBlkCCWDeviceHandler(ctx context.Context, device pb.Device, spec *pb.S
 	return updateSpecDeviceList(device, spec, devIdx)
 }
 
-// device.Id should be the PCI address in the format  "bridgeAddr/deviceAddr".
-// Here, bridgeAddr is the address at which the brige is attached on the root bus,
-// while deviceAddr is the address at which the device is attached on the bridge.
+// device.Id should be a PCI path (see type PciPath)
 func virtioBlkDeviceHandler(_ context.Context, device pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error {
-	// When "Id (PCIAddr)" is not set, we allow to use the predicted "VmPath" passed from kata-runtime
+	// When "Id" (PCI path) is not set, we allow to use the predicted "VmPath" passed from kata-runtime
 	if device.Id != "" {
-		// Get the device node path based on the PCI device address
-		devPath, err := getPCIDeviceName(s, device.Id)
+		devPath, err := getPCIDeviceName(s, PciPath{device.Id})
 		if err != nil {
 			return err
 		}

@@ -51,7 +51,7 @@ func testVirtioBlkDeviceHandlerFailure(t *testing.T, device pb.Device, spec *pb.
 	assert.NotNil(t, err, "blockDeviceHandler() should have failed")
 
 	savedFunc := getPCIDeviceName
-	getPCIDeviceName = func(s *sandbox, pciID string) (string, error) {
+	getPCIDeviceName = func(s *sandbox, pciPath PciPath) (string, error) {
 		return "foo", nil
 	}
 
@@ -99,11 +99,11 @@ func TestPciPathToSysfs(t *testing.T) {
 	}
 	defer os.RemoveAll(testDir)
 
-	pciPath := "02"
+	pciPath := PciPath{"02"}
 	_, err = pciPathToSysfs(pciPath)
 	assert.NotNil(t, err)
 
-	pciPath = "02/03/04"
+	pciPath = PciPath{"02/03/04"}
 	_, err = pciPathToSysfs(pciPath)
 	assert.NotNil(t, err)
 
@@ -111,7 +111,7 @@ func TestPciPathToSysfs(t *testing.T) {
 	deviceID := "03"
 	pciBus := "0000:01"
 	expectedRelPath := "0000:00:02.0/0000:01:03.0"
-	pciPath = fmt.Sprintf("%s/%s", bridgeID, deviceID)
+	pciPath = PciPath{fmt.Sprintf("%s/%s", bridgeID, deviceID)}
 
 	// Set sysBusPrefix to test directory for unit tests.
 	sysBusPrefix = testDir
@@ -809,7 +809,7 @@ func TestGetPCIDeviceName(t *testing.T) {
 		pciPathToSysfs = savedFunc
 	}()
 
-	pciPathToSysfs = func(pciPath string) (string, error) {
+	pciPathToSysfs = func(pciPath PciPath) (string, error) {
 		return "", nil
 	}
 
@@ -817,14 +817,14 @@ func TestGetPCIDeviceName(t *testing.T) {
 		deviceWatchers: make(map[string](chan string)),
 	}
 
-	_, err = getPCIDeviceNameImpl(&sb, "")
+	_, err = getPCIDeviceNameImpl(&sb, PciPath{""})
 	assert.Error(err)
 
 	rescanDir := filepath.Dir(pciBusRescanFile)
 	err = os.MkdirAll(rescanDir, testDirMode)
 	assert.NoError(err)
 
-	_, err = getPCIDeviceNameImpl(&sb, "")
+	_, err = getPCIDeviceNameImpl(&sb, PciPath{""})
 	assert.Error(err)
 }
 
