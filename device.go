@@ -42,9 +42,7 @@ const (
 )
 
 var (
-	sysBusPrefix     = sysfsDir + "/bus/pci/devices"
 	pciBusRescanFile = sysfsDir + "/bus/pci/rescan"
-	pciBusPathFormat = "%s/%s/pci_bus/"
 	systemDevPath    = "/dev"
 	getSCSIDevPath   = getSCSIDevPathImpl
 	getPmemDevPath   = getPmemDevPathImpl
@@ -82,10 +80,11 @@ type devIndex map[string]devIndexEntry
 // Guest-side PCI path, identifies a PCI device by where it sits in
 // the PCI topology.
 //
-// Has the format "bridgeAddr/deviceAddr" where bridgeAddr is the
-// address at which the brige is attached on the root bus, while
-// deviceAddr is the address at which the device is attached on the
-// bridge
+// Has the format "xx/.../yy/zz" Here, zz is the slot of the device on
+// its PCI bridge, yy is the slot of the bridge on its parent bridge
+// and so forth until xx is the slot of the "most upstream" bridge on
+// the root bus.  If a device is connected directly to the root bus,
+// its pciPath is just "zz"
 type PciPath struct {
 	path string
 }
@@ -108,42 +107,38 @@ func rescanPciBus() error {
 // the syfs path for the PCI host bridge, based on the PCI path
 // provided.
 func pciPathToSysfsImpl(pciPath PciPath) (string, error) {
+	var relPath string
+	bus := "0000:00"
+
 	tokens := strings.Split(pciPath.path, "/")
 
-	if len(tokens) != 2 {
-		return "", fmt.Errorf("PCI path for device should be of format [bridgeAddr/deviceAddr], got %q", pciPath)
+	for i, slot := range tokens {
+		// Full PCI address of this device along the path
+		bdf := fmt.Sprintf("%s:%s.0", bus, slot)
+
+		relPath = filepath.Join(relPath, bdf)
+
+		if i == len(tokens)-1 {
+			// Final device need not be a bridge
+			break
+		}
+
+		// Find out the bus exposed by bridge
+		bridgeBusPath := filepath.Join(sysfsDir, rootBusPath, relPath, "pci_bus")
+
+		files, err := ioutil.ReadDir(bridgeBusPath)
+		if err != nil {
+			return "", fmt.Errorf("Error reading %s : %s", bridgeBusPath, err)
+		}
+
+		if len(files) != 1 {
+			return "", fmt.Errorf("Expected exactly one PCI bus in %s, got %d instead", bridgeBusPath, len(files))
+		}
+
+		bus = files[0].Name()
 	}
 
-	bridgeID := tokens[0]
-	deviceID := tokens[1]
-
-	// Deduce the complete bridge address based on the bridge address identifier passed
-	// and the fact that bridges are attached on the main bus with function 0.
-	pciBridgeAddr := fmt.Sprintf("0000:00:%s.0", bridgeID)
-
-	// Find out the bus exposed by bridge
-	bridgeBusPath := fmt.Sprintf(pciBusPathFormat, sysBusPrefix, pciBridgeAddr)
-
-	files, err := ioutil.ReadDir(bridgeBusPath)
-	if err != nil {
-		return "", fmt.Errorf("Error with getting bridge pci bus : %s", err)
-	}
-
-	busNum := len(files)
-	if busNum != 1 {
-		return "", fmt.Errorf("Expected an entry for bus in %s, got %d entries instead", bridgeBusPath, busNum)
-	}
-
-	bus := files[0].Name()
-
-	// Device address is based on the bus of the bridge to which it is attached.
-	// We do not pass devices as multifunction, hence the trailing 0 in the address.
-	pciDeviceAddr := fmt.Sprintf("%s:%s.0", bus, deviceID)
-
-	sysfsRelPath := fmt.Sprintf("%s/%s", pciBridgeAddr, pciDeviceAddr)
-	agentLog.WithField("sysfsRelPath", sysfsRelPath).Info("Fetched sysfs relative path for PCI device")
-
-	return sysfsRelPath, nil
+	return relPath, nil
 }
 
 func getDeviceName(s *sandbox, devID string) (string, error) {

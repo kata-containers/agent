@@ -223,9 +223,9 @@ func TestVirtioBlkStorageHandlerSuccessful(t *testing.T) {
 
 	pciPath := fmt.Sprintf("%s/%s", bridgeID, deviceID)
 
-	sysBusPrefix = testDir
-	bridgeBusPath := fmt.Sprintf(pciBusPathFormat, sysBusPrefix, "0000:00:02.0")
-
+	// Set sysfsDir to test directory for unit tests.
+	sysfsDir = testDir
+	bridgeBusPath := filepath.Join(sysfsDir, rootBusPath, "0000:00:02.0", "pci_bus")
 	err = os.MkdirAll(filepath.Join(bridgeBusPath, pciBus), mountPerm)
 	assert.Nil(t, err)
 

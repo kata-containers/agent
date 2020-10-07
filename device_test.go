@@ -99,11 +99,15 @@ func TestPciPathToSysfs(t *testing.T) {
 	}
 	defer os.RemoveAll(testDir)
 
-	// Set sysBusPrefix to test directory for unit tests.
-	sysBusPrefix = testDir
+	// Set sysfsDir to test directory for unit tests.
+	sysfsDir = testDir
+	rootBus := filepath.Join(sysfsDir, rootBusPath)
+	err = os.MkdirAll(rootBus, mountPerm)
+	assert.NoError(t, err)
 
-	_, err = pciPathToSysfs(PciPath{"02"})
-	assert.Error(t, err)
+	sysRelPath, err := pciPathToSysfs(PciPath{"02"})
+	assert.NoError(t, err)
+	assert.Equal(t, sysRelPath, "0000:00:02.0")
 
 	_, err = pciPathToSysfs(PciPath{"02/03"})
 	assert.Error(t, err)
@@ -112,13 +116,14 @@ func TestPciPathToSysfs(t *testing.T) {
 	assert.Error(t, err)
 
 	// Create mock sysfs files for the device at 0000:00:02.0
-	bridge2Path := fmt.Sprintf(pciBusPathFormat, sysBusPrefix, "0000:00:02.0")
+	bridge2Path := filepath.Join(rootBus, "0000:00:02.0")
 
 	err = os.MkdirAll(bridge2Path, mountPerm)
 	assert.NoError(t, err)
 
-	_, err = pciPathToSysfs(PciPath{"02"})
-	assert.Error(t, err)
+	sysRelPath, err = pciPathToSysfs(PciPath{"02"})
+	assert.NoError(t, err)
+	assert.Equal(t, sysRelPath, "0000:00:02.0")
 
 	_, err = pciPathToSysfs(PciPath{"02/03"})
 	assert.Error(t, err)
@@ -128,18 +133,40 @@ func TestPciPathToSysfs(t *testing.T) {
 
 	// Create mock sysfs files to indicate that 0000:00:02.0 is a bridge to bus 01
 	bridge2Bus := "0000:01"
-	err = os.MkdirAll(filepath.Join(bridge2Path, bridge2Bus), mountPerm)
+	err = os.MkdirAll(filepath.Join(bridge2Path, "pci_bus", bridge2Bus), mountPerm)
 	assert.NoError(t, err)
 
-	_, err = pciPathToSysfs(PciPath{"02"})
-	assert.Error(t, err)
+	sysRelPath, err = pciPathToSysfs(PciPath{"02"})
+	assert.NoError(t, err)
+	assert.Equal(t, sysRelPath, "0000:00:02.0")
 
-	sysRelPath, err := pciPathToSysfs(PciPath{"02/03"})
+	sysRelPath, err = pciPathToSysfs(PciPath{"02/03"})
 	assert.NoError(t, err)
 	assert.Equal(t, sysRelPath, "0000:00:02.0/0000:01:03.0")
 
 	_, err = pciPathToSysfs(PciPath{"02/03/04"})
 	assert.Error(t, err)
+
+	// Create mock sysfs files for a bridge at 0000:01:03.0 to bus 02
+	bridge3Path := filepath.Join(bridge2Path, "0000:01:03.0")
+	bridge3Bus := "0000:02"
+	err = os.MkdirAll(filepath.Join(bridge3Path, "pci_bus", bridge3Bus), mountPerm)
+	assert.NoError(t, err)
+
+	err = os.MkdirAll(bridge3Path, mountPerm)
+	assert.NoError(t, err)
+
+	sysRelPath, err = pciPathToSysfs(PciPath{"02"})
+	assert.NoError(t, err)
+	assert.Equal(t, sysRelPath, "0000:00:02.0")
+
+	sysRelPath, err = pciPathToSysfs(PciPath{"02/03"})
+	assert.NoError(t, err)
+	assert.Equal(t, sysRelPath, "0000:00:02.0/0000:01:03.0")
+
+	sysRelPath, err = pciPathToSysfs(PciPath{"02/03/04"})
+	assert.NoError(t, err)
+	assert.Equal(t, sysRelPath, "0000:00:02.0/0000:01:03.0/0000:02:04.0")
 }
 
 func TestScanSCSIBus(t *testing.T) {
