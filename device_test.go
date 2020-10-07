@@ -92,47 +92,47 @@ func TestVirtioBlkDeviceHandlerEmptyLinuxDevicesSpecFailure(t *testing.T) {
 	testVirtioBlkDeviceHandlerFailure(t, device, spec)
 }
 
-func TestGetPCIAddress(t *testing.T) {
+func TestPciPathToSysfs(t *testing.T) {
 	testDir, err := ioutil.TempDir("", "kata-agent-tmp-")
 	if err != nil {
 		t.Fatal(t, err)
 	}
 	defer os.RemoveAll(testDir)
 
-	pciID := "02"
-	_, err = getDevicePCIAddress(pciID)
+	pciPath := "02"
+	_, err = pciPathToSysfs(pciPath)
 	assert.NotNil(t, err)
 
-	pciID = "02/03/04"
-	_, err = getDevicePCIAddress(pciID)
+	pciPath = "02/03/04"
+	_, err = pciPathToSysfs(pciPath)
 	assert.NotNil(t, err)
 
 	bridgeID := "02"
 	deviceID := "03"
 	pciBus := "0000:01"
-	expectedPCIAddress := "0000:00:02.0/0000:01:03.0"
-	pciID = fmt.Sprintf("%s/%s", bridgeID, deviceID)
+	expectedRelPath := "0000:00:02.0/0000:01:03.0"
+	pciPath = fmt.Sprintf("%s/%s", bridgeID, deviceID)
 
 	// Set sysBusPrefix to test directory for unit tests.
 	sysBusPrefix = testDir
 	bridgeBusPath := fmt.Sprintf(pciBusPathFormat, sysBusPrefix, "0000:00:02.0")
 
-	_, err = getDevicePCIAddress(pciID)
+	_, err = pciPathToSysfs(pciPath)
 	assert.NotNil(t, err)
 
 	err = os.MkdirAll(bridgeBusPath, mountPerm)
 	assert.Nil(t, err)
 
-	_, err = getDevicePCIAddress(pciID)
+	_, err = pciPathToSysfs(pciPath)
 	assert.NotNil(t, err)
 
 	err = os.MkdirAll(filepath.Join(bridgeBusPath, pciBus), mountPerm)
 	assert.Nil(t, err)
 
-	addr, err := getDevicePCIAddress(pciID)
+	addr, err := pciPathToSysfs(pciPath)
 	assert.Nil(t, err)
 
-	assert.Equal(t, addr, expectedPCIAddress)
+	assert.Equal(t, addr, expectedRelPath)
 }
 
 func TestScanSCSIBus(t *testing.T) {
@@ -804,12 +804,12 @@ func TestGetPCIDeviceName(t *testing.T) {
 
 	sysfsDir = testSysfsDir
 
-	savedFunc := getDevicePCIAddress
+	savedFunc := pciPathToSysfs
 	defer func() {
-		getDevicePCIAddress = savedFunc
+		pciPathToSysfs = savedFunc
 	}()
 
-	getDevicePCIAddress = func(pciID string) (string, error) {
+	pciPathToSysfs = func(pciPath string) (string, error) {
 		return "", nil
 	}
 

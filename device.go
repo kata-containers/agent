@@ -42,15 +42,15 @@ const (
 )
 
 var (
-	sysBusPrefix        = sysfsDir + "/bus/pci/devices"
-	pciBusRescanFile    = sysfsDir + "/bus/pci/rescan"
-	pciBusPathFormat    = "%s/%s/pci_bus/"
-	systemDevPath       = "/dev"
-	getSCSIDevPath      = getSCSIDevPathImpl
-	getPmemDevPath      = getPmemDevPathImpl
-	getPCIDeviceName    = getPCIDeviceNameImpl
-	getDevicePCIAddress = getDevicePCIAddressImpl
-	scanSCSIBus         = scanSCSIBusImpl
+	sysBusPrefix     = sysfsDir + "/bus/pci/devices"
+	pciBusRescanFile = sysfsDir + "/bus/pci/rescan"
+	pciBusPathFormat = "%s/%s/pci_bus/"
+	systemDevPath    = "/dev"
+	getSCSIDevPath   = getSCSIDevPathImpl
+	getPmemDevPath   = getPmemDevPathImpl
+	getPCIDeviceName = getPCIDeviceNameImpl
+	pciPathToSysfs   = pciPathToSysfsImpl
+	scanSCSIBus      = scanSCSIBusImpl
 )
 
 // CCW variables
@@ -93,15 +93,17 @@ func rescanPciBus() error {
 	return ioutil.WriteFile(pciBusRescanFile, []byte{'1'}, pciBusMode)
 }
 
-// getDevicePCIAddress fetches the complete PCI address in sysfs, based on the PCI
-// identifier provided. This should be in the format: "bridgeAddr/deviceAddr".
-// Here, bridgeAddr is the address at which the brige is attached on the root bus,
-// while deviceAddr is the address at which the device is attached on the bridge.
-func getDevicePCIAddressImpl(pciID string) (string, error) {
-	tokens := strings.Split(pciID, "/")
+// pciPathToSysfs fetches the sysfs path for a PCI path, relative to
+// the syfs path for the PCI host bridge, based on the PCI path
+// provided. The path should be in the format "bridgeAddr/deviceAddr",
+// where bridgeAddr is the address at which the brige is attached on
+// the root bus, while deviceAddr is the address at which the device
+// is attached on the bridge.
+func pciPathToSysfsImpl(pciPath string) (string, error) {
+	tokens := strings.Split(pciPath, "/")
 
 	if len(tokens) != 2 {
-		return "", fmt.Errorf("PCI Identifier for device should be of format [bridgeAddr/deviceAddr], got %s", pciID)
+		return "", fmt.Errorf("PCI path for device should be of format [bridgeAddr/deviceAddr], got %q", pciPath)
 	}
 
 	bridgeID := tokens[0]
@@ -130,10 +132,10 @@ func getDevicePCIAddressImpl(pciID string) (string, error) {
 	// We do not pass devices as multifunction, hence the trailing 0 in the address.
 	pciDeviceAddr := fmt.Sprintf("%s:%s.0", bus, deviceID)
 
-	bridgeDevicePCIAddr := fmt.Sprintf("%s/%s", pciBridgeAddr, pciDeviceAddr)
-	agentLog.WithField("completePCIAddr", bridgeDevicePCIAddr).Info("Fetched PCI address for device")
+	sysfsRelPath := fmt.Sprintf("%s/%s", pciBridgeAddr, pciDeviceAddr)
+	agentLog.WithField("sysfsRelPath", sysfsRelPath).Info("Fetched sysfs relative path for PCI device")
 
-	return bridgeDevicePCIAddr, nil
+	return sysfsRelPath, nil
 }
 
 func getDeviceName(s *sandbox, devID string) (string, error) {
@@ -181,13 +183,13 @@ func getDeviceName(s *sandbox, devID string) (string, error) {
 	return filepath.Join(systemDevPath, devName), nil
 }
 
-func getPCIDeviceNameImpl(s *sandbox, pciID string) (string, error) {
-	pciAddr, err := getDevicePCIAddress(pciID)
+func getPCIDeviceNameImpl(s *sandbox, pciPath string) (string, error) {
+	sysfsRelPath, err := pciPathToSysfs(pciPath)
 	if err != nil {
 		return "", err
 	}
 
-	fieldLogger := agentLog.WithField("pciAddr", pciAddr)
+	fieldLogger := agentLog.WithField("sysfsRelPath", sysfsRelPath)
 
 	// Rescan pci bus if we need to wait for a new pci device
 	if err = rescanPciBus(); err != nil {
@@ -195,7 +197,7 @@ func getPCIDeviceNameImpl(s *sandbox, pciID string) (string, error) {
 		return "", err
 	}
 
-	return getDeviceName(s, pciAddr)
+	return getDeviceName(s, sysfsRelPath)
 }
 
 // device.Id should be the predicted device name (vda, vdb, ...)
