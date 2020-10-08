@@ -42,15 +42,13 @@ const (
 )
 
 var (
-	sysBusPrefix        = sysfsDir + "/bus/pci/devices"
-	pciBusRescanFile    = sysfsDir + "/bus/pci/rescan"
-	pciBusPathFormat    = "%s/%s/pci_bus/"
-	systemDevPath       = "/dev"
-	getSCSIDevPath      = getSCSIDevPathImpl
-	getPmemDevPath      = getPmemDevPathImpl
-	getPCIDeviceName    = getPCIDeviceNameImpl
-	getDevicePCIAddress = getDevicePCIAddressImpl
-	scanSCSIBus         = scanSCSIBusImpl
+	pciBusRescanFile = sysfsDir + "/bus/pci/rescan"
+	systemDevPath    = "/dev"
+	getSCSIDevPath   = getSCSIDevPathImpl
+	getPmemDevPath   = getPmemDevPathImpl
+	getPCIDeviceName = getPCIDeviceNameImpl
+	pciPathToSysfs   = pciPathToSysfsImpl
+	scanSCSIBus      = scanSCSIBusImpl
 )
 
 // CCW variables
@@ -79,6 +77,18 @@ type devIndexEntry struct {
 }
 type devIndex map[string]devIndexEntry
 
+// Guest-side PCI path, identifies a PCI device by where it sits in
+// the PCI topology.
+//
+// Has the format "xx/.../yy/zz" Here, zz is the slot of the device on
+// its PCI bridge, yy is the slot of the bridge on its parent bridge
+// and so forth until xx is the slot of the "most upstream" bridge on
+// the root bus.  If a device is connected directly to the root bus,
+// its pciPath is just "zz"
+type PciPath struct {
+	path string
+}
+
 type deviceHandler func(ctx context.Context, device pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error
 
 var deviceHandlerList = map[string]deviceHandler{
@@ -93,47 +103,42 @@ func rescanPciBus() error {
 	return ioutil.WriteFile(pciBusRescanFile, []byte{'1'}, pciBusMode)
 }
 
-// getDevicePCIAddress fetches the complete PCI address in sysfs, based on the PCI
-// identifier provided. This should be in the format: "bridgeAddr/deviceAddr".
-// Here, bridgeAddr is the address at which the brige is attached on the root bus,
-// while deviceAddr is the address at which the device is attached on the bridge.
-func getDevicePCIAddressImpl(pciID string) (string, error) {
-	tokens := strings.Split(pciID, "/")
+// pciPathToSysfs fetches the sysfs path for a PCI path, relative to
+// the syfs path for the PCI host bridge, based on the PCI path
+// provided.
+func pciPathToSysfsImpl(pciPath PciPath) (string, error) {
+	var relPath string
+	bus := "0000:00"
 
-	if len(tokens) != 2 {
-		return "", fmt.Errorf("PCI Identifier for device should be of format [bridgeAddr/deviceAddr], got %s", pciID)
+	tokens := strings.Split(pciPath.path, "/")
+
+	for i, slot := range tokens {
+		// Full PCI address of this device along the path
+		bdf := fmt.Sprintf("%s:%s.0", bus, slot)
+
+		relPath = filepath.Join(relPath, bdf)
+
+		if i == len(tokens)-1 {
+			// Final device need not be a bridge
+			break
+		}
+
+		// Find out the bus exposed by bridge
+		bridgeBusPath := filepath.Join(sysfsDir, rootBusPath, relPath, "pci_bus")
+
+		files, err := ioutil.ReadDir(bridgeBusPath)
+		if err != nil {
+			return "", fmt.Errorf("Error reading %s : %s", bridgeBusPath, err)
+		}
+
+		if len(files) != 1 {
+			return "", fmt.Errorf("Expected exactly one PCI bus in %s, got %d instead", bridgeBusPath, len(files))
+		}
+
+		bus = files[0].Name()
 	}
 
-	bridgeID := tokens[0]
-	deviceID := tokens[1]
-
-	// Deduce the complete bridge address based on the bridge address identifier passed
-	// and the fact that bridges are attached on the main bus with function 0.
-	pciBridgeAddr := fmt.Sprintf("0000:00:%s.0", bridgeID)
-
-	// Find out the bus exposed by bridge
-	bridgeBusPath := fmt.Sprintf(pciBusPathFormat, sysBusPrefix, pciBridgeAddr)
-
-	files, err := ioutil.ReadDir(bridgeBusPath)
-	if err != nil {
-		return "", fmt.Errorf("Error with getting bridge pci bus : %s", err)
-	}
-
-	busNum := len(files)
-	if busNum != 1 {
-		return "", fmt.Errorf("Expected an entry for bus in %s, got %d entries instead", bridgeBusPath, busNum)
-	}
-
-	bus := files[0].Name()
-
-	// Device address is based on the bus of the bridge to which it is attached.
-	// We do not pass devices as multifunction, hence the trailing 0 in the address.
-	pciDeviceAddr := fmt.Sprintf("%s:%s.0", bus, deviceID)
-
-	bridgeDevicePCIAddr := fmt.Sprintf("%s/%s", pciBridgeAddr, pciDeviceAddr)
-	agentLog.WithField("completePCIAddr", bridgeDevicePCIAddr).Info("Fetched PCI address for device")
-
-	return bridgeDevicePCIAddr, nil
+	return relPath, nil
 }
 
 func getDeviceName(s *sandbox, devID string) (string, error) {
@@ -181,13 +186,13 @@ func getDeviceName(s *sandbox, devID string) (string, error) {
 	return filepath.Join(systemDevPath, devName), nil
 }
 
-func getPCIDeviceNameImpl(s *sandbox, pciID string) (string, error) {
-	pciAddr, err := getDevicePCIAddress(pciID)
+func getPCIDeviceNameImpl(s *sandbox, pciPath PciPath) (string, error) {
+	sysfsRelPath, err := pciPathToSysfs(pciPath)
 	if err != nil {
 		return "", err
 	}
 
-	fieldLogger := agentLog.WithField("pciAddr", pciAddr)
+	fieldLogger := agentLog.WithField("sysfsRelPath", sysfsRelPath)
 
 	// Rescan pci bus if we need to wait for a new pci device
 	if err = rescanPciBus(); err != nil {
@@ -195,7 +200,7 @@ func getPCIDeviceNameImpl(s *sandbox, pciID string) (string, error) {
 		return "", err
 	}
 
-	return getDeviceName(s, pciAddr)
+	return getDeviceName(s, sysfsRelPath)
 }
 
 // device.Id should be the predicted device name (vda, vdb, ...)
@@ -223,14 +228,11 @@ func virtioBlkCCWDeviceHandler(ctx context.Context, device pb.Device, spec *pb.S
 	return updateSpecDeviceList(device, spec, devIdx)
 }
 
-// device.Id should be the PCI address in the format  "bridgeAddr/deviceAddr".
-// Here, bridgeAddr is the address at which the brige is attached on the root bus,
-// while deviceAddr is the address at which the device is attached on the bridge.
+// device.Id should be a PCI path (see type PciPath)
 func virtioBlkDeviceHandler(_ context.Context, device pb.Device, spec *pb.Spec, s *sandbox, devIdx devIndex) error {
-	// When "Id (PCIAddr)" is not set, we allow to use the predicted "VmPath" passed from kata-runtime
+	// When "Id" (PCI path) is not set, we allow to use the predicted "VmPath" passed from kata-runtime
 	if device.Id != "" {
-		// Get the device node path based on the PCI device address
-		devPath, err := getPCIDeviceName(s, device.Id)
+		devPath, err := getPCIDeviceName(s, PciPath{device.Id})
 		if err != nil {
 			return err
 		}

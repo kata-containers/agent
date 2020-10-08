@@ -232,14 +232,13 @@ func (s *sandbox) updateInterface(netHandle *netlink.Handle, iface *types.Interf
 	fieldLogger := agentLog.WithFields(logrus.Fields{
 		"mac-address":    iface.HwAddr,
 		"interface-name": iface.Device,
-		"pci-address":    iface.PciAddr,
+		"pci-path":       iface.PciPath,
 	})
 
-	// If the PCI address of the network device is provided, wait/check for the device
-	// to be available first
-	if iface.PciAddr != "" {
-		// iface.PciAddr is in the format bridgeAddr/deviceAddr eg. 05/06
-		_, err := getPCIDeviceName(s, iface.PciAddr)
+	// If the PCI path of the network device is provided,
+	// wait/check for the device to be available first
+	if iface.PciPath != "" {
+		_, err := getPCIDeviceName(s, PciPath{iface.PciPath})
 		if err != nil {
 			return nil, err
 		}

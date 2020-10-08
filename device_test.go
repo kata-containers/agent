@@ -51,7 +51,7 @@ func testVirtioBlkDeviceHandlerFailure(t *testing.T, device pb.Device, spec *pb.
 	assert.NotNil(t, err, "blockDeviceHandler() should have failed")
 
 	savedFunc := getPCIDeviceName
-	getPCIDeviceName = func(s *sandbox, pciID string) (string, error) {
+	getPCIDeviceName = func(s *sandbox, pciPath PciPath) (string, error) {
 		return "foo", nil
 	}
 
@@ -92,47 +92,81 @@ func TestVirtioBlkDeviceHandlerEmptyLinuxDevicesSpecFailure(t *testing.T) {
 	testVirtioBlkDeviceHandlerFailure(t, device, spec)
 }
 
-func TestGetPCIAddress(t *testing.T) {
+func TestPciPathToSysfs(t *testing.T) {
 	testDir, err := ioutil.TempDir("", "kata-agent-tmp-")
 	if err != nil {
 		t.Fatal(t, err)
 	}
 	defer os.RemoveAll(testDir)
 
-	pciID := "02"
-	_, err = getDevicePCIAddress(pciID)
-	assert.NotNil(t, err)
+	// Set sysfsDir to test directory for unit tests.
+	sysfsDir = testDir
+	rootBus := filepath.Join(sysfsDir, rootBusPath)
+	err = os.MkdirAll(rootBus, mountPerm)
+	assert.NoError(t, err)
 
-	pciID = "02/03/04"
-	_, err = getDevicePCIAddress(pciID)
-	assert.NotNil(t, err)
+	sysRelPath, err := pciPathToSysfs(PciPath{"02"})
+	assert.NoError(t, err)
+	assert.Equal(t, sysRelPath, "0000:00:02.0")
 
-	bridgeID := "02"
-	deviceID := "03"
-	pciBus := "0000:01"
-	expectedPCIAddress := "0000:00:02.0/0000:01:03.0"
-	pciID = fmt.Sprintf("%s/%s", bridgeID, deviceID)
+	_, err = pciPathToSysfs(PciPath{"02/03"})
+	assert.Error(t, err)
 
-	// Set sysBusPrefix to test directory for unit tests.
-	sysBusPrefix = testDir
-	bridgeBusPath := fmt.Sprintf(pciBusPathFormat, sysBusPrefix, "0000:00:02.0")
+	_, err = pciPathToSysfs(PciPath{"02/03/04"})
+	assert.Error(t, err)
 
-	_, err = getDevicePCIAddress(pciID)
-	assert.NotNil(t, err)
+	// Create mock sysfs files for the device at 0000:00:02.0
+	bridge2Path := filepath.Join(rootBus, "0000:00:02.0")
 
-	err = os.MkdirAll(bridgeBusPath, mountPerm)
-	assert.Nil(t, err)
+	err = os.MkdirAll(bridge2Path, mountPerm)
+	assert.NoError(t, err)
 
-	_, err = getDevicePCIAddress(pciID)
-	assert.NotNil(t, err)
+	sysRelPath, err = pciPathToSysfs(PciPath{"02"})
+	assert.NoError(t, err)
+	assert.Equal(t, sysRelPath, "0000:00:02.0")
 
-	err = os.MkdirAll(filepath.Join(bridgeBusPath, pciBus), mountPerm)
-	assert.Nil(t, err)
+	_, err = pciPathToSysfs(PciPath{"02/03"})
+	assert.Error(t, err)
 
-	addr, err := getDevicePCIAddress(pciID)
-	assert.Nil(t, err)
+	_, err = pciPathToSysfs(PciPath{"02/03/04"})
+	assert.Error(t, err)
 
-	assert.Equal(t, addr, expectedPCIAddress)
+	// Create mock sysfs files to indicate that 0000:00:02.0 is a bridge to bus 01
+	bridge2Bus := "0000:01"
+	err = os.MkdirAll(filepath.Join(bridge2Path, "pci_bus", bridge2Bus), mountPerm)
+	assert.NoError(t, err)
+
+	sysRelPath, err = pciPathToSysfs(PciPath{"02"})
+	assert.NoError(t, err)
+	assert.Equal(t, sysRelPath, "0000:00:02.0")
+
+	sysRelPath, err = pciPathToSysfs(PciPath{"02/03"})
+	assert.NoError(t, err)
+	assert.Equal(t, sysRelPath, "0000:00:02.0/0000:01:03.0")
+
+	_, err = pciPathToSysfs(PciPath{"02/03/04"})
+	assert.Error(t, err)
+
+	// Create mock sysfs files for a bridge at 0000:01:03.0 to bus 02
+	bridge3Path := filepath.Join(bridge2Path, "0000:01:03.0")
+	bridge3Bus := "0000:02"
+	err = os.MkdirAll(filepath.Join(bridge3Path, "pci_bus", bridge3Bus), mountPerm)
+	assert.NoError(t, err)
+
+	err = os.MkdirAll(bridge3Path, mountPerm)
+	assert.NoError(t, err)
+
+	sysRelPath, err = pciPathToSysfs(PciPath{"02"})
+	assert.NoError(t, err)
+	assert.Equal(t, sysRelPath, "0000:00:02.0")
+
+	sysRelPath, err = pciPathToSysfs(PciPath{"02/03"})
+	assert.NoError(t, err)
+	assert.Equal(t, sysRelPath, "0000:00:02.0/0000:01:03.0")
+
+	sysRelPath, err = pciPathToSysfs(PciPath{"02/03/04"})
+	assert.NoError(t, err)
+	assert.Equal(t, sysRelPath, "0000:00:02.0/0000:01:03.0/0000:02:04.0")
 }
 
 func TestScanSCSIBus(t *testing.T) {
@@ -804,12 +838,12 @@ func TestGetPCIDeviceName(t *testing.T) {
 
 	sysfsDir = testSysfsDir
 
-	savedFunc := getDevicePCIAddress
+	savedFunc := pciPathToSysfs
 	defer func() {
-		getDevicePCIAddress = savedFunc
+		pciPathToSysfs = savedFunc
 	}()
 
-	getDevicePCIAddress = func(pciID string) (string, error) {
+	pciPathToSysfs = func(pciPath PciPath) (string, error) {
 		return "", nil
 	}
 
@@ -817,14 +851,14 @@ func TestGetPCIDeviceName(t *testing.T) {
 		deviceWatchers: make(map[string](chan string)),
 	}
 
-	_, err = getPCIDeviceNameImpl(&sb, "")
+	_, err = getPCIDeviceNameImpl(&sb, PciPath{""})
 	assert.Error(err)
 
 	rescanDir := filepath.Dir(pciBusRescanFile)
 	err = os.MkdirAll(rescanDir, testDirMode)
 	assert.NoError(err)
 
-	_, err = getPCIDeviceNameImpl(&sb, "")
+	_, err = getPCIDeviceNameImpl(&sb, PciPath{""})
 	assert.Error(err)
 }
 
