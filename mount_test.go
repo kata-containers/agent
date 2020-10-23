@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"testing"
 
@@ -210,6 +211,17 @@ func TestVirtioBlkStorageDeviceFailure(t *testing.T) {
 
 func TestVirtioBlkStorageHandlerSuccessful(t *testing.T) {
 	skipUnlessRoot(t)
+	var rootBusPath string
+	var err error
+
+	if runtime.GOARCH == "arm64" {
+		rootBusPath = "/devices/platform/4010000000.pcie/pci0000:00"
+	} else {
+		rootBusPath, err = createRootBusPath()
+		if err != nil {
+			t.Fatal(t, err)
+		}
+	}
 
 	testDir, err := ioutil.TempDir("", "kata-agent-tmp-")
 	if err != nil {

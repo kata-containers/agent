@@ -109,6 +109,10 @@ func rescanPciBus() error {
 func pciPathToSysfsImpl(pciPath PciPath) (string, error) {
 	var relPath string
 	bus := "0000:00"
+	rootBusPath, err := createRootBusPath()
+	if err != nil {
+		return "", err
+	}
 
 	tokens := strings.Split(pciPath.path, "/")
 

@@ -709,6 +709,11 @@ func (s *sandbox) waitForStopServer() {
 
 func (s *sandbox) listenToUdevEvents() {
 	fieldLogger := agentLog.WithField("subsystem", "udevlistener")
+	rootBusPath, err := createRootBusPath()
+	if err != nil {
+		fieldLogger.Warnf("Error creating root bus path")
+		return
+	}
 
 	uEvHandler, err := uevent.NewHandler()
 	if err != nil {
