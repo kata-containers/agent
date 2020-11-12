@@ -51,6 +51,7 @@ var flagList = map[string]int{
 	"relatime":    unix.MS_RELATIME,
 	"remount":     unix.MS_REMOUNT,
 	"ro":          unix.MS_RDONLY,
+	"rw":          0,
 	"silent":      unix.MS_SILENT,
 	"strictatime": unix.MS_STRICTATIME,
 	"sync":        unix.MS_SYNCHRONOUS,
