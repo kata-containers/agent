@@ -13,6 +13,12 @@ pushd "${tests_repo_dir}"
 .ci/run.sh
 testcidir=$(dirname "$0")
 
+# docker version may need to be upgraded to let make proto go on arm64
+arch=$(go env GOARCH)
+if [ "$arch" == "arm64" ]; then
+	"../agent/.ci/run_arm64.sh"
+fi
+
 echo "Starting docker service before making proto"
 sudo systemctl start docker
 
