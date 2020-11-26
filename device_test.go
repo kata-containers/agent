@@ -13,6 +13,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -93,6 +94,17 @@ func TestVirtioBlkDeviceHandlerEmptyLinuxDevicesSpecFailure(t *testing.T) {
 }
 
 func TestPciPathToSysfs(t *testing.T) {
+	var rootBusPath string
+	var err error
+
+	if runtime.GOARCH == "arm64" {
+		rootBusPath = "/devices/platform/4010000000.pcie/pci0000:00"
+	} else {
+		rootBusPath, err = createRootBusPath()
+		if err != nil {
+			t.Fatal(t, err)
+		}
+	}
 	testDir, err := ioutil.TempDir("", "kata-agent-tmp-")
 	if err != nil {
 		t.Fatal(t, err)

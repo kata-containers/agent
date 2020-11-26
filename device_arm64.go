@@ -6,9 +6,14 @@
 
 package main
 
-const (
-	rootBusPath = "/devices/platform/4010000000.pcie/pci0000:00"
+import (
+	"fmt"
+	"io/ioutil"
+	"path/filepath"
+	"strings"
+)
 
+const (
 	// From https://www.kernel.org/doc/Documentation/acpi/namespace.txt
 	// The Linux kernel's core ACPI subsystem creates struct acpi_device
 	// objects for ACPI namespace objects representing devices, power resources
@@ -16,3 +21,22 @@ const (
 	// sysfs as directories in the subtree under /sys/devices/LNXSYSTM:00
 	acpiDevPath = "/devices/LNXSYSTM"
 )
+
+func createRootBusPath() (string, error) {
+	startRootBusPath := "/devices/platform"
+	endRootBusPath := "/pci0000:00"
+	sysStartRootBusPath := filepath.Join(sysfsDir, startRootBusPath)
+	files, err := ioutil.ReadDir(sysStartRootBusPath)
+	if err != nil {
+		return "", fmt.Errorf("Error reading %s: %s", sysStartRootBusPath, err)
+	}
+
+	// find out the directory end with ".pcie"
+	for _, file := range files {
+		if strings.HasSuffix(file.Name(), ".pcie") && file.IsDir() {
+			return filepath.Join(startRootBusPath, file.Name(), endRootBusPath), nil
+		}
+	}
+
+	return "", fmt.Errorf("no pcie bus found under %s", sysStartRootBusPath)
+}
