@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -26,12 +27,14 @@ import (
 )
 
 const (
-	type9pFs       = "9p"
-	typeVirtioFS   = "virtiofs"
-	typeRootfs     = "rootfs"
-	typeTmpFs      = "tmpfs"
-	procMountStats = "/proc/self/mountstats"
-	mountPerm      = os.FileMode(0755)
+	type9pFs             = "9p"
+	typeVirtioFS         = "virtiofs"
+	typeRootfs           = "rootfs"
+	typeTmpFs            = "tmpfs"
+	typeHugeTlbfs        = "hugetlbfs"
+	procMountStats       = "/proc/self/mountstats"
+	mountPerm            = os.FileMode(0755)
+	sysfsHugepagesPrefix = "/sys/kernel/mm/hugepages"
 )
 
 var flagList = map[string]int{
@@ -111,6 +114,15 @@ func mount(source, destination, fsType string, flags int, options string) error 
 		absSource = source
 	case typeTmpFs:
 		absSource = source
+	case typeHugeTlbfs:
+		absSource = source
+		//Allocate hugepages before mount
+		///sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages
+		///sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+		//options eg "pagesize=2048,size=107374182"
+		if err = allocateHugePages(options); err != nil {
+			return grpcStatus.Errorf(codes.Internal, "Could not mount hugepages: %v", err)
+		}
 	default:
 		absSource, err = filepath.EvalSymlinks(source)
 		if err != nil {
@@ -127,6 +139,48 @@ func mount(source, destination, fsType string, flags int, options string) error 
 		fsType, uintptr(flags), options); err != nil {
 		return grpcStatus.Errorf(codes.Internal, "Could not mount %v to %v: %v",
 			absSource, destination, err)
+	}
+
+	return nil
+}
+
+// Parse filesystem options string to retrieve hugepage details
+func getPagesizeAndSizeFromOpt(options string) (string, string) {
+	//options eg "pagesize=2048,size=107374182"
+	var pagesizeStr, sizeStr string
+	fsOpts := strings.Split(options, ",")
+	for _, opt := range fsOpts {
+		if strings.HasPrefix(opt, "pagesize=") {
+			pagesizeStr = strings.TrimPrefix(opt, "pagesize=")
+		}
+		if strings.HasPrefix(opt, "size=") {
+			sizeStr = strings.TrimPrefix(opt, "size=")
+		}
+	}
+	return pagesizeStr, sizeStr
+}
+
+// Allocate hugepages by writing to sysfs
+func allocateHugePages(options string) error {
+
+	agentLog.WithField("HugePagesOption", options).Info("HugePages option string")
+
+	pagesizeStr, sizeStr := getPagesizeAndSizeFromOpt(options)
+	pagesize, err := strconv.ParseInt(pagesizeStr, 10, 64)
+	if err != nil {
+		return err
+	}
+	//sysfs entry is always of the form hugepages-${size}kB
+	//Ref: https://www.kernel.org/doc/Documentation/vm/hugetlbpage.txt
+	sysfsHugepagesPath := filepath.Join(sysfsHugepagesPrefix, fmt.Sprintf("hugepages-%skB", strconv.FormatInt((pagesize/1024), 10)), "nr_hugepages")
+
+	size, err := strconv.ParseInt(sizeStr, 10, 64)
+	if err != nil {
+		return err
+	}
+	numpages := strconv.FormatInt((size / pagesize), 10)
+	if err := ioutil.WriteFile(sysfsHugepagesPath, []byte(numpages), 0200); err != nil {
+		return err
 	}
 
 	return nil
