@@ -55,8 +55,8 @@ func changeToBundlePath(spec *specs.Spec, containerId string) (string, error) {
 		return cwd, errors.New("invalid OCI spec")
 	}
 
-	bundlePath := filepath.Dir(spec.Root.Path)
 	configPath := filepath.Join(ociConfigBasePath, containerId, ociConfigFile)
+	configDir := filepath.Dir(configPath)
 
 	// config.json is at "/run/libcontainer/<container-id>/"
 	// Actual bundle (rootfs) is at dirname(spec.Root.Path)
@@ -64,7 +64,7 @@ func changeToBundlePath(spec *specs.Spec, containerId string) (string, error) {
 		return cwd, errors.New("invalid OCI bundle")
 	}
 
-	return cwd, os.Chdir(bundlePath)
+	return cwd, os.Chdir(configDir)
 }
 
 func isValidHook(file os.FileInfo) (bool, error) {
