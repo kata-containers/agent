@@ -9,6 +9,7 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -23,8 +24,15 @@ const (
 )
 
 func createRootBusPath() (string, error) {
+	acpiRootBusPath := "/devices/pci0000:00"
 	startRootBusPath := "/devices/platform"
 	endRootBusPath := "/pci0000:00"
+
+	acpiSysRootBusPath := filepath.Join(sysfsDir, acpiRootBusPath)
+	if _, err := os.Stat(acpiSysRootBusPath); err == nil {
+		return acpiRootBusPath, nil
+	}
+
 	sysStartRootBusPath := filepath.Join(sysfsDir, startRootBusPath)
 	files, err := ioutil.ReadDir(sysStartRootBusPath)
 	if err != nil {

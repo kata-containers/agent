@@ -711,7 +711,7 @@ func (s *sandbox) listenToUdevEvents() {
 	fieldLogger := agentLog.WithField("subsystem", "udevlistener")
 	rootBusPath, err := createRootBusPath()
 	if err != nil {
-		fieldLogger.Warnf("Error creating root bus path")
+		fieldLogger.WithError(err).Error("Fail to create root bus path")
 		return
 	}
 
