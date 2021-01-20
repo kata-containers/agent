@@ -738,6 +738,9 @@ func TestSingleWaitProcess(t *testing.T) {
 		exitCodeCh: make(chan int, 1),
 	}
 
+	a.addExitCodeProcess(a.sandbox.containers[containerID].processes[containerID],
+		a.sandbox.containers[containerID])
+
 	go func() {
 		time.Sleep(time.Second)
 		a.sandbox.containers[containerID].processes[containerID].exitCodeCh <- exitCode
@@ -776,6 +779,9 @@ func TestMultiWaitProcess(t *testing.T) {
 		process:    libcontainer.Process{},
 		exitCodeCh: make(chan int, 1),
 	}
+
+	a.addExitCodeProcess(a.sandbox.containers[containerID].processes[containerID],
+		a.sandbox.containers[containerID])
 
 	for i := 0; i < 10; i++ {
 		wg.Add(1)

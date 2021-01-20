@@ -474,8 +474,26 @@ func (a *agentGRPC) postExecProcess(ctr *container, proc *process) error {
 	}
 
 	ctr.setProcess(proc)
-
+	a.addExitCodeProcess(proc, ctr)
 	return nil
+}
+
+func (a *agentGRPC) addExitCodeProcess(proc *process, ctr *container) {
+	ctr.processExitCode.add(proc.id, proc.exitCodeCh)
+
+	go func() {
+		libContProcess := (*reaperLibcontainerProcess)(&(proc.process))
+		exitCode, _ := a.sandbox.subreaper.wait(proc.exitCodeCh, libContProcess)
+
+		//refill the exitCodeCh with the exitcode which can be read out
+		//by another WaitProcess(). Since this channel isn't be closed,
+		//here the refill will always success and it will be free by GC
+		//once the process exits.
+		proc.exitCodeCh <- exitCode
+
+		proc.closePostExitFDs()
+		ctr.deleteProcess(proc.id)
+	}()
 }
 
 // This function updates the container namespaces configuration based on the
@@ -1001,27 +1019,15 @@ func isSignalHandled(pid int, signum syscall.Signal) bool {
 }
 
 func (a *agentGRPC) WaitProcess(ctx context.Context, req *pb.WaitProcessRequest) (*pb.WaitProcessResponse, error) {
-	proc, ctr, err := a.sandbox.getProcess(req.ContainerId, req.ExecId)
+	ctr, err := a.getContainer(req.ContainerId)
 	if err != nil {
 		return &pb.WaitProcessResponse{}, err
 	}
 
-	defer proc.Do(func() {
-		proc.closePostExitFDs()
-		ctr.deleteProcess(proc.id)
-	})
-
-	// Using helper function wait() to deal with the subreaper.
-	libContProcess := (*reaperLibcontainerProcess)(&(proc.process))
-	exitCode, err := a.sandbox.subreaper.wait(proc.exitCodeCh, libContProcess)
+	exitCode, err := ctr.processExitCode.wait(req.ExecId)
 	if err != nil {
 		return &pb.WaitProcessResponse{}, err
 	}
-	//refill the exitCodeCh with the exitcode which can be read out
-	//by another WaitProcess(). Since this channel isn't be closed,
-	//here the refill will always success and it will be free by GC
-	//once the process exits.
-	proc.exitCodeCh <- exitCode
 
 	return &pb.WaitProcessResponse{
 		Status: int32(exitCode),

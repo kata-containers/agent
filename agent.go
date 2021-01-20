@@ -19,6 +19,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -47,6 +48,8 @@ const (
 	bashPath         = "/bin/bash"
 	shPath           = "/bin/sh"
 	debugConsolePath = "/dev/console"
+
+	maxExitCodeNum = 2048
 )
 
 var (
@@ -113,6 +116,7 @@ type container struct {
 	useSandboxPidNs bool
 	agentPidNs      bool
 	ctx             context.Context
+	processExitCode exitProcess
 }
 
 type sandboxStorage struct {
@@ -146,6 +150,19 @@ type sandbox struct {
 	storages          map[string]*sandboxStorage
 	stopServer        chan struct{}
 	oomEvents         chan string
+}
+
+type exitProcessStatus struct {
+	exitCode    chan int
+	id          string
+	sequenceNum int
+}
+
+type exitProcess struct {
+	sync.Mutex
+
+	exitCodes map[string]*exitProcessStatus
+	sequence  int
 }
 
 var agentFields = logrus.Fields{
@@ -873,6 +890,71 @@ func (s *sandbox) setupSignalHandler() error {
 	errCh := make(chan error, 1)
 	go s.signalHandlerLoop(sigCh, errCh)
 	return <-errCh
+}
+
+type exitStatusList []*exitProcessStatus
+
+func (p exitStatusList) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+func (p exitStatusList) Len() int           { return len(p) }
+func (p exitStatusList) Less(i, j int) bool { return p[i].sequenceNum-p[j].sequenceNum < 0 }
+
+func (e *exitProcess) add(id string, exitCode chan int) {
+	e.Lock()
+	defer e.Unlock()
+
+	if e.exitCodes == nil {
+		e.exitCodes = map[string]*exitProcessStatus{}
+	}
+
+	// delete (first in and first out) half of the elements if the length arrive maxExitCodeNum
+	if len(e.exitCodes) >= maxExitCodeNum {
+		index := 0
+		statusList := make(exitStatusList, maxExitCodeNum)
+		for _, status := range e.exitCodes {
+			statusList[index] = status
+			index++
+		}
+		sort.Sort(statusList)
+
+		for index, status := range statusList {
+			if index >= maxExitCodeNum/2 {
+				break
+			}
+			delete(e.exitCodes, status.id)
+		}
+	}
+
+	e.exitCodes[id] = &exitProcessStatus{
+		exitCode:    exitCode,
+		sequenceNum: e.sequence,
+		id:          id,
+	}
+	e.sequence++
+}
+
+func (e *exitProcess) wait(id string) (int, error) {
+	e.Lock()
+	status, find := e.exitCodes[id]
+	e.Unlock()
+
+	if find {
+		exitCode := <-status.exitCode
+
+		e.delete(id)
+
+		//refill with the exitcode which can be read out
+		//by another exitProcess.wait
+		status.exitCode <- exitCode
+		return exitCode, nil
+	}
+
+	return -1, fmt.Errorf("can't find process %s", id)
+}
+
+func (e *exitProcess) delete(id string) {
+	e.Lock()
+	defer e.Unlock()
+	delete(e.exitCodes, id)
 }
 
 // getMemory returns a string containing the total amount of memory reported

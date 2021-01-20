@@ -14,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"syscall"
 	"testing"
@@ -988,4 +989,24 @@ func TestRunOOMEventMonitor(t *testing.T) {
 	assert.Equal(cid, oomEvent)
 
 	close(eventChan)
+}
+
+func TestExitProcess(t *testing.T) {
+	assert := assert.New(t)
+	containerExitProcess := exitProcess{}
+	for i := 0; i <= maxExitCodeNum; i++ {
+		id := fmt.Sprintf("id-%d", i)
+		containerExitProcess.add(id, nil)
+	}
+
+	listLen := len(containerExitProcess.exitCodes)
+	statusList := make(exitStatusList, listLen)
+	index := 0
+	for _, status := range containerExitProcess.exitCodes {
+		statusList[index] = status
+		index++
+	}
+	sort.Sort(statusList)
+	assert.Equal(statusList[0].sequenceNum, maxExitCodeNum/2)
+	assert.Equal(statusList[listLen-1].sequenceNum, maxExitCodeNum)
 }
