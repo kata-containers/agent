@@ -70,6 +70,38 @@ func createDestinationDir(dest string) error {
 	return os.MkdirAll(targetPath, mountPerm)
 }
 
+func isDeviceMountPoint(path string) bool {
+	// If we are at the root, then our check will fail, since we don't have a parent dir
+	if path == "/" {
+		return false
+	}
+
+	// If the path doesn't exist, it certainly isn't a mount
+	if _, err := os.Stat(path); err != nil {
+		return false
+	}
+
+	// We can determine that the path is a mount point if the device
+	// associated with it is different than its parents
+	childStat := syscall.Stat_t{}
+	parentStat := syscall.Stat_t{}
+	parent_path := filepath.Dir(path)
+
+	if err := syscall.Lstat(path, &childStat); err != nil {
+		return false
+	}
+
+	if err := syscall.Lstat(parent_path, &parentStat); err != nil {
+		return false
+	}
+
+	if parentStat.Dev != childStat.Dev {
+		return true
+	}
+
+	return false
+}
+
 // mount mounts a source in to a destination. This will do some bookkeeping:
 // * evaluate all symlinks
 // * ensure the source exists
@@ -105,6 +137,16 @@ func mount(source, destination, fsType string, flags int, options string) error 
 	var err error
 	switch fsType {
 	case type9pFs, typeVirtioFS:
+
+		//
+		// There's a chance the virtiofs mount could have already been setup outside of agent. We'll
+		// determine that this happened by checking to see if the directory already exists, and if it is
+		// a mount point.
+		//
+		if isDeviceMountPoint(destination) {
+			return nil
+		}
+
 		if err = createDestinationDir(destination); err != nil {
 			return err
 		}

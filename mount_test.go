@@ -18,6 +18,7 @@ import (
 
 	pb "github.com/kata-containers/agent/protocols/grpc"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/sys/unix"
 )
 
 func createSafeAndFakeStorage() (pb.Storage, error) {
@@ -516,6 +517,38 @@ func TestMount(t *testing.T) {
 		} else {
 			assert.NoErrorf(err, "test %d (%+v)", i, d)
 		}
+	}
+}
+
+func TestIsDeviceMountPoint(t *testing.T) {
+	skipUnlessRoot(t)
+	destDir, err := ioutil.TempDir("", "dest")
+	assert.NoError(t, err, "unable to create temp dir")
+	defer os.RemoveAll(destDir)
+
+	targetMount := filepath.Join(destDir, "test")
+
+	err = os.MkdirAll(targetMount, mountPerm)
+	assert.NoError(t, err, "unable to create temp dir subdirectory")
+
+	err = mount("tmpfs", targetMount, "tmpfs", unix.MS_RDONLY, "")
+	assert.NoError(t, err, "failed to create bind mount")
+	defer syscall.Unmount(targetMount, 0)
+
+	type testData struct {
+		path           string
+		expectedResult bool
+	}
+
+	data := []testData{
+		{destDir, false},
+		{"/", false},
+		{"/foobar", false},
+		{targetMount, true},
+	}
+	for i, d := range data {
+		msg := fmt.Sprintf("test[%d]: %+v\n", i, d)
+		assert.Equal(t, d.expectedResult, isDeviceMountPoint(d.path), msg)
 	}
 }
 
