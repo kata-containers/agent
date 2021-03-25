@@ -1268,6 +1268,10 @@ func (a *agentGRPC) RemoveContainer(ctx context.Context, req *pb.RemoveContainer
 	a.sandbox.Lock()
 	defer a.sandbox.Unlock()
 
+	// lock agent reaper to avoid wait race when run oci hook
+	a.sandbox.subreaper.lock()
+	defer a.sandbox.subreaper.unlock()
+
 	if timeout == 0 {
 		if err := ctr.removeContainer(); err != nil {
 			return emptyResp, err
