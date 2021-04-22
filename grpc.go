@@ -1162,6 +1162,15 @@ func (a *agentGRPC) UpdateContainer(ctx context.Context, req *pb.UpdateContainer
 		resources.MemorySwap = req.Resources.Memory.Swap
 	}
 
+	if len(req.Resources.HugepageLimits) > 0 {
+		for _, l := range req.Resources.HugepageLimits {
+			resources.HugetlbLimit = append(resources.HugetlbLimit, &configs.HugepageLimit{
+				Pagesize: l.Pagesize,
+				Limit:    l.Limit,
+			})
+		}
+	}
+
 	if req.Resources.Pids != nil {
 		resources.PidsLimit = req.Resources.Pids.Limit
 	}

@@ -732,3 +732,29 @@ func TestGetMountFSType(t *testing.T) {
 		assert.Equal(d.expectedResult, result, msg)
 	}
 }
+
+func TestGetPagesizeAndSizeFromOpt(t *testing.T) {
+	assert := assert.New(t)
+
+	data := []string{
+		"size=107374182,pagesize=2048",
+		"pagesize=2048,size=107374182",
+		"foo=bar,pagesize=2048,size=107374182",
+		"foo=bar,pagesize=2048,foo1=bar1,size=107374182",
+		"pagesize=2048,foo1=bar1,foo=bar,size=107374182",
+		"foo=bar,pagesize=2048,foo1=bar1,size=107374182,foo2=bar2",
+		"foo=bar,size=107374182,foo1=bar1,pagesize=2048",
+	}
+
+	resPagesizeStr := "2048"
+	resSizeStr := "107374182"
+
+	for i, opt := range data {
+		msg := fmt.Sprintf("test[%d]: %+v\n", i, opt)
+
+		pagesizeStr, sizeStr := getPagesizeAndSizeFromOpt(opt)
+
+		assert.Equal(resPagesizeStr, pagesizeStr, msg)
+		assert.Equal(resSizeStr, sizeStr, msg)
+	}
+}
