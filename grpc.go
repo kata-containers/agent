@@ -217,7 +217,7 @@ func updateCpusetPath(cgroupPath string, newCpuset string, cookies cookie) error
 	agentLog.WithField("path", cpusetCpusPath).Debug("updating cpuset cgroup")
 
 	if err := ioutil.WriteFile(cpusetCpusPath, []byte(newCpuset), cpusetMode); err != nil {
-		return fmt.Errorf("Could not update parent cpuset cgroup (%s) cpuset:'%s': %v", cpusetCpusPath, cpusetGuest, err)
+		return fmt.Errorf("Could not update parent cpuset cgroup (%s) cpuset:'%s': %v", cpusetCpusPath, newCpuset, err)
 	}
 
 	return nil
